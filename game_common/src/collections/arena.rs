@@ -230,6 +230,84 @@ impl<T> Arena<T> {
             iter: self.iter_mut(),
         }
     }
+
+    /// Allocate a new slot in the `Arena` before writing the actual value into the `Arena`.
+    ///
+    /// This can be used to create a cyclic references. It it valid to call `allocate` without
+    /// writing the final value with [`write`], in which case the generated [`Key`] becomes
+    /// invalid and its use in this `Arena` will result in unspecified effects.
+    ///
+    /// [`write`]: AllocateEntry::write
+    pub fn allocate(&mut self) -> AllocateEntry<'_, T> {
+        let key = if let Some(index) = self.free_head {
+            let slot = self.entries.get(index).unwrap();
+
+            let entry = match slot {
+                Entry::Occupied(_) => unreachable!(),
+                Entry::Vacant(entry) => entry,
+            };
+
+            let generation = entry.generation.next();
+
+            Key {
+                index: index as u32,
+                generation,
+            }
+        } else {
+            let generation = Generation::new();
+            let index: u32 = self.entries.len().try_into().unwrap();
+
+            Key { index, generation }
+        };
+
+        AllocateEntry { arena: self, key }
+    }
+}
+
+/// A reference to a slot in an [`Arena`] that has not yet been written to.
+///
+/// Returned by [`allocate`].
+///
+/// [`allocate`]: Arena::allocate
+#[derive(Debug)]
+pub struct AllocateEntry<'a, T> {
+    arena: &'a mut Arena<T>,
+    key: Key,
+}
+
+impl<'a, T> AllocateEntry<'a, T> {
+    /// Returns the [`Key`] of this entry.
+    ///
+    /// Note: The key becomes valid as soon as [`write`] is called. If [`write`] is never called
+    /// the use of this [`Key`] will result in unspecified effects.
+    pub fn key(&self) -> Key {
+        self.key
+    }
+
+    /// Write the value into the slot.
+    pub fn write(self, value: T) {
+        // If index == len we must create a new slot.
+        if self.key.index as usize == self.arena.entries.len() {
+            self.arena.entries.push(Entry::Occupied(OccupiedEntry {
+                value,
+                generation: self.key.generation,
+            }));
+        } else {
+            // Otherwise we will write into the slot at `index`.
+            let slot = self.arena.entries.get_mut(self.key.index as usize).unwrap();
+
+            let entry = match slot {
+                Entry::Occupied(_) => unreachable!(),
+                Entry::Vacant(entry) => entry,
+            };
+
+            self.arena.free_head = entry.next_free;
+            *slot = Entry::Occupied(OccupiedEntry {
+                value,
+                generation: self.key.generation,
+            });
+        }
+    }
 }
 
 impl<'a, T> IntoIterator for &'a Arena<T> {
