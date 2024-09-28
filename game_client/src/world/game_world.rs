@@ -135,6 +135,9 @@ impl GameWorld {
             );
 
             update_global_transform(&mut self.predicted_state.world);
+
+            self.physics_pipeline
+                .step(&mut self.predicted_state.world, &mut self.event_queue);
         }
 
         self.next_frame_counter.update();
