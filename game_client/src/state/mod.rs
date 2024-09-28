@@ -58,13 +58,24 @@ impl GameState {
 
     pub fn connect(&mut self, addr: String) {
         if let GameStateInner::Init(state) = &mut self.inner {
-            state.inner = InitStateInner::GameWorld(GameWorldState::new(
+            let world = GameWorldState::new(
                 &self.config,
                 addr,
                 state.modules.clone(),
                 &self.cursor,
                 state.inputs.clone(),
-            ));
+            );
+
+            match world {
+                Ok(world) => state.inner = InitStateInner::GameWorld(world),
+                Err(RemoteError::Error(err)) => {
+                    tracing::error!("connection error: {}", err);
+                    state.inner = InitStateInner::ConnectionFailure(err.to_string())
+                }
+                Err(RemoteError::Disconnected) => {
+                    unreachable!()
+                }
+            }
         }
     }
 
@@ -110,10 +121,16 @@ impl GameState {
                         Err(RemoteError::Disconnected) => {
                             init_state.inner = InitStateInner::Startup;
                         }
+                        Err(RemoteError::Error(err)) => {
+                            tracing::error!("connection error: {}", err);
+                        }
                     }
                 }
                 InitStateInner::MainMenu(state) => {
                     state.update(time, world);
+                }
+                InitStateInner::ConnectionFailure(err) => {
+                    init_state.inner = InitStateInner::Startup;
                 }
                 _ => (),
             },
@@ -172,7 +189,7 @@ enum InitStateInner {
     /// Connecting to server
     Connecting,
     /// Connection failed
-    ConnectionFailure,
+    ConnectionFailure(String),
     /// Connected to game world.
     GameWorld(GameWorldState),
 }
