@@ -13,6 +13,7 @@ use game_wasm::resource::RuntimeResourceId;
 use wasmtime::{Engine, Instance, Linker, Module, Store};
 
 use crate::builtin::register_host_fns;
+use crate::dependencies::{ComponentDependency, Dependency};
 use crate::effect::{
     CreateResource, DestroyResource, Effect, Effects, EntityComponentInsert, EntityComponentRemove,
     PlayerSetActive, UpdateResource,
@@ -168,6 +169,7 @@ pub(crate) struct RunState {
     pub host_buffers: Vec<usize>,
     host_buffer_pool: *const HostBufferPool,
     next_resource_id: u64,
+    pub dependencies: Vec<Dependency>,
 }
 
 // Make `RunState` `Send` + `Sync` to make `Executor` recursively `Send` + `Sync`.
@@ -197,6 +199,7 @@ impl RunState {
             host_buffers,
             host_buffer_pool,
             next_resource_id: 0,
+            dependencies: Vec::new(),
         }
     }
 }
@@ -417,5 +420,15 @@ impl HostBufferPool {
 
     pub fn clear(&mut self) {
         self.buffers.clear();
+    }
+}
+
+trait EntityIdExt {
+    fn is_local(&self) -> bool;
+}
+
+impl EntityIdExt for EntityId {
+    fn is_local(&self) -> bool {
+        self.into_raw() & (1 << 63) != 0
     }
 }

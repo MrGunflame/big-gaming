@@ -23,6 +23,7 @@ use wasmtime::{Config, Engine, OptLevel, WasmBacktraceDetails};
 pub mod effect;
 
 mod builtin;
+mod dependencies;
 mod events;
 mod instance;
 mod script;
