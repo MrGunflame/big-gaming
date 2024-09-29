@@ -97,12 +97,17 @@ where
         let root = Container::new().mount(parent);
 
         for (id, stack) in self.items {
-            let Some(module) = self.modules.get(stack.item.module) else {
-                continue;
-            };
-            let Some(record) = module.records.get(stack.item.record) else {
-                continue;
-            };
+            let name = self
+                .modules
+                .get(stack.item.module)
+                .map(|module| {
+                    module
+                        .records
+                        .get(stack.item.record)
+                        .map(|record| record.name.as_str())
+                })
+                .flatten()
+                .unwrap_or("<unknown>");
 
             let wrapper = ContextPanel::new()
                 .spawn_menu(spawn_context_menu(StackState {
@@ -112,7 +117,7 @@ where
                 }))
                 .mount(&root);
 
-            let label = format!("{} ({})", record.name, stack.quantity);
+            let label = format!("{} ({})", name, stack.quantity);
             Text::new(label).mount(&wrapper);
         }
 
