@@ -23,17 +23,13 @@ use crate::world::script::run_scripts;
 use super::state::WorldState;
 use super::RemoteError;
 
-// The maximum number of update cycles allowed per frame. This prevents situations
-// where the update takes longer than the frame and therefore causes the game loop
-// to fall even further behind and never return.
-const MAX_UPDATES_PER_FRAME: u32 = 10;
-
 const DRIFT_RESYNC_DURATION: Duration = Duration::from_secs(1);
 
+/// The client-side simulation state of the game world.
 #[derive(Debug)]
 pub struct GameWorld {
     conn: ServerConnection,
-    pub(crate) game_tick: GameTick,
+    game_tick: GameTick,
     next_frame_counter: NextFrameCounter,
     /// Server to local entity mapping.
     server_entities: Entities,
@@ -50,6 +46,7 @@ pub struct GameWorld {
 }
 
 impl GameWorld {
+    /// Creates a new `GameWorld` that is connected to the given [`ServerConnection`].
     pub fn new(conn: ServerConnection, config: &Config) -> Self {
         let render_delay = ControlFrame(config.network.interpolation_frames);
 
@@ -74,6 +71,10 @@ impl GameWorld {
         self.conn.rtt()
     }
 
+    /// Steps the simulation forward one update.
+    ///
+    /// This future will resolve when the `GameWorld` is able to make progress. It is safe to
+    /// interrupt and cancel.
     pub async fn update(
         &mut self,
         modules: &Modules,
