@@ -34,3 +34,6 @@ pub struct Camera {
 impl Component for Camera {
     const ID: RecordReference = CAMERA;
 }
+
+pub const ACTION_ROTATE: RecordReference =
+    RecordReference::from_str_const("c626b9b0ab1940aba6932ea7726d0175:23");

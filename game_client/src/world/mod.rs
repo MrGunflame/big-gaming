@@ -7,13 +7,12 @@ pub mod state;
 
 use std::net::ToSocketAddrs;
 use std::sync::mpsc;
-use std::time::Duration;
 
 use game_common::components::actions::ActionId;
 use game_common::components::{GlobalTransform, PrimaryCamera, RigidBody, Transform};
 use game_common::entity::EntityId;
 use game_common::world::World;
-use game_core::counter::{Interval, UpdateCounter};
+use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
@@ -24,11 +23,8 @@ use game_wasm::encoding::BinaryWriter;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
-use crate::components::base::{Camera, Health};
+use crate::components::base::{Camera, Health, ACTION_ROTATE};
 use crate::config::Config;
-// use crate::entities::actor::SpawnActor;
-// use crate::entities::object::SpawnObject;
-// use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
 use crate::net::{connect_udp, ConnectionError, ServerConnection};
@@ -61,7 +57,6 @@ pub struct GameWorldState {
     cursor_pinned: CursorPinState,
     host: EntityId,
     ui_elements: UiElements,
-    interval: Interval,
     ui_events_rx: mpsc::Receiver<UiEvent>,
     // Keep the sender around so we can clone
     // and send it to the UI elements for callbacks.
@@ -78,8 +73,6 @@ impl GameWorldState {
     ) -> Result<Self, RemoteError> {
         let handle = connect_udp(addr).map_err(RemoteError::Error)?;
         let conn = ServerConnection::new(handle);
-
-        let interval = Interval::new(Duration::from_secs(1) / config.timestep);
 
         let (ui_events_tx, ui_events_rx) = mpsc::channel();
 
@@ -100,7 +93,6 @@ impl GameWorldState {
             main_menu: None,
             cursor_pinned,
             ui_elements: UiElements::default(),
-            interval,
             ui_events_rx,
             ui_events_tx,
         };
@@ -228,16 +220,10 @@ impl GameWorldState {
             return;
         }
 
-        if !self.world.state().world.contains(self.host) {
+        let Ok(mut transform) = self.world.state().world.get_typed::<Transform>(self.host) else {
             return;
-        }
+        };
 
-        let mut transform = self
-            .world
-            .state()
-            .world
-            .get_typed::<Transform>(self.host)
-            .unwrap();
         transform = update_rotation(transform, event);
         // We must update the rotation, otherwise following mouse motion events
         // will get overwritten by previous events in the same frame.
@@ -251,7 +237,7 @@ impl GameWorldState {
 
         self.world.send(Action {
             entity: self.host,
-            action: ActionId("c626b9b0ab1940aba6932ea7726d0175:23".parse().unwrap()),
+            action: ActionId(ACTION_ROTATE),
             data,
         });
     }
