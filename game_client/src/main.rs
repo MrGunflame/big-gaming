@@ -14,13 +14,12 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
-use std::time::Duration;
 
 use clap::Parser;
 use config::{Config, ConfigError};
 use game_common::sync::spsc;
 use game_common::world::World;
-use game_core::counter::{Interval, UpdateCounter};
+use game_core::counter::UpdateCounter;
 use game_core::modules::{load_scripts, Modules};
 use game_core::time::Time;
 use game_crash_handler::main;
@@ -37,7 +36,7 @@ use game_window::windows::{WindowBuilder, WindowId};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use scene::SceneEntities;
 use state::{GameState, UpdateError};
 
@@ -103,20 +102,12 @@ fn main() -> ExitCode {
         },
     };
 
-    let modules = game_core::modules::load_modules(&args.mods).unwrap();
-
-    let mut executor = Executor::new();
-    load_scripts(&mut executor, &modules);
-
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
 
     let cursor = wm.cursor().clone();
 
-    let inputs = Inputs::from_file("inputs");
-
     let mut state = GameState::new(config.clone(), cursor.clone());
-    state.init(modules.clone(), inputs, executor);
 
     if let Some(addr) = args.connect {
         state.connect(addr);
@@ -144,6 +135,9 @@ fn main() -> ExitCode {
     let fps_counter = Mutex::new(UpdateCounter::new());
     let shutdown = AtomicBool::new(false);
 
+    let (init_tx, init_rx) = mpsc::channel();
+    let modules = RwLock::new(None);
+
     let game_state = GameAppState {
         state,
         world: &world,
@@ -152,10 +146,11 @@ fn main() -> ExitCode {
         cursor: cursor.clone(),
         fps_counter: &fps_counter,
         shutdown: &shutdown,
-        interval: Interval::new(Duration::from_secs(1) / 60),
         ui_state,
         pool: &pool,
         gizmos: &gizmos,
+        init_rx,
+        modules: &modules,
     };
 
     let renderer_state = RendererAppState {
@@ -172,6 +167,17 @@ fn main() -> ExitCode {
     };
 
     std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let modules = game_core::modules::load_modules(&args.mods).unwrap();
+
+            let mut executor = Executor::new();
+            load_scripts(&mut executor, &modules);
+
+            let inputs = Inputs::from_file("inputs");
+
+            init_tx.send((modules, inputs, executor)).unwrap();
+        });
+
         scope.spawn(|| {
             game_state.run();
         });
@@ -190,10 +196,11 @@ pub struct GameAppState<'a> {
     cursor: Arc<Cursor>,
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
-    interval: Interval,
     ui_state: UiState,
     gizmos: &'a Gizmos,
     pool: &'a TaskPool,
+    init_rx: mpsc::Receiver<(Modules, Inputs, Executor)>,
+    modules: &'a RwLock<Option<Modules>>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -240,6 +247,11 @@ impl<'a> GameAppState<'a> {
 
         let fps_counter = { self.fps_counter.lock().clone() };
 
+        if let Ok((modules, inputs, executor)) = self.init_rx.try_recv() {
+            *self.modules.write() = Some(modules.clone());
+            self.state.init(modules, inputs, executor);
+        }
+
         match self
             .pool
             .block_on(self.state.update(&mut world, fps_counter, &mut self.time))
@@ -268,7 +280,7 @@ pub struct RendererAppState<'a> {
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
     gizmos: &'a Gizmos,
-    modules: &'a Modules,
+    modules: &'a RwLock<Option<Modules>>,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -285,19 +297,20 @@ impl<'a> game_window::App for RendererAppState<'a> {
         // when using multiple buffers.
         self.renderer.wait_until_ready();
 
-        let world = { self.world.lock().clone() };
+        if let Some(modules) = &*self.modules.read() {
+            let world = { self.world.lock().clone() };
 
-        self.entities.update(
-            &self.modules,
-            &world,
-            &self.pool,
-            &mut self.renderer,
-            self.window_id,
-            &self.gizmos,
-        );
+            self.entities.update(
+                modules,
+                &world,
+                &self.pool,
+                &mut self.renderer,
+                self.window_id,
+                &self.gizmos,
+            );
+        }
 
         self.renderer.render(&self.pool);
-
         self.fps_counter.lock().update();
     }
 

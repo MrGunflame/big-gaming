@@ -13,6 +13,7 @@ use game_window::events::WindowEvent;
 
 use crate::config::Config;
 use crate::input::Inputs;
+use crate::ui::startup::Startup;
 use crate::ui::title_menu::{MenuEvent, TitleMenu};
 use crate::ui::UiRootContext;
 use crate::world::{GameWorldState, RemoteError};
@@ -48,6 +49,10 @@ impl GameState {
     }
 
     pub fn init(&mut self, modules: Modules, inputs: Inputs, executor: Executor) {
+        if let Some(ui_ctx) = &mut self.ui_ctx {
+            ui_ctx.clear();
+        }
+
         self.inner = GameStateInner::Init(InitState {
             modules,
             inputs,
@@ -145,7 +150,13 @@ impl GameState {
                 let document = ui_rt
                     .create_document(RenderTarget::Window(event.window))
                     .unwrap();
-                self.ui_ctx = Some(UiRootContext::new(document, ui_rt.clone()));
+                let mut ui_ctx = UiRootContext::new(document, ui_rt.clone());
+
+                if let GameStateInner::Startup = self.inner {
+                    ui_ctx.append(Startup {});
+                }
+
+                self.ui_ctx = Some(ui_ctx);
             }
             _ => (),
         }

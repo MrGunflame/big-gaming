@@ -3,6 +3,7 @@ pub mod debug;
 pub mod health;
 pub mod inventory;
 pub mod main_menu;
+pub mod startup;
 pub mod title_menu;
 
 use std::sync::mpsc;
