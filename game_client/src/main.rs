@@ -107,11 +107,7 @@ fn main() -> ExitCode {
 
     let cursor = wm.cursor().clone();
 
-    let mut state = GameState::new(config.clone(), cursor.clone());
-
-    if let Some(addr) = args.connect {
-        state.connect(addr);
-    }
+    let state = GameState::new(config.clone(), cursor.clone());
 
     let mut renderer = match Renderer::new() {
         Ok(renderer) => renderer,
@@ -175,7 +171,13 @@ fn main() -> ExitCode {
 
             let inputs = Inputs::from_file("inputs");
 
-            init_tx.send((modules, inputs, executor)).unwrap();
+            init_tx
+                .send(InitEvent::Init(modules, inputs, executor))
+                .unwrap();
+
+            if let Some(addr) = &args.connect {
+                init_tx.send(InitEvent::Connect(addr.clone())).unwrap();
+            }
         });
 
         scope.spawn(|| {
@@ -199,7 +201,7 @@ pub struct GameAppState<'a> {
     ui_state: UiState,
     gizmos: &'a Gizmos,
     pool: &'a TaskPool,
-    init_rx: mpsc::Receiver<(Modules, Inputs, Executor)>,
+    init_rx: mpsc::Receiver<InitEvent>,
     modules: &'a RwLock<Option<Modules>>,
 }
 
@@ -258,9 +260,16 @@ impl<'a> GameAppState<'a> {
 
         let fps_counter = { self.fps_counter.lock().clone() };
 
-        if let Ok((modules, inputs, executor)) = self.init_rx.try_recv() {
-            *self.modules.write() = Some(modules.clone());
-            self.state.init(modules, inputs, executor);
+        while let Ok(event) = self.init_rx.try_recv() {
+            match event {
+                InitEvent::Init(modules, inputs, executor) => {
+                    *self.modules.write() = Some(modules.clone());
+                    self.state.init(modules, inputs, executor);
+                }
+                InitEvent::Connect(addr) => {
+                    self.state.connect(addr);
+                }
+            }
         }
 
         match self
@@ -361,4 +370,10 @@ impl<'a> game_window::App for RendererAppState<'a> {
             tracing::error!("cannot send input event, queue is full");
         }
     }
+}
+
+#[derive(Debug)]
+enum InitEvent {
+    Init(Modules, Inputs, Executor),
+    Connect(String),
 }
