@@ -266,7 +266,6 @@ pub mod components {
 
         EQUIPPED_ITEM => 0x20,
         LOOKING_DIRECTION => 0x21,
-        RESPAWN_POINT => 0x23,
 
         // EVENTS
         EVENT_GUN_EQUIP => 0x01,
