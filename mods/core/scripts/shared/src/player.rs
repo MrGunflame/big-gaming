@@ -1,23 +1,19 @@
-use alloc::borrow::ToOwned;
-use alloc::vec;
 use game_wasm::action::Action;
 use game_wasm::components::builtin::{
-    Axis, Capsule, Collider, ColliderShape, Color, Cuboid, DirectionalLight, MeshInstance,
-    RigidBody, RigidBodyKind, Transform, TriMesh,
+    Axis, Capsule, Collider, ColliderShape, MeshInstance, Transform,
 };
-use game_wasm::components::{Component, Components, RawComponent};
+use game_wasm::components::{Components, RawComponent};
 use game_wasm::encoding::{Decode, Encode};
 use game_wasm::entity::EntityId;
 use game_wasm::events::{Event, PlayerConnect};
 use game_wasm::inventory::{Inventory, ItemStack};
 use game_wasm::math::{Quat, Vec3};
-use game_wasm::resource::{create_resource, ResourceId};
+use game_wasm::player::PlayerId;
 use game_wasm::world::{Entity, RecordReference};
 
 use crate::actor::{spawn_actor, SpawnActor};
 use crate::components::{
-    EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, PLAYER_RESPAWN, RESPAWN_POINT, TEST_WEAPON,
-    TRANSFORM_CHANGED,
+    EVENT_GUN_EQUIP, EVENT_GUN_UNEQUIP, PLAYER_RESPAWN, TEST_WEAPON, TRANSFORM_CHANGED,
 };
 use crate::{
     assets, Camera, CharacterController, Equippable, GunProperties, Health, Humanoid,
@@ -25,36 +21,14 @@ use crate::{
 };
 
 pub fn spawn_player(_: EntityId, event: PlayerConnect) {
-    let entity = spawn_actor(SpawnActor {
-        mesh: MeshInstance {
-            model: assets::RESOURCE_PERSON.into(),
-        },
-        collider: Collider {
-            friction: 1.0,
-            restitution: 1.0,
-            shape: ColliderShape::Capsule(Capsule {
-                axis: Axis::Y,
-                half_height: 0.5,
-                radius: 0.5,
-            }),
-        },
-        mesh_offset: Transform::from_translation(Vec3::new(0.0, -1.0, 0.0)),
-    });
-
-    entity.insert(Transform {
+    let transform = Transform {
         translation: Vec3::new(1.0, 10.0, 1.0),
         ..Default::default()
-    });
-    entity.insert(MovementSpeed(1.0));
-    entity.insert(Humanoid);
-    entity.insert(CharacterController);
-    entity.insert(Health {
+    };
+    let health = Health {
         value: 10,
         max: 100,
-    });
-    entity.insert(SpawnPoint {
-        translation: Vec3::ZERO,
-    });
+    };
 
     let mut inventory = Inventory::new();
 
@@ -97,54 +71,14 @@ pub fn spawn_player(_: EntityId, event: PlayerConnect) {
         });
     }
 
-    let camera = Entity::spawn();
-    camera.insert(Transform::default());
-    camera.insert(Camera {
-        parent: entity.id(),
-    });
-    // Apply actions to the player camera controller so we can forward them
-    // to the player actor.
-    camera.insert(Humanoid);
+    let player = SpawnPlayer {
+        old_entity: None,
+        transform,
+        inventory,
+        health,
+    };
 
-    entity.insert(inventory);
-
-    entity.insert(PlayerCamera {
-        camera: camera.id(),
-        offset: Vec3::new(0.0, 0.8, 0.0),
-        rotation: Quat::IDENTITY,
-    });
-    entity.insert(LookingDirection::default());
-
-    entity.insert(RespawnPoint {
-        position: Vec3::new(0.0, 10.0, 0.0),
-    });
-
-    event.player.set_active(camera.id());
-
-    let pawn = Entity::spawn();
-    pawn.insert(Transform::from_translation(Vec3::splat(10.0)));
-    pawn.insert(MeshInstance {
-        model: ResourceId::from(assets::RESOURCE_PERSON),
-    });
-    pawn.insert(RigidBody {
-        kind: RigidBodyKind::Kinematic,
-        linvel: Vec3::ZERO,
-        angvel: Vec3::ZERO,
-    });
-    pawn.insert(Collider {
-        friction: 1.0,
-        restitution: 1.0,
-        shape: ColliderShape::Cuboid(Cuboid {
-            hx: 1.0,
-            hy: 1.0,
-            hz: 1.0,
-        }),
-    });
-    pawn.insert(CharacterController);
-    pawn.insert(Health {
-        value: 100,
-        max: 100,
-    });
+    player.spawn(Some(event.player));
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
@@ -177,35 +111,98 @@ pub fn update_camera_transform(_: EntityId, event: TransformChanged) {
 }
 
 #[derive(Copy, Clone, Debug, Encode, Decode)]
-pub struct RespawnPlayer {}
+pub struct RespawnPlayer;
 
 impl Action for RespawnPlayer {
     const ID: RecordReference = PLAYER_RESPAWN;
 }
 
-pub fn respawn_player(entity: EntityId, event: RespawnPlayer) {
+pub fn respawn_player(entity: EntityId, RespawnPlayer: RespawnPlayer) {
     let Ok(camera) = Entity::new(entity).get::<Camera>() else {
         return;
     };
 
     let actor = Entity::new(camera.parent);
 
-    let Ok(respawn_point) = actor.get::<RespawnPoint>() else {
-        return;
-    };
-    let Ok(mut transform) = actor.get::<Transform>() else {
+    let Ok(respawn_point) = actor.get::<SpawnPoint>() else {
         return;
     };
 
-    transform.translation = respawn_point.position;
-    actor.insert(transform);
+    SpawnPlayer {
+        old_entity: Some(actor.id()),
+        transform: Transform::from_translation(respawn_point.translation),
+        inventory: Inventory::default(),
+        health: Health {
+            value: 10,
+            max: 100,
+        },
+    }
+    .spawn(None);
 }
 
-#[derive(Clone, Debug, Encode, Decode)]
-pub struct RespawnPoint {
-    pub position: Vec3,
+#[derive(Clone, Debug)]
+pub struct SpawnPlayer {
+    old_entity: Option<EntityId>,
+    transform: Transform,
+    inventory: Inventory,
+    health: Health,
 }
 
-impl Component for RespawnPoint {
-    const ID: RecordReference = RESPAWN_POINT;
+impl SpawnPlayer {
+    pub fn spawn(self, player: Option<PlayerId>) {
+        let entity = spawn_actor(SpawnActor {
+            mesh: MeshInstance {
+                model: assets::RESOURCE_PERSON.into(),
+            },
+            collider: Collider {
+                friction: 1.0,
+                restitution: 1.0,
+                shape: ColliderShape::Capsule(Capsule {
+                    axis: Axis::Y,
+                    half_height: 0.5,
+                    radius: 0.5,
+                }),
+            },
+            mesh_offset: Transform::from_translation(Vec3::new(0.0, -1.0, 0.0)),
+        });
+
+        self.init_camera(&entity, player);
+
+        entity.insert(self.transform);
+        entity.insert(MovementSpeed(1.0));
+        entity.insert(Humanoid);
+        entity.insert(CharacterController);
+        entity.insert(self.health);
+        entity.insert(SpawnPoint {
+            translation: Vec3::new(1.0, 10.0, 1.0),
+        });
+        entity.insert(LookingDirection::default());
+        entity.insert(self.inventory);
+    }
+
+    fn init_camera(&self, actor: &Entity, player: Option<PlayerId>) {
+        let camera = if let Some(entity) = self.old_entity {
+            let entity = Entity::new(entity);
+            let player_camera = entity.get::<PlayerCamera>().unwrap();
+            entity.remove::<PlayerCamera>();
+
+            Entity::new(player_camera.camera)
+        } else {
+            let camera = Entity::spawn();
+            camera.insert(Transform::default());
+            camera.insert(Humanoid);
+
+            player.unwrap().set_active(camera.id());
+
+            camera
+        };
+
+        actor.insert(PlayerCamera {
+            camera: camera.id(),
+            offset: Vec3::new(0.0, 0.8, 0.0),
+            rotation: Quat::IDENTITY,
+        });
+
+        camera.insert(Camera { parent: actor.id() });
+    }
 }
