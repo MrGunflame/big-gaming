@@ -38,14 +38,21 @@ impl UiState {
         self.runtime.clone()
     }
 
-    pub fn create(&mut self, target: RenderTarget, size: UVec2) {
-        self.renderer.insert(target, size);
-        self.runtime.create_window(target, size);
+    pub fn create(&mut self, target: RenderTarget, props: WindowProperties) {
+        self.renderer
+            .insert(target, props.size, props.scale_factor as f32);
+        self.runtime.create_window(target, props);
     }
 
     pub fn resize(&mut self, target: RenderTarget, size: UVec2) {
         self.renderer.resize(target, size);
         self.runtime.resize_window(target, size);
+    }
+
+    pub fn update_scale_factor(&mut self, target: RenderTarget, scale_factor: f64) {
+        self.renderer
+            .update_scale_factor(target, scale_factor as f32);
+        self.runtime.update_scale_factor(target, scale_factor);
     }
 
     pub fn destroy(&mut self, target: RenderTarget) {
@@ -98,4 +105,10 @@ impl UiState {
 
         self.renderer.update();
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct WindowProperties {
+    pub size: UVec2,
+    pub scale_factor: f64,
 }

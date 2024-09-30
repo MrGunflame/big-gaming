@@ -47,10 +47,26 @@ impl LayoutTree {
         writeln!(
             buf,
             "bounds: {}:{} => {}:{}, computed: {}:{} => {}:{};",
-            elem.style.bounds.min.x.to_pixels(self.size),
-            elem.style.bounds.min.y.to_pixels(self.size),
-            elem.style.bounds.max.x.to_pixels(self.size),
-            elem.style.bounds.max.y.to_pixels(self.size),
+            elem.style
+                .bounds
+                .min
+                .x
+                .to_pixels(self.size, self.scale_factor),
+            elem.style
+                .bounds
+                .min
+                .y
+                .to_pixels(self.size, self.scale_factor),
+            elem.style
+                .bounds
+                .max
+                .x
+                .to_pixels(self.size, self.scale_factor),
+            elem.style
+                .bounds
+                .max
+                .y
+                .to_pixels(self.size, self.scale_factor),
             bounds.min.x,
             bounds.min.y,
             bounds.max.x,

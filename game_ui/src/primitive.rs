@@ -31,7 +31,7 @@ impl Primitive {
 }
 
 impl Primitive {
-    pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+    pub(crate) fn bounds(&self, style: &ComputedStyle, scale_factor: f32) -> ComputedBounds {
         let mut size = UVec2::new(
             style.padding.left + style.padding.right,
             style.padding.top + style.padding.bottom,
@@ -44,7 +44,7 @@ impl Primitive {
         if let Some(text) = &self.text {
             let img = render_to_texture(
                 &text.text,
-                text.size,
+                text.size * scale_factor,
                 UVec2::ZERO,
                 text.caret,
                 text.selection_range.clone(),
@@ -65,11 +65,12 @@ impl Primitive {
         style: &ComputedStyle,
         layout: Rect,
         size: UVec2,
+        scale_factor: f32,
     ) -> Option<DrawCommand> {
         let mut img = match (&self.text, &self.image) {
             (Some(text), None) => render_to_texture(
                 &text.text,
-                text.size,
+                text.size * scale_factor,
                 UVec2::ZERO,
                 text.caret,
                 text.selection_range.clone(),

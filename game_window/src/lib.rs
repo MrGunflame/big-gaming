@@ -337,6 +337,23 @@ where
                                 events::WindowEvent::MouseButtonInput(event),
                             );
                         }
+                        WindowEvent::ScaleFactorChanged {
+                            scale_factor,
+                            inner_size_writer: _,
+                        } => {
+                            app.handle_event(
+                                WindowManagerContext {
+                                    windows: &mut windows,
+                                    exit: &mut exit,
+                                },
+                                events::WindowEvent::WindowScaleFactorChanged(
+                                    events::WindowScaleFactorChanged {
+                                        window,
+                                        scale_factor,
+                                    },
+                                ),
+                            );
+                        }
                         WindowEvent::RedrawRequested => {}
                         _ => (),
                     }

@@ -16,8 +16,7 @@ use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::RwLock;
 
-use crate::layout::computed_style::ComputedStyle;
-use crate::layout::{Key, Layout, LayoutTree};
+use crate::layout::{Key, Layout};
 use crate::primitive::Primitive;
 
 pub use self::image::Image;
@@ -43,9 +42,15 @@ impl UiRenderer {
         }
     }
 
-    pub fn insert(&mut self, target: RenderTarget, size: UVec2) {
-        self.targets.insert(target, SurfaceState::default());
-        self.resize(target, size);
+    pub fn insert(&mut self, target: RenderTarget, size: UVec2, scale_factor: f32) {
+        self.targets.insert(
+            target,
+            SurfaceState {
+                size,
+                scale_factor,
+                nodes: Vec::new(),
+            },
+        );
 
         let mut elems = self.elements.write();
         elems.insert(target, SurfaceDrawCommands::new());
@@ -65,6 +70,12 @@ impl UiRenderer {
     pub fn resize(&mut self, target: RenderTarget, size: UVec2) {
         if let Some(state) = self.targets.get_mut(&target) {
             state.size = size;
+        }
+    }
+
+    pub fn update_scale_factor(&mut self, target: RenderTarget, scale_factor: f32) {
+        if let Some(state) = self.targets.get_mut(&target) {
+            state.scale_factor = scale_factor;
         }
     }
 
@@ -102,6 +113,7 @@ impl UiRenderer {
                             max: layout.position + UVec2::new(layout.width, layout.height),
                         },
                         state.size,
+                        state.scale_factor,
                     )
                 } else {
                     None
@@ -193,8 +205,9 @@ impl SurfaceDrawCommands {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct SurfaceState {
     size: UVec2,
+    scale_factor: f32,
     nodes: Vec<(Key, Layout, Primitive)>,
 }
