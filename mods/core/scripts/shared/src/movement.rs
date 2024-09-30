@@ -19,7 +19,7 @@ use crate::{
 
 // Distance to the ground at which a rigid body is considered
 // grounded.
-const GROUND_DISTANCE: f32 = OFFSET * 0.8;
+const GROUND_DISTANCE: f32 = OFFSET * 1.2;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Encode, Decode)]
 pub struct MoveForward;
@@ -104,7 +104,7 @@ pub fn jump(entity: EntityId, Jump: Jump) {
     };
 
     // Don't jump if the actor is already in the air.
-    if cast_actor(entity.id(), -Vec3::Y, GROUND_DISTANCE).is_some() {
+    if cast_actor(entity.id(), -Vec3::Y, GROUND_DISTANCE).is_none() {
         debug!("{:?} is grounded", entity.id());
         return;
     }
