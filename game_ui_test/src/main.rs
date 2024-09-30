@@ -7,7 +7,7 @@ use game_render::Renderer;
 use game_tasks::TaskPool;
 use game_ui::reactive::DocumentId;
 use game_ui::widgets::{Text, Widget};
-use game_ui::UiState;
+use game_ui::{UiState, WindowProperties};
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
@@ -57,8 +57,13 @@ impl game_window::App for App {
         match event {
             WindowEvent::WindowCreated(event) => {
                 let window = ctx.windows.state(event.window).unwrap();
-                self.ui_state
-                    .create(RenderTarget::Window(event.window), window.inner_size());
+                self.ui_state.create(
+                    RenderTarget::Window(event.window),
+                    WindowProperties {
+                        size: window.inner_size(),
+                        scale_factor: window.scale_factor(),
+                    },
+                );
                 self.renderer.create(event.window, window);
 
                 let doc = self

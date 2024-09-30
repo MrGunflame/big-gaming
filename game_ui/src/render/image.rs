@@ -320,6 +320,7 @@ mod tests {
     #[test]
     fn background_none_no_padding() {
         let viewport = UVec2::splat(1000);
+        let scale_factor = 1.0;
 
         let image = ImageBuffer::new(100, 100);
 
@@ -330,6 +331,7 @@ mod tests {
                 ..Default::default()
             },
             viewport,
+            scale_factor,
         );
 
         let src = image.clone();
@@ -345,6 +347,7 @@ mod tests {
     #[test]
     fn background_none_padding() {
         let viewport = UVec2::splat(1000);
+        let scale_factor = 1.0;
 
         let image = ImageBuffer::new(100, 100);
 
@@ -355,6 +358,7 @@ mod tests {
                 ..Default::default()
             },
             viewport,
+            scale_factor,
         );
 
         let src = image.clone();
@@ -370,6 +374,7 @@ mod tests {
     #[test]
     fn background_color_no_padding() {
         let viewport = UVec2::splat(1000);
+        let scale_factor = 1.0;
         let color = Rgba([123, 124, 125, 126]);
 
         let image = ImageBuffer::new(100, 100);
@@ -380,6 +385,7 @@ mod tests {
                 ..Default::default()
             },
             viewport,
+            scale_factor,
         );
 
         let src = image.clone();
@@ -393,6 +399,7 @@ mod tests {
     #[test]
     fn background_color_padding() {
         let viewport = UVec2::splat(1000);
+        let scale_factor = 1.0;
         let color = Rgba([123, 124, 125, 126]);
 
         let image = ImageBuffer::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
@@ -404,6 +411,7 @@ mod tests {
                 ..Default::default()
             },
             viewport,
+            scale_factor,
         );
 
         let src = image.clone();
@@ -419,6 +427,7 @@ mod tests {
     #[test]
     fn background_image_no_padding() {
         let viewport = UVec2::splat(1000);
+        let scale_factor = 1.0;
         let bg = ImageBuffer::from_pixel(100, 100, Rgba([123, 124, 125, 126]));
 
         let image = ImageBuffer::new(100, 100);
@@ -430,6 +439,7 @@ mod tests {
                 ..Default::default()
             },
             viewport,
+            scale_factor,
         );
 
         let src = image.clone();
@@ -443,6 +453,7 @@ mod tests {
     #[test]
     fn background_image_padding() {
         let viewport = UVec2::splat(1000);
+        let scale_factor = 1.0;
         let bg = ImageBuffer::from_pixel(100, 100, Rgba([123, 124, 125, 126]));
 
         let image = ImageBuffer::from_pixel(100, 100, Rgba([0, 0, 0, 255]));
@@ -454,6 +465,7 @@ mod tests {
                 ..Default::default()
             },
             viewport,
+            scale_factor,
         );
 
         let src = image.clone();
@@ -514,6 +526,7 @@ mod tests {
                 ..Default::default()
             },
             UVec2::ZERO,
+            1.0,
         );
 
         apply_border(&mut image, &style);

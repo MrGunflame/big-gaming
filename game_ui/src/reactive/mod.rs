@@ -19,6 +19,7 @@ use crate::clipboard::Clipboard;
 use crate::layout::{self, LayoutTree};
 use crate::primitive::Primitive;
 use crate::render::Rect;
+use crate::WindowProperties;
 
 #[derive(Clone, Debug)]
 pub struct Runtime {
@@ -213,7 +214,7 @@ impl Runtime {
         }
     }
 
-    pub(crate) fn create_window(&self, id: RenderTarget, size: UVec2) {
+    pub(crate) fn create_window(&self, id: RenderTarget, props: WindowProperties) {
         let _span = trace_span!("Runtime::create_window").entered();
 
         let mut rt = self.inner.lock();
@@ -221,7 +222,8 @@ impl Runtime {
             id,
             Window {
                 documents: Vec::new(),
-                size,
+                size: props.size,
+                scale_factor: props.scale_factor,
             },
         );
     }
@@ -247,6 +249,22 @@ impl Runtime {
             for id in window.documents {
                 self.destroy_document(id);
             }
+        }
+    }
+
+    pub(crate) fn update_scale_factor(&self, id: RenderTarget, scale_factor: f64) {
+        let _span = trace_span!("Runtime::update_scale_factor").entered();
+
+        let rt = &mut *self.inner.lock();
+        let window = rt.windows.get_mut(&id).unwrap();
+        window.scale_factor = scale_factor;
+
+        for doc in &window.documents {
+            rt.documents
+                .get_mut(doc.0)
+                .unwrap()
+                .layout
+                .set_scale_factor(scale_factor);
         }
     }
 
@@ -381,6 +399,7 @@ pub struct DocumentId(pub(crate) arena::Key);
 pub struct Window {
     pub documents: Vec<DocumentId>,
     size: UVec2,
+    scale_factor: f64,
 }
 
 #[derive(Debug)]
@@ -659,6 +678,18 @@ impl<E> Context<E> {
             document: self.document,
             runtime: self.runtime,
         }
+    }
+
+    pub(crate) fn scale_factor(&self) -> f64 {
+        let rt = self.runtime.inner.lock();
+        for window in rt.windows.values() {
+            if window.documents.contains(&self.document) {
+                return window.scale_factor;
+            }
+        }
+
+        tracing::warn!("Context::scale_factor was called for window that does not exist");
+        1.0
     }
 }
 

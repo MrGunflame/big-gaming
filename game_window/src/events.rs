@@ -15,6 +15,7 @@ pub enum WindowEvent {
     MouseWheel(MouseWheel),
     MouseButtonInput(MouseButtonInput),
     MouseMotion(MouseMotion),
+    WindowScaleFactorChanged(WindowScaleFactorChanged),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -60,6 +61,12 @@ pub struct CursorLeft {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WindowCloseRequested {
     pub window: WindowId,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct WindowScaleFactorChanged {
+    pub window: WindowId,
+    pub scale_factor: f64,
 }
 
 use crate::windows::WindowId;

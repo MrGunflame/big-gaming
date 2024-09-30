@@ -10,8 +10,8 @@ use super::Widget;
 
 #[derive(Clone, Debug)]
 pub struct Text {
-    pub text: String,
-    pub size: f32,
+    text: String,
+    size: f32,
     caret: Option<u32>,
     selection_range: Option<Range<usize>>,
     selection_color: Color,

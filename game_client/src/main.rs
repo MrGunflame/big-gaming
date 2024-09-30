@@ -29,7 +29,7 @@ use game_render::{FpsLimit, Renderer};
 use game_script::Executor;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
-use game_ui::UiState;
+use game_ui::{UiState, WindowProperties};
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
@@ -226,8 +226,13 @@ impl<'a> GameAppState<'a> {
             // Handle window events for the UI.
             match event {
                 WindowEvent::WindowCreated(event) => {
-                    self.ui_state
-                        .create(RenderTarget::Window(event.window), UVec2::ZERO);
+                    self.ui_state.create(
+                        RenderTarget::Window(event.window),
+                        WindowProperties {
+                            size: UVec2::ZERO,
+                            scale_factor: 1.0,
+                        },
+                    );
                 }
                 WindowEvent::WindowResized(event) => {
                     self.ui_state
@@ -235,6 +240,12 @@ impl<'a> GameAppState<'a> {
                 }
                 WindowEvent::WindowDestroyed(event) => {
                     self.ui_state.destroy(RenderTarget::Window(event.window));
+                }
+                WindowEvent::WindowScaleFactorChanged(event) => {
+                    self.ui_state.update_scale_factor(
+                        RenderTarget::Window(event.window),
+                        event.scale_factor,
+                    );
                 }
                 _ => (),
             }

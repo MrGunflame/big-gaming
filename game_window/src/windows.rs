@@ -147,6 +147,10 @@ impl WindowState {
         }
     }
 
+    pub fn scale_factor(&self) -> f64 {
+        self.inner.scale_factor()
+    }
+
     /// Sets the position of the cursor within this `Window`.
     ///
     /// # Errors

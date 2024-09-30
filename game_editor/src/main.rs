@@ -16,7 +16,7 @@ use game_render::camera::RenderTarget;
 use game_render::options::MainPassOptions;
 use game_render::{FpsLimit, Renderer};
 use game_tasks::TaskPool;
-use game_ui::UiState;
+use game_ui::{UiState, WindowProperties};
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
@@ -166,10 +166,14 @@ impl game_window::App for App {
             WindowEvent::WindowCreated(event) => {
                 let window = ctx.windows.state(event.window).unwrap();
                 let size = window.inner_size();
+                let scale_factor = window.scale_factor();
+                dbg!(scale_factor);
 
                 self.renderer.create(event.window, window);
-                self.ui_state
-                    .create(RenderTarget::Window(event.window), size);
+                self.ui_state.create(
+                    RenderTarget::Window(event.window),
+                    WindowProperties { size, scale_factor },
+                );
 
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {
                     let window = crate::windows::spawn_window(
@@ -203,6 +207,10 @@ impl game_window::App for App {
                 // TODO: Ask for confirmation if the window contains
                 // unsaved data.
                 ctx.windows.despawn(event.window);
+            }
+            WindowEvent::WindowScaleFactorChanged(event) => {
+                self.ui_state
+                    .update_scale_factor(RenderTarget::Window(event.window), event.scale_factor);
             }
             WindowEvent::MouseMotion(event) => {
                 if let Some(window_id) = self.cursor.window() {

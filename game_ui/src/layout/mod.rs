@@ -22,6 +22,7 @@ pub struct LayoutTree {
     elems: BTreeMap<Key, Primitive>,
     layouts: HashMap<Key, Layout>,
     size: UVec2,
+    scale_factor: f64,
     changed: bool,
 
     // parent => vec![child]
@@ -39,6 +40,7 @@ impl LayoutTree {
             elems: BTreeMap::new(),
             layouts: HashMap::new(),
             size: UVec2::splat(0),
+            scale_factor: 1.0,
             changed: false,
             children: HashMap::new(),
             parents: HashMap::new(),
@@ -67,6 +69,15 @@ impl LayoutTree {
         }
     }
 
+    pub fn set_scale_factor(&mut self, scale_factor: f64) {
+        self.scale_factor = scale_factor;
+        self.changed = true;
+
+        for layout in self.layouts.values_mut() {
+            layout.has_changed = true;
+        }
+    }
+
     /// Inserts a new [`Element`] at the given `index`.
     ///
     /// # Panics
@@ -77,7 +88,7 @@ impl LayoutTree {
             position: UVec2::ZERO,
             height: 0,
             width: 0,
-            style: ComputedStyle::new(elem.style.clone(), self.size),
+            style: ComputedStyle::new(elem.style.clone(), self.size, self.scale_factor),
             has_changed: true,
         };
 
@@ -104,7 +115,7 @@ impl LayoutTree {
             position: UVec2::ZERO,
             height: 0,
             width: 0,
-            style: ComputedStyle::new(elem.style.clone(), self.size),
+            style: ComputedStyle::new(elem.style.clone(), self.size, self.scale_factor),
             has_changed: true,
         };
 
@@ -156,7 +167,7 @@ impl LayoutTree {
         self.changed = true;
 
         let layout = self.layouts.get_mut(&key).unwrap();
-        layout.style = ComputedStyle::new(elem.style.clone(), self.size);
+        layout.style = ComputedStyle::new(elem.style.clone(), self.size, self.scale_factor);
         // Set the `has_changed` flag.
         // This will cause the element to be completely rerendered
         // even if no layout properties are changed.
@@ -220,7 +231,7 @@ impl LayoutTree {
         let layout = self.layouts.get(&key).unwrap();
 
         let mut bounds = if let Some(children) = self.children.get(&key) {
-            let mut bounds = elem.bounds(&layout.style);
+            let mut bounds = elem.bounds(&layout.style, self.scale_factor);
             for key in children {
                 // Elements with absolute position are excluded.
                 let child = self.elems.get(key).unwrap();
@@ -263,7 +274,7 @@ impl LayoutTree {
         } else {
             // If the container can grow, it may take any size.
             // If the can not grow, it will always have the size zero.
-            let mut bounds = elem.bounds(&layout.style);
+            let mut bounds = elem.bounds(&layout.style, self.scale_factor);
 
             if elem.style.growth.x.is_some() {
                 bounds.max.x = u32::MAX;
@@ -277,10 +288,30 @@ impl LayoutTree {
         };
 
         // Clamp the actual bounds between the wanted bounds.
-        let min_x = elem.style.bounds.min.x.to_pixels(self.size);
-        let min_y = elem.style.bounds.min.y.to_pixels(self.size);
-        let max_x = elem.style.bounds.max.x.to_pixels(self.size);
-        let max_y = elem.style.bounds.max.y.to_pixels(self.size);
+        let min_x = elem
+            .style
+            .bounds
+            .min
+            .x
+            .to_pixels(self.size, self.scale_factor);
+        let min_y = elem
+            .style
+            .bounds
+            .min
+            .y
+            .to_pixels(self.size, self.scale_factor);
+        let max_x = elem
+            .style
+            .bounds
+            .max
+            .x
+            .to_pixels(self.size, self.scale_factor);
+        let max_y = elem
+            .style
+            .bounds
+            .max
+            .y
+            .to_pixels(self.size, self.scale_factor);
 
         // The min bounds are the specified min bounds of the element, or the
         // min bounds of the children.
@@ -566,8 +597,8 @@ impl LayoutTree {
         for (key, elem) in self.elems.iter() {
             let layout = self.layouts.get_mut(key).unwrap();
 
-            let mut style = ComputedStyle::new(elem.style.clone(), self.size);
-            style.bounds = ComputedBounds::new(elem.style.bounds, self.size);
+            let mut style = ComputedStyle::new(elem.style.clone(), self.size, self.scale_factor);
+            style.bounds = ComputedBounds::new(elem.style.bounds, self.size, self.scale_factor);
 
             // Only set the `has_changed` flag if the computed style has changed
             // from the previous computed style.
