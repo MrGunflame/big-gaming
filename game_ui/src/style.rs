@@ -83,9 +83,9 @@ impl Size {
 
     /// Returns the `Size` as pixels.
     #[inline]
-    pub(crate) fn to_pixels(self, viewport: UVec2, scale_factor: f32) -> u32 {
+    pub(crate) fn to_pixels(self, viewport: UVec2, scale_factor: f64) -> u32 {
         match self {
-            Self::Pixels(val) => (val as f32 * scale_factor).ceil() as u32,
+            Self::Pixels(val) => (val as f64 * scale_factor).ceil() as u32,
             Self::ViewportWidth(factor) => viewport.x * factor.ceil() as u32,
             Self::ViewportHeight(factor) => viewport.y * factor.ceil() as u32,
         }

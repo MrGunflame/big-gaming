@@ -42,7 +42,7 @@ impl UiRenderer {
         }
     }
 
-    pub fn insert(&mut self, target: RenderTarget, size: UVec2, scale_factor: f32) {
+    pub fn insert(&mut self, target: RenderTarget, size: UVec2, scale_factor: f64) {
         self.targets.insert(
             target,
             SurfaceState {
@@ -73,7 +73,7 @@ impl UiRenderer {
         }
     }
 
-    pub fn update_scale_factor(&mut self, target: RenderTarget, scale_factor: f32) {
+    pub fn update_scale_factor(&mut self, target: RenderTarget, scale_factor: f64) {
         if let Some(state) = self.targets.get_mut(&target) {
             state.scale_factor = scale_factor;
         }
@@ -208,6 +208,6 @@ impl SurfaceDrawCommands {
 #[derive(Clone, Debug)]
 struct SurfaceState {
     size: UVec2,
-    scale_factor: f32,
+    scale_factor: f64,
     nodes: Vec<(Key, Layout, Primitive)>,
 }

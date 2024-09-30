@@ -13,7 +13,7 @@ pub struct ComputedStyle {
 }
 
 impl ComputedStyle {
-    pub fn new(style: Style, viewport: UVec2, scale_factor: f32) -> Self {
+    pub fn new(style: Style, viewport: UVec2, scale_factor: f64) -> Self {
         Self {
             bounds: ComputedBounds::default(),
             padding: ComputedPadding {
@@ -70,7 +70,7 @@ impl ComputedBounds {
         max: UVec2::ZERO,
     };
 
-    pub fn new(bounds: Bounds, viewport: UVec2, scale_factor: f32) -> Self {
+    pub fn new(bounds: Bounds, viewport: UVec2, scale_factor: f64) -> Self {
         Self {
             min: UVec2 {
                 x: bounds.min.x.to_pixels(viewport, scale_factor),

@@ -264,7 +264,7 @@ impl Runtime {
                 .get_mut(doc.0)
                 .unwrap()
                 .layout
-                .set_scale_factor(scale_factor as f32);
+                .set_scale_factor(scale_factor);
         }
     }
 

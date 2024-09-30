@@ -39,8 +39,7 @@ impl UiState {
     }
 
     pub fn create(&mut self, target: RenderTarget, props: WindowProperties) {
-        self.renderer
-            .insert(target, props.size, props.scale_factor as f32);
+        self.renderer.insert(target, props.size, props.scale_factor);
         self.runtime.create_window(target, props);
     }
 
@@ -50,8 +49,7 @@ impl UiState {
     }
 
     pub fn update_scale_factor(&mut self, target: RenderTarget, scale_factor: f64) {
-        self.renderer
-            .update_scale_factor(target, scale_factor as f32);
+        self.renderer.update_scale_factor(target, scale_factor);
         self.runtime.update_scale_factor(target, scale_factor);
     }
 

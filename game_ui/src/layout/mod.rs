@@ -22,7 +22,7 @@ pub struct LayoutTree {
     elems: BTreeMap<Key, Primitive>,
     layouts: HashMap<Key, Layout>,
     size: UVec2,
-    scale_factor: f32,
+    scale_factor: f64,
     changed: bool,
 
     // parent => vec![child]
@@ -69,7 +69,7 @@ impl LayoutTree {
         }
     }
 
-    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+    pub fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
         self.changed = true;
 
