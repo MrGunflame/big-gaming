@@ -50,7 +50,7 @@ mod xdg {
                 Some(v) => Some(v.into()),
                 None => {
                     let mut path = home()?;
-                    path.push("./config");
+                    path.push($or);
                     Some(path)
                 }
             }
