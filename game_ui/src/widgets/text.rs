@@ -1,9 +1,11 @@
+use std::convert::Infallible;
 use std::ops::Range;
 
 use game_tracing::trace_span;
 
 use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
+use crate::runtime_v2::View;
 use crate::style::{Color, Style};
 
 use super::Widget;
@@ -67,5 +69,23 @@ impl Widget for Text {
                 selection_color: self.selection_color,
             }),
         }))
+    }
+}
+
+impl crate::runtime_v2::Widget for Text {
+    type Message = Infallible;
+
+    fn render(&self, _ctx: &crate::runtime_v2::Context<Self>) -> View {
+        View::Primitive(Primitive {
+            style: Style::default(),
+            image: None,
+            text: Some(crate::render::Text {
+                text: self.text.clone(),
+                size: self.size,
+                caret: None,
+                selection_color: self.selection_color,
+                selection_range: self.selection_range.clone(),
+            }),
+        })
     }
 }

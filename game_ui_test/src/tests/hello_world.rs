@@ -1,7 +1,14 @@
-use game_ui::reactive::Context;
-use game_ui::widgets::{Text, Widget};
+use std::convert::Infallible;
 
-pub fn hello_world(ctx: Context<()>) {
-    let text = Text::new("Hello World!").size(32.0);
-    text.mount(&ctx);
+use game_ui::runtime_v2::{Context, View, Widget};
+use game_ui::widgets::Text;
+
+pub struct HelloWorld;
+
+impl Widget for HelloWorld {
+    type Message = Infallible;
+
+    fn render(&self, _ctx: &Context<Self>) -> View {
+        Text::new("Hello World!").size(32.0).into()
+    }
 }

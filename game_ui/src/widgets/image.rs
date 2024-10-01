@@ -1,3 +1,5 @@
+use std::convert::Infallible;
+
 use game_tracing::trace_span;
 use image::{ImageBuffer, Rgba};
 
@@ -46,5 +48,17 @@ impl Widget for Image {
             image: Some(self.image),
             text: None,
         }))
+    }
+}
+
+impl crate::runtime_v2::Widget for Image {
+    type Message = Infallible;
+
+    fn render(&self, _ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
+        crate::runtime_v2::View::Primitive(Primitive {
+            style: self.style.clone(),
+            image: Some(self.image.clone()),
+            text: None,
+        })
     }
 }

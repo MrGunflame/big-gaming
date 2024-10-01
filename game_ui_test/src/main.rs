@@ -12,10 +12,10 @@ use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
 use game_window::WindowManager;
-use tests::hello_world::hello_world;
+use tests::hello_world::HelloWorld;
 use tests::input::input;
 use tests::selection::selection;
-use tests::svg::svg;
+use tests::svg::TestSvg;
 use tests::table::table;
 
 fn main() {
@@ -66,21 +66,24 @@ impl game_window::App for App {
                 );
                 self.renderer.create(event.window, window);
 
-                let doc = self
-                    .ui_state
-                    .runtime()
-                    .create_document(RenderTarget::Window(event.window))
-                    .unwrap();
-                self.document_id = Some(doc);
+                // let doc = self
+                //     .ui_state
+                //     .runtime()
+                //     .create_document(RenderTarget::Window(event.window))
+                //     .unwrap();
+                // self.document_id = Some(doc);
 
-                let rt = self.ui_state.runtime();
-                let ctx = rt.root_context(doc);
+                // let rt = self.ui_state.runtime();
+                // let ctx = rt.root_context(doc);
+
+                self.ui_state
+                    .runtime()
+                    .mount(RenderTarget::Window(event.window), TestSvg);
 
                 // hello_world(ctx.clone());
                 // selection(ctx);
                 // svg(ctx);
                 // input(ctx);
-                table(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()

@@ -1,10 +1,17 @@
+use std::convert::Infallible;
+
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
+use game_window::events::CursorMoved;
 
 use crate::reactive::Context;
-use crate::style::Style;
+use crate::runtime_v2::View;
+use crate::style::{Background, Style};
 
+use super::container::Container2;
 use super::{Callback, Container, Widget};
+
+const DEFAULT_ON_HOVER_COLOR: Background = Background::TEAL;
 
 pub struct Button {
     pub style: Style,
@@ -54,6 +61,23 @@ impl Widget for Button {
             },
         );
 
+        parent.document().register_with_parent(
+            wrapper.node.unwrap(),
+            move |ctx: Context<CursorMoved>| {
+                if let Some(layout) = ctx.layout(wrapper.node.unwrap()) {
+                    if layout.contains(ctx.cursor().as_uvec2()) {}
+                }
+            },
+        );
+
         wrapper
+    }
+}
+
+impl crate::runtime_v2::Widget for Button {
+    type Message = Infallible;
+
+    fn render(&self, ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
+        Container2::new().into()
     }
 }
