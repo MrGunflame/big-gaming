@@ -100,9 +100,20 @@ impl SceneSpawner {
                 Event::SpawnInstance(instance, scene) => {
                     match self.scenes.get(scene.0).unwrap() {
                         SceneData::Loaded(scene, resources) => {
-                            let state = scene.instantiate(resources, renderer);
-                            self.instances.get_mut(instance.0).unwrap().state =
-                                InstanceState::Spawned(state);
+                            let instance = self.instances.get_mut(instance.0).unwrap();
+
+                            let mut state = scene.instantiate(resources, renderer);
+                            state.set_transform(instance.transform);
+                            state.compute_transform();
+
+                            for (key, id) in &state.entities {
+                                let global_transform = *state.global_transform.get(key).unwrap();
+
+                                let mut object = renderer.entities.objects.get_mut(*id).unwrap();
+                                object.transform = global_transform;
+                            }
+
+                            instance.state = InstanceState::Spawned(state);
                         }
                         SceneData::Queued => {
                             // Defer instace creation until the scene is loaded.
@@ -149,7 +160,10 @@ impl SceneSpawner {
                     instance.transform = transform;
                     match &mut instance.state {
                         InstanceState::Loading => {
-                            // What to do if scene is not yet loaded?
+                            // If the scene is not yet loaded the transform update
+                            // needs to be performed once the scene is spawned.
+                            // The instance will use the `instance.transform` value
+                            // that we have just written.
                         }
                         InstanceState::Spawned(state) => {
                             state.set_transform(transform);
