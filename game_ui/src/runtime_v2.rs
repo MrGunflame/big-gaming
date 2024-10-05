@@ -24,14 +24,19 @@ use crate::WindowProperties;
 pub trait Widget: Sized + 'static {
     type Message;
 
-    fn update(
-        &mut self,
-        #[allow(unused_variables)] ctx: &Context<Self>,
-        #[allow(unused_variables)] msg: Self::Message,
-    ) -> bool {
+    /// Updates the state of the widget with the new `msg` and returns whether the widget should be
+    /// redrawn after the `update` call.
+    ///
+    /// The default implementation ignores the given `msg` and always returns `false`.
+    // `#[allow(unused_variables)]` is preferred here instead of prefixing
+    // them with underscores, so that all custom `update` implementations
+    // still get the `unused_variables` warning if some variables are unused.
+    #[allow(unused_variables)]
+    fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         false
     }
 
+    /// Returns the [`View`] that should be rendered for this widget.
     fn view(&self, ctx: &Context<Self>) -> View;
 }
 
@@ -266,9 +271,14 @@ impl Runtime {
         }
 
         let mut rt = self.inner.lock();
-        for (document, node) in update_queue.drain(..) {
-            let document = rt.documents.get_mut(document).unwrap();
-            document.remove_children(node);
+        for (document_id, node) in &update_queue {
+            let document = rt.documents.get_mut(*document_id).unwrap();
+            document.remove_children(*node);
+        }
+
+        drop(rt);
+        for (document_id, node) in update_queue {
+            self.render_document(DocumentId(document_id), node);
         }
     }
 
@@ -359,6 +369,7 @@ pub(crate) struct Document {
     next_node_ref: u64,
     // NodeRef ==> Node
     node_refs: HashMap<NodeRefId, Key>,
+    custom_data: HashMap<TypeId, Rc<dyn Any + 'static>>,
 }
 
 impl Document {
@@ -372,6 +383,7 @@ impl Document {
             parents: HashMap::new(),
             next_node_ref: 0,
             node_refs: HashMap::new(),
+            custom_data: HashMap::new(),
         }
     }
 
@@ -390,6 +402,12 @@ impl Document {
 
         while let Some(key) = despawn_queue.pop() {
             self.parents.remove(&key);
+
+            if let Some(node) = self.nodes.get(key) {
+                if let Some(key) = node.layout_key {
+                    self.tree.remove(key);
+                }
+            }
 
             if let Some(c) = self.children.remove(&key) {
                 despawn_queue.extend(c);
@@ -613,6 +631,14 @@ where
         CursorRef { ctx: &self.raw }
     }
 
+    pub fn custom_data(&self) -> CustomData<'_> {
+        CustomData { ctx: &self.raw }
+    }
+
+    pub fn clipboard(&self) -> ClipboardRef<'_> {
+        ClipboardRef { ctx: &self.raw }
+    }
+
     // pub fn get(&self) -> NodeRef<'_> {
     //     NodeRef {
     //         runtime: &self.raw.runtime,
@@ -630,6 +656,58 @@ impl<'a> CursorRef<'a> {
         let document = rt.documents.get(self.ctx.document.0)?;
         let window = rt.windows.get(&document.window)?;
         window.cursor_position
+    }
+}
+
+pub struct CustomData<'a> {
+    ctx: &'a RawContext,
+}
+
+impl<'a> CustomData<'a> {
+    pub fn insert<T>(&self, data: T)
+    where
+        T: 'static,
+    {
+        let mut rt = self.ctx.runtime.inner.lock();
+        let document = rt.documents.get_mut(self.ctx.document.0).unwrap();
+        document
+            .custom_data
+            .insert(TypeId::of::<T>(), Rc::new(data));
+    }
+
+    pub fn get<T>(&self) -> Option<Rc<T>>
+    where
+        T: 'static,
+    {
+        let mut rt = self.ctx.runtime.inner.lock();
+        let document = rt.documents.get_mut(self.ctx.document.0).unwrap();
+        document
+            .custom_data
+            .get(&TypeId::of::<T>())
+            .map(|v| v.clone().downcast().unwrap())
+    }
+
+    pub fn remove<T>(&self)
+    where
+        T: 'static,
+    {
+        let mut rt = self.ctx.runtime.inner.lock();
+        let document = rt.documents.get_mut(self.ctx.document.0).unwrap();
+        document.custom_data.remove(&TypeId::of::<T>());
+    }
+}
+
+pub struct ClipboardRef<'a> {
+    ctx: &'a RawContext,
+}
+
+impl<'a> ClipboardRef<'a> {
+    pub fn get(&self) -> Option<String> {
+        todo!()
+    }
+
+    pub fn set(&self, value: &str) {
+        todo!()
     }
 }
 

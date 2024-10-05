@@ -1,9 +1,11 @@
+use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
 use std::ops::{Deref, Range};
 use std::time::Duration;
 
 use async_io::Timer;
 use futures::StreamExt;
+use game_common::collections::arena::{Arena, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
@@ -11,9 +13,11 @@ use glam::UVec2;
 use image::Rgba;
 use parking_lot::Mutex;
 
-use crate::reactive::{Context, NodeDestroyed, NodeId, Runtime, TaskHandle};
+use crate::reactive::{Context, NodeDestroyed, NodeId, TaskHandle};
+use crate::runtime_v2::{ClipboardRef, EventHandlerHandle, NodeRef};
 use crate::style::{Bounds, Color, Size, SizeVec2, Style};
 
+use super::container::Container2;
 use super::{Callback, Container, Text, Widget};
 
 // FIXME: Some platforms (e.g. Windows) have customizable blinking intervals
@@ -23,15 +27,19 @@ const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(500);
 const SELECTION_COLOR: Color = Color(Rgba([0x1e, 0x90, 0xff, 0xff]));
 
 pub struct Input {
-    pub value: String,
-    pub on_change: Callback<String>,
-    pub style: Style,
+    buffer: Buffer,
+    on_change: Callback<String>,
+    style: Style,
+    state: OnceCell<State>,
+    value: String,
+    caret: Option<u32>,
 }
 
 impl Input {
     pub fn new() -> Self {
         Self {
             value: String::new(),
+            buffer: Buffer::new(String::new()),
             on_change: Callback::default(),
             style: Style {
                 // Minimum size to prevent the input widget to
@@ -39,6 +47,8 @@ impl Input {
                 bounds: Bounds::from_min(SizeVec2::splat(Size::Pixels(10))),
                 ..Default::default()
             },
+            state: OnceCell::new(),
+            caret: None,
         }
     }
 
@@ -46,7 +56,7 @@ impl Input {
     where
         T: ToString,
     {
-        self.value = value.to_string();
+        self.buffer = Buffer::new(value.to_string());
         self
     }
 
@@ -274,7 +284,7 @@ impl Widget for Input {
                     let node = nodes.get_mut(&active_node.node).unwrap();
                     let key_states = state.key_states.lock();
                     if !update_buffer(
-                        &ctx.runtime,
+                        todo!(),
                         &mut node.buffer,
                         &key_states,
                         &mut active_node.selection,
@@ -304,8 +314,201 @@ impl Widget for Input {
     }
 }
 
+impl crate::runtime_v2::Widget for Input {
+    type Message = Message;
+
+    fn update(&mut self, ctx: &crate::runtime_v2::Context<Self>, msg: Self::Message) -> bool {
+        let Some(shared_state) = ctx.custom_data().get::<SharedState>() else {
+            return false;
+        };
+        let Some(state) = self.state.get() else {
+            return false;
+        };
+
+        match msg {
+            Message::KeyboardInput(event) => {
+                match event.key_code {
+                    Some(KeyCode::LShift) => {
+                        shared_state.key_states.borrow_mut().lshift = event.state.is_pressed();
+                        return false;
+                    }
+                    Some(KeyCode::RShift) => {
+                        shared_state.key_states.borrow_mut().rshift = event.state.is_pressed();
+                        return false;
+                    }
+                    Some(KeyCode::LControl) => {
+                        shared_state.key_states.borrow_mut().lctrl = event.state.is_pressed();
+                        return false;
+                    }
+                    Some(KeyCode::RControl) => {
+                        shared_state.key_states.borrow_mut().rctrl = event.state.is_pressed();
+                        return false;
+                    }
+                    _ => (),
+                }
+
+                let mut nodes = shared_state.nodes.borrow_mut();
+
+                let Some(active_node) = shared_state.active_node.get() else {
+                    return false;
+                };
+
+                let node = nodes.get_mut(active_node).unwrap();
+                node.on_input.call(event);
+                false
+            }
+            Message::MouseButtonInput(event) => {
+                if !event.button.is_left() || !event.state.is_pressed() {
+                    return false;
+                }
+
+                let nodes = shared_state.nodes.borrow();
+                let prev_active = shared_state.active_node.get();
+
+                for (key, node) in &*nodes {
+                    let Some(layout) = ctx.layout(&node.node_ref) else {
+                        continue;
+                    };
+
+                    let Some(cursor) = ctx.cursor().position() else {
+                        continue;
+                    };
+
+                    if layout.contains(cursor) {
+                        if let Some(prev_active) = prev_active {
+                            if prev_active != key {
+                                let prev_node = nodes.get(prev_active).unwrap();
+                                prev_node.on_unfocus.call(());
+                            }
+                        }
+
+                        node.on_focus.call(());
+                        shared_state.active_node.set(Some(key));
+
+                        return false;
+                    }
+                }
+
+                if let Some(prev_active) = prev_active {
+                    let prev_node = nodes.get(prev_active).unwrap();
+                    prev_node.on_unfocus.call(());
+                }
+                shared_state.active_node.set(None);
+
+                false
+            }
+            Message::Focus => {
+                shared_state.active_node.set(Some(state.key));
+
+                let Some(layout) = ctx.layout(&state.node_ref) else {
+                    return false;
+                };
+
+                let Some(cursor) = ctx.cursor().position() else {
+                    return false;
+                };
+
+                let cursor_in_text = cursor.saturating_sub(layout.min);
+
+                self.buffer.cursor = crate::render::text::get_position_in_text(
+                    &self.buffer,
+                    32.0,
+                    UVec2::MAX,
+                    cursor_in_text,
+                );
+                self.caret = Some(self.buffer.cursor.try_into().unwrap());
+
+                true
+            }
+            Message::Unfocus => {
+                self.caret = None;
+                true
+            }
+            Message::Input(event) => {
+                let needs_redraw = update_buffer(
+                    &ctx.clipboard(),
+                    &mut self.buffer,
+                    &shared_state.key_states.borrow(),
+                    &mut None,
+                    &event,
+                );
+                self.caret = Some(self.buffer.cursor.try_into().unwrap());
+                needs_redraw
+            }
+        }
+    }
+
+    fn view(&self, ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
+        let state = self.state.get_or_init(|| {
+            let node_ref = ctx.create_node_ref();
+
+            let node = InputNode {
+                node_ref: node_ref.clone(),
+                on_input: ctx.callback(Message::Input),
+                on_focus: ctx.callback(|()| Message::Focus),
+                on_unfocus: ctx.callback(|()| Message::Unfocus),
+            };
+
+            let key = if let Some(shared_state) = ctx.custom_data().get::<SharedState>() {
+                shared_state.nodes.borrow_mut().insert(node)
+            } else {
+                let keyboard_input_handler = ctx.on_event(Message::KeyboardInput);
+                let mouse_button_input_handler = ctx.on_event(Message::MouseButtonInput);
+
+                let mut arena = Arena::new();
+                let key = arena.insert(node);
+                ctx.custom_data().insert(SharedState {
+                    nodes: RefCell::new(arena),
+                    _keyboard_input_handler: keyboard_input_handler,
+                    _mouse_button_input_handler: mouse_button_input_handler,
+                    active_node: Cell::new(None),
+                    key_states: RefCell::new(KeyStates::new()),
+                });
+                key
+            };
+
+            State { key, node_ref }
+        });
+
+        Container2::new(Text::new(&self.buffer.string).caret(self.caret))
+            .node_ref(state.node_ref.clone())
+            .into()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct State {
+    key: Key,
+    node_ref: NodeRef,
+}
+
+pub enum Message {
+    KeyboardInput(KeyboardInput),
+    MouseButtonInput(MouseButtonInput),
+    Input(KeyboardInput),
+    Focus,
+    Unfocus,
+}
+
+#[derive(Debug)]
+struct SharedState {
+    active_node: Cell<Option<Key>>,
+    nodes: RefCell<Arena<InputNode>>,
+    key_states: RefCell<KeyStates>,
+    _keyboard_input_handler: EventHandlerHandle,
+    _mouse_button_input_handler: EventHandlerHandle,
+}
+
+#[derive(Debug)]
+struct InputNode {
+    node_ref: NodeRef,
+    on_input: Callback<KeyboardInput>,
+    on_focus: Callback<()>,
+    on_unfocus: Callback<()>,
+}
+
 fn update_buffer(
-    runtime: &Runtime,
+    clipboard: &ClipboardRef<'_>,
     buffer: &mut Buffer,
     key_states: &KeyStates,
     selection: &mut Option<Selection>,
@@ -320,14 +523,14 @@ fn update_buffer(
         Some(KeyCode::C) if key_states.is_control_pressed() => {
             if let Some(selection) = selection {
                 if let Some(text) = buffer.string.get(selection.range()) {
-                    runtime.clipboard_set(text);
+                    clipboard.set(text);
                 }
             }
 
             return false;
         }
         Some(KeyCode::V) if key_states.is_control_pressed() => {
-            if let Some(text) = runtime.clipboard_get() {
+            if let Some(text) = clipboard.get() {
                 buffer.insert(&text);
             }
 
@@ -457,7 +660,7 @@ impl Selection {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 struct KeyStates {
     lshift: bool,
     rshift: bool,
@@ -466,6 +669,15 @@ struct KeyStates {
 }
 
 impl KeyStates {
+    const fn new() -> Self {
+        Self {
+            lshift: false,
+            rshift: false,
+            lctrl: false,
+            rctrl: false,
+        }
+    }
+
     /// Returns `true` if any `Shift` key is pressed.
     fn is_shift_pressed(&self) -> bool {
         self.lshift || self.rshift

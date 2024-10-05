@@ -83,7 +83,7 @@ impl crate::runtime_v2::Widget for Text {
                 text: Some(crate::render::Text {
                     text: self.text.clone(),
                     size: self.size,
-                    caret: None,
+                    caret: self.caret,
                     selection_color: self.selection_color,
                     selection_range: self.selection_range.clone(),
                 }),

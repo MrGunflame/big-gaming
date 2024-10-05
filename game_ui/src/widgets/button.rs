@@ -5,27 +5,31 @@ use game_tracing::trace_span;
 use game_window::events::CursorMoved;
 
 use crate::reactive::Context;
-use crate::runtime_v2::{EventHandlerHandle, NodeRef};
+use crate::runtime_v2::{Children, EventHandlerHandle, NodeRef};
 use crate::style::{Background, Style};
 
 use super::container::Container2;
-use super::{Callback, Container, Text, Widget};
+use super::{Callback, Container, Widget};
 
 const DEFAULT_ON_HOVER_COLOR: Background = Background::TEAL;
 
 pub struct Button {
-    pub style: Style,
-    pub on_click: Callback<()>,
+    style: Style,
+    on_click: Callback<()>,
     state: OnceCell<ButtonState>,
+    content: Children,
 }
 
 impl Button {
-    pub fn new() -> Self {
+    pub fn new<T>(content: T) -> Self
+    where
+        T: Into<Children>,
+    {
         Self {
             style: Style::default(),
             on_click: Callback::default(),
             state: OnceCell::new(),
-            // content: content.into(),
+            content: content.into(),
         }
     }
 
@@ -120,8 +124,7 @@ impl crate::runtime_v2::Widget for Button {
             }
         });
 
-        let text = Text::new("Button");
-        Container2::new(text)
+        Container2::new(self.content.clone())
             .node_ref(state.node_ref.clone())
             .into()
     }
