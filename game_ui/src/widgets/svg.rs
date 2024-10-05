@@ -133,7 +133,7 @@ pub struct SvgStyle {
 impl crate::runtime_v2::Widget for Svg {
     type Message = Infallible;
 
-    fn render(&self, _ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
+    fn view(&self, _ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
         Image::new().image(self.render_to_image()).into()
     }
 }

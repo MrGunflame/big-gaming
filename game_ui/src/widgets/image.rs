@@ -5,6 +5,7 @@ use image::{ImageBuffer, Rgba};
 
 use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
+use crate::runtime_v2::{Children, View};
 use crate::style::Style;
 
 use super::Widget;
@@ -54,11 +55,15 @@ impl Widget for Image {
 impl crate::runtime_v2::Widget for Image {
     type Message = Infallible;
 
-    fn render(&self, _ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
-        crate::runtime_v2::View::Primitive(Primitive {
-            style: self.style.clone(),
-            image: Some(self.image.clone()),
-            text: None,
-        })
+    fn view(&self, _ctx: &crate::runtime_v2::Context<Self>) -> View {
+        View {
+            primitive: Some(Primitive {
+                style: self.style.clone(),
+                image: Some(self.image.clone()),
+                text: None,
+            }),
+            children: Children::new(),
+            node_ref: None,
+        }
     }
 }

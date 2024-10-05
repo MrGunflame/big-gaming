@@ -60,30 +60,17 @@ impl UiState {
     }
 
     pub fn send_event(&mut self, cursor: &Arc<Cursor>, event: WindowEvent) {
-        // let Some(window) = cursor.window() else {
-        //     return;
-        // };
-        // *self.runtime.cursor.lock() = Some(cursor.clone());
+        let Some(window) = cursor.window() else {
+            return;
+        };
 
-        // match event {
-        //     WindowEvent::CursorMoved(event) => {
-        //         events::call_events(window, &self.runtime, &cursor, event);
-        //     }
-        //     WindowEvent::MouseButtonInput(event) => {
-        //         events::call_events(window, &self.runtime, &cursor, event);
-        //     }
-        //     WindowEvent::MouseWheel(event) => {
-        //         events::call_events(window, &self.runtime, &cursor, event);
-        //     }
-        //     WindowEvent::KeyboardInput(event) => {
-        //         events::call_events(window, &self.runtime, &cursor, event);
-        //     }
-        //     _ => (),
-        // }
+        self.runtime.send_event(window.into(), event);
     }
 
     pub fn update(&mut self) {
         let _span = trace_span!("UiState::update").entered();
+
+        self.runtime.update();
 
         let rt = &mut *self.runtime.inner.lock();
         let mut docs = Vec::new();

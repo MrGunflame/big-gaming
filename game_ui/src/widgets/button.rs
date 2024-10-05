@@ -1,21 +1,22 @@
-use std::convert::Infallible;
+use std::cell::OnceCell;
 
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
 use game_window::events::CursorMoved;
 
 use crate::reactive::Context;
-use crate::runtime_v2::View;
+use crate::runtime_v2::{EventHandlerHandle, NodeRef};
 use crate::style::{Background, Style};
 
 use super::container::Container2;
-use super::{Callback, Container, Widget};
+use super::{Callback, Container, Text, Widget};
 
 const DEFAULT_ON_HOVER_COLOR: Background = Background::TEAL;
 
 pub struct Button {
     pub style: Style,
     pub on_click: Callback<()>,
+    state: OnceCell<ButtonState>,
 }
 
 impl Button {
@@ -23,6 +24,8 @@ impl Button {
         Self {
             style: Style::default(),
             on_click: Callback::default(),
+            state: OnceCell::new(),
+            // content: content.into(),
         }
     }
 
@@ -75,9 +78,61 @@ impl Widget for Button {
 }
 
 impl crate::runtime_v2::Widget for Button {
-    type Message = Infallible;
+    type Message = Message;
 
-    fn render(&self, ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
-        Container2::new().into()
+    fn update(&mut self, ctx: &crate::runtime_v2::Context<Self>, msg: Self::Message) -> bool {
+        let Some(state) = self.state.get() else {
+            return false;
+        };
+
+        match msg {
+            Message::MouseButtonInput(event) => {
+                if !event.button.is_left() || !event.state.is_pressed() {
+                    return false;
+                }
+
+                let Some(layout) = ctx.layout(&state.node_ref) else {
+                    return false;
+                };
+
+                let Some(cursor) = ctx.cursor().position() else {
+                    return false;
+                };
+
+                if layout.contains(cursor) {
+                    self.on_click.call(());
+                }
+            }
+        }
+
+        false
     }
+
+    fn view(&self, ctx: &crate::runtime_v2::Context<Self>) -> crate::runtime_v2::View {
+        let state = self.state.get_or_init(|| {
+            let node_ref = ctx.create_node_ref();
+
+            let mouse_button_input = ctx.on_event(Message::MouseButtonInput);
+
+            ButtonState {
+                node_ref,
+                _mouse_button_input: mouse_button_input,
+            }
+        });
+
+        let text = Text::new("Button");
+        Container2::new(text)
+            .node_ref(state.node_ref.clone())
+            .into()
+    }
+}
+
+pub enum Message {
+    MouseButtonInput(MouseButtonInput),
+}
+
+#[derive(Debug)]
+struct ButtonState {
+    node_ref: NodeRef,
+    _mouse_button_input: EventHandlerHandle,
 }
