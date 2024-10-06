@@ -117,7 +117,7 @@ pub struct Statistics {
     pub ups: UpdateCounter,
     pub fps: UpdateCounter,
     pub entities: u64,
-    pub net_input_buffer_len: u64,
+    pub net_input_buffer_len: usize,
     pub rtt: Duration,
     pub player_info: PlayerInfo,
 }
