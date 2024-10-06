@@ -34,6 +34,7 @@ pub struct Input {
     value: String,
     caret: Option<u32>,
     text_size: f32,
+    selection: Option<Selection>,
 }
 
 impl Input {
@@ -51,6 +52,7 @@ impl Input {
             state: OnceCell::new(),
             caret: None,
             text_size: 24.0,
+            selection: None,
         }
     }
 
@@ -433,6 +435,7 @@ impl crate::runtime_v2::Widget for Input {
             }
             Message::Unfocus => {
                 self.caret = None;
+                self.selection = None;
                 true
             }
             Message::Input(event) => {
@@ -440,7 +443,7 @@ impl crate::runtime_v2::Widget for Input {
                     &ctx.clipboard(),
                     &mut self.buffer,
                     &shared_state.key_states.borrow(),
-                    &mut None,
+                    &mut self.selection,
                     &event,
                 );
                 self.caret = Some(self.buffer.cursor.try_into().unwrap());
@@ -498,7 +501,9 @@ impl crate::runtime_v2::Widget for Input {
         Container2::new(
             Text::new(&self.buffer.string)
                 .size(self.text_size)
-                .caret(self.caret),
+                .caret(self.caret)
+                .selection_color(SELECTION_COLOR)
+                .selection_range(self.selection.map(|s| s.range())),
         )
         .node_ref(state.node_ref.clone())
         .into()
