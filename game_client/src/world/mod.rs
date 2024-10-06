@@ -46,7 +46,7 @@ pub enum RemoteError {
 
 #[derive(Debug)]
 pub struct GameWorldState {
-    pub world: GameWorld,
+    world: GameWorld,
     camera_controller: CameraController,
     primary_camera: Option<EntityId>,
     modules: Modules,
@@ -148,11 +148,11 @@ impl GameWorldState {
         self.ui_elements.update_debug_state(
             ui_ctx,
             Some(Statistics {
-                ups: self.world.ups(),
+                ups: self.world.statistics().ups.clone(),
                 fps: fps_counter,
                 entities: world.len() as u64,
-                net_input_buffer_len: self.world.input_buffer_len() as u64,
-                rtt: self.world.rtt(),
+                net_input_buffer_len: self.world.statistics().input_buffer_len,
+                rtt: self.world.statistics().rtt,
                 player_info,
             }),
         );
