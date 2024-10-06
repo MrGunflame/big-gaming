@@ -397,6 +397,15 @@ impl crate::runtime_v2::Widget for Input {
 
                 false
             }
+            Message::BlinkGlobal => {
+                if let Some(active) = shared_state.active_node.get() {
+                    let nodes = shared_state.nodes.borrow();
+                    let node = nodes.get(active).unwrap();
+                    node.on_caret_blink.call(());
+                }
+
+                false
+            }
             Message::Focus => {
                 shared_state.active_node.set(Some(state.key));
 
@@ -435,6 +444,14 @@ impl crate::runtime_v2::Widget for Input {
                 self.caret = Some(self.buffer.cursor.try_into().unwrap());
                 needs_redraw
             }
+            Message::BlinkCaret => {
+                match self.caret {
+                    Some(_) => self.caret = None,
+                    None => self.caret = Some(self.buffer.cursor.try_into().unwrap()),
+                }
+
+                true
+            }
         }
     }
 
@@ -447,6 +464,7 @@ impl crate::runtime_v2::Widget for Input {
                 on_input: ctx.callback(Message::Input),
                 on_focus: ctx.callback(|()| Message::Focus),
                 on_unfocus: ctx.callback(|()| Message::Unfocus),
+                on_caret_blink: ctx.callback(|()| Message::BlinkCaret),
             };
 
             let key = if let Some(shared_state) = ctx.custom_data().get::<SharedState>() {
@@ -455,14 +473,19 @@ impl crate::runtime_v2::Widget for Input {
                 let keyboard_input_handler = ctx.on_event(Message::KeyboardInput);
                 let mouse_button_input_handler = ctx.on_event(Message::MouseButtonInput);
 
+                let handle = ctx.spawn_stream({
+                    Timer::interval(CARET_BLINK_INTERVAL).map(|_| Message::BlinkGlobal)
+                });
+
                 let mut arena = Arena::new();
                 let key = arena.insert(node);
                 ctx.custom_data().insert(SharedState {
                     nodes: RefCell::new(arena),
-                    _keyboard_input_handler: keyboard_input_handler,
-                    _mouse_button_input_handler: mouse_button_input_handler,
                     active_node: Cell::new(None),
                     key_states: RefCell::new(KeyStates::new()),
+                    _keyboard_input_handler: keyboard_input_handler,
+                    _mouse_button_input_handler: mouse_button_input_handler,
+                    _caret_blink_task: handle,
                 });
                 key
             };
@@ -486,8 +509,10 @@ pub enum Message {
     KeyboardInput(KeyboardInput),
     MouseButtonInput(MouseButtonInput),
     Input(KeyboardInput),
+    BlinkGlobal,
     Focus,
     Unfocus,
+    BlinkCaret,
 }
 
 #[derive(Debug)]
@@ -497,6 +522,7 @@ struct SharedState {
     key_states: RefCell<KeyStates>,
     _keyboard_input_handler: EventHandlerHandle,
     _mouse_button_input_handler: EventHandlerHandle,
+    _caret_blink_task: crate::runtime_v2::TaskHandle<()>,
 }
 
 #[derive(Debug)]
@@ -505,6 +531,7 @@ struct InputNode {
     on_input: Callback<KeyboardInput>,
     on_focus: Callback<()>,
     on_unfocus: Callback<()>,
+    on_caret_blink: Callback<()>,
 }
 
 fn update_buffer(

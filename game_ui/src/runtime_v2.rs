@@ -2,14 +2,18 @@ use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{self, Debug, Formatter};
+use std::future::Future;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use futures::{pin_mut, Stream, StreamExt};
 use game_common::collections::arena::{Arena, Key};
 use game_input::keyboard::KeyboardInput;
 use game_input::mouse::{MouseButtonInput, MouseWheel};
 use game_render::camera::RenderTarget;
+use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_window::events::{CursorMoved, WindowEvent};
 use glam::UVec2;
@@ -78,6 +82,7 @@ impl Runtime {
             inner: Arc::new(Mutex::new(RuntimeInner {
                 windows: HashMap::new(),
                 documents: Arena::new(),
+                executor: TaskPool::new(1),
             })),
         }
     }
@@ -350,6 +355,7 @@ pub struct DocumentId(pub(crate) Key);
 pub(crate) struct RuntimeInner {
     pub(crate) windows: HashMap<RenderTarget, Window>,
     pub(crate) documents: Arena<Document>,
+    executor: TaskPool,
 }
 
 #[derive(Clone, Debug)]
@@ -529,6 +535,47 @@ where
         })
     }
 
+    pub fn spawn_future<F>(&self, future: F) -> TaskHandle<()>
+    where
+        F: Future<Output = T::Message> + Send + 'static,
+        T::Message: Send + Sync + 'static,
+    {
+        let node = self.raw.node;
+        let events = self.raw.events.clone();
+        let future = async move {
+            let msg = future.await;
+            events
+                .lock()
+                .push_back(NodeEvent::SendMessage(node, Box::new(msg)));
+        };
+
+        let rt = self.raw.runtime.inner.lock();
+        let task = rt.executor.spawn(future);
+        TaskHandle(ManuallyDrop::new(task))
+    }
+
+    pub fn spawn_stream<S>(&self, stream: S) -> TaskHandle<()>
+    where
+        S: Stream<Item = T::Message> + Send + 'static,
+        T::Message: Send + Sync + 'static,
+    {
+        let node = self.raw.node;
+        let events = self.raw.events.clone();
+        let future = async move {
+            pin_mut!(stream);
+
+            while let Some(msg) = stream.next().await {
+                events
+                    .lock()
+                    .push_back(NodeEvent::SendMessage(node, Box::new(msg)));
+            }
+        };
+
+        let rt = self.raw.runtime.inner.lock();
+        let task = rt.executor.spawn(future);
+        TaskHandle(ManuallyDrop::new(task))
+    }
+
     pub fn on_event<E, F>(&self, f: F) -> EventHandlerHandle
     where
         F: Fn(E) -> T::Message + 'static,
@@ -642,12 +689,6 @@ where
     pub fn clipboard(&self) -> ClipboardRef<'_> {
         ClipboardRef { ctx: &self.raw }
     }
-
-    // pub fn get(&self) -> NodeRef<'_> {
-    //     NodeRef {
-    //         runtime: &self.raw.runtime,
-    //     }
-    // }
 }
 
 pub struct CursorRef<'a> {
@@ -829,5 +870,18 @@ where
         }
 
         Self(children)
+    }
+}
+
+#[derive(Debug)]
+pub struct TaskHandle<T>(ManuallyDrop<game_tasks::Task<T>>);
+
+impl<T> Drop for TaskHandle<T> {
+    fn drop(&mut self) {
+        // TODO: In the future we should always cancel
+        // `game_tasks::Task` on drop.
+        // Then this drop impl becomes unnecessary.
+        let task = unsafe { ManuallyDrop::take(&mut self.0) };
+        task.cancel_now();
     }
 }
