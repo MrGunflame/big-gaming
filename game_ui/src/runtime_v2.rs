@@ -270,6 +270,10 @@ impl Runtime {
             }
         }
 
+        // A widget may receive a message multiple times in an update cycle.
+        // In that case it should still only be re-rendered once.
+        update_queue.dedup();
+
         let mut rt = self.inner.lock();
         for (document_id, node) in &update_queue {
             let document = rt.documents.get_mut(*document_id).unwrap();
