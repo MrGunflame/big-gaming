@@ -19,6 +19,7 @@ use game_window::events::{CursorMoved, WindowEvent};
 use glam::UVec2;
 use parking_lot::Mutex;
 
+use crate::clipboard::Clipboard;
 use crate::layout::{self, LayoutTree};
 use crate::primitive::Primitive;
 use crate::render::Rect;
@@ -96,6 +97,7 @@ impl Runtime {
                 windows: HashMap::new(),
                 documents: Arena::new(),
                 executor: TaskPool::new(1),
+                clipboard: Clipboard::new(),
             })),
         }
     }
@@ -390,6 +392,7 @@ pub(crate) struct RuntimeInner {
     pub(crate) windows: HashMap<RenderTarget, Window>,
     pub(crate) documents: Arena<Document>,
     executor: TaskPool,
+    clipboard: Clipboard,
 }
 
 #[derive(Clone, Debug)]
@@ -789,11 +792,13 @@ pub struct ClipboardRef<'a> {
 
 impl<'a> ClipboardRef<'a> {
     pub fn get(&self) -> Option<String> {
-        todo!()
+        let mut rt = self.ctx.runtime.inner.lock();
+        rt.clipboard.get()
     }
 
     pub fn set(&self, value: &str) {
-        todo!()
+        let mut rt = self.ctx.runtime.inner.lock();
+        rt.clipboard.set(value);
     }
 }
 
