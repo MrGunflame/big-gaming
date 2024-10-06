@@ -72,20 +72,16 @@ impl UiState {
 
         self.runtime.update();
 
-        let rt = &mut *self.runtime.inner.lock();
-        let mut docs = Vec::new();
-        for (id, window) in rt.windows.iter() {
-            for doc in &window.documents {
-                docs.push((*doc, id));
+        let mut rt = self.runtime.inner.lock();
+        for document in rt.documents.values_mut() {
+            if !document.tree.is_changed() {
+                continue;
             }
-        }
 
-        for (doc, win) in docs {
-            let doc = rt.documents.get_mut(doc.0).unwrap();
-            doc.tree.compute_layout();
-            let nodes = doc.tree.collect_all();
+            document.tree.compute_layout();
+            let nodes = document.tree.collect_all();
 
-            let tree = self.renderer.get_mut(*win).unwrap();
+            let tree = self.renderer.get_mut(document.window).unwrap();
             *tree = nodes;
         }
 

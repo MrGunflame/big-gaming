@@ -33,6 +33,7 @@ pub struct Input {
     state: OnceCell<State>,
     value: String,
     caret: Option<u32>,
+    text_size: f32,
 }
 
 impl Input {
@@ -49,6 +50,7 @@ impl Input {
             },
             state: OnceCell::new(),
             caret: None,
+            text_size: 24.0,
         }
     }
 
@@ -421,7 +423,7 @@ impl crate::runtime_v2::Widget for Input {
 
                 self.buffer.cursor = crate::render::text::get_position_in_text(
                     &self.buffer,
-                    32.0,
+                    self.text_size * ctx.window().scale_factor() as f32,
                     UVec2::MAX,
                     cursor_in_text,
                 );
@@ -493,9 +495,27 @@ impl crate::runtime_v2::Widget for Input {
             State { key, node_ref }
         });
 
-        Container2::new(Text::new(&self.buffer.string).caret(self.caret))
-            .node_ref(state.node_ref.clone())
-            .into()
+        Container2::new(
+            Text::new(&self.buffer.string)
+                .size(self.text_size)
+                .caret(self.caret),
+        )
+        .node_ref(state.node_ref.clone())
+        .into()
+    }
+
+    fn destroy(&self, ctx: &crate::runtime_v2::Context<Self>) {
+        let (Some(state), Some(shared_state)) =
+            (self.state.get(), ctx.custom_data().get::<SharedState>())
+        else {
+            return;
+        };
+
+        if shared_state.active_node.get() == Some(state.key) {
+            shared_state.active_node.set(None);
+        }
+
+        shared_state.nodes.borrow_mut().remove(state.key);
     }
 }
 

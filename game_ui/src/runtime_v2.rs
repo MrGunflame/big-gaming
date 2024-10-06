@@ -42,12 +42,17 @@ pub trait Widget: Sized + 'static {
 
     /// Returns the [`View`] that should be rendered for this widget.
     fn view(&self, ctx: &Context<Self>) -> View;
+
+    #[allow(unused_variables)]
+    fn destroy(&self, ctx: &Context<Self>) {}
 }
 
 trait RawWidget: 'static {
     fn update(&mut self, ctx: RawContext, msg: Box<dyn Any + Send + Sync + 'static>) -> bool;
 
     fn view(&self, ctx: RawContext) -> View;
+
+    fn destroy(&self, ctx: RawContext);
 }
 
 impl<T> RawWidget for T
@@ -68,6 +73,14 @@ where
             _m: PhantomData,
         };
         T::view(self, &ctx)
+    }
+
+    fn destroy(&self, ctx: RawContext) {
+        let ctx = Context {
+            raw: ctx,
+            _m: PhantomData,
+        };
+        T::destroy(self, &ctx);
     }
 }
 
@@ -279,15 +292,31 @@ impl Runtime {
         // In that case it should still only be re-rendered once.
         update_queue.dedup();
 
+        let mut destroyed_nodes = Vec::new();
+
         let mut rt = self.inner.lock();
         for (document_id, node) in &update_queue {
             let document = rt.documents.get_mut(*document_id).unwrap();
-            document.remove_children(*node);
+
+            for node in document.remove_children(*node) {
+                destroyed_nodes.push((*document_id, node));
+            }
         }
 
         drop(rt);
         for (document_id, node) in update_queue {
             self.render_document(DocumentId(document_id), node);
+        }
+
+        for (document_id, node) in destroyed_nodes {
+            let ctx = RawContext {
+                document: DocumentId(document_id),
+                node: Key::DANGLING,
+                events: Arc::default(),
+                runtime: self.clone(),
+            };
+
+            node.node.borrow_mut().destroy(ctx);
         }
     }
 
@@ -315,6 +344,11 @@ impl Runtime {
 
             let mut rt = self.inner.lock();
             let document = rt.documents.get_mut(doc_key.0).unwrap();
+
+            let node = document.nodes.get_mut(node_key).unwrap();
+            if let Some(key) = node.layout_key {
+                document.tree.remove(key);
+            }
 
             if let Some(primitive) = view.primitive {
                 let parent = document.find_layout_parent(node_key);
@@ -368,7 +402,7 @@ pub(crate) struct Window {
 
 #[derive(Debug)]
 pub(crate) struct Document {
-    window: RenderTarget,
+    pub(crate) window: RenderTarget,
     pub(crate) tree: LayoutTree,
     nodes: Arena<Node>,
     events: Arc<Mutex<VecDeque<NodeEvent>>>,
@@ -397,32 +431,35 @@ impl Document {
         }
     }
 
-    fn remove_children(&mut self, key: Key) {
-        if let Some(node) = self.nodes.get(key) {
-            if let Some(key) = node.layout_key {
-                self.tree.remove(key);
-            }
-        }
-
+    fn remove_children(&mut self, key: Key) -> Vec<Node> {
         let mut despawn_queue = Vec::new();
+        let mut destroyed_nodes = Vec::new();
 
-        if let Some(c) = self.children.remove(&key) {
-            despawn_queue.extend(c);
+        if let Some(children) = self.children.get(&key) {
+            despawn_queue.extend(children);
         }
 
         while let Some(key) = despawn_queue.pop() {
-            self.parents.remove(&key);
+            let node = self.nodes.remove(key).unwrap();
 
-            if let Some(node) = self.nodes.get(key) {
-                if let Some(key) = node.layout_key {
-                    self.tree.remove(key);
-                }
+            if let Some(key) = node.layout_key {
+                self.tree.remove(key);
             }
+
+            destroyed_nodes.push(node);
 
             if let Some(c) = self.children.remove(&key) {
                 despawn_queue.extend(c);
             }
+
+            if let Some(parent) = self.parents.get(&key) {
+                if let Some(children) = self.children.get_mut(parent) {
+                    children.retain(|child| *child != key);
+                }
+            }
         }
+
+        destroyed_nodes
     }
 
     fn find_layout_parent(&self, key: Key) -> Option<layout::Key> {
@@ -689,6 +726,10 @@ where
     pub fn clipboard(&self) -> ClipboardRef<'_> {
         ClipboardRef { ctx: &self.raw }
     }
+
+    pub fn window(&self) -> WindowRef<'_> {
+        WindowRef { ctx: &self.raw }
+    }
 }
 
 pub struct CursorRef<'a> {
@@ -756,13 +797,25 @@ impl<'a> ClipboardRef<'a> {
     }
 }
 
-// struct NodeRef<'a> {
-//     runtime: &'a Runtime,
-// }
+pub struct WindowRef<'a> {
+    ctx: &'a RawContext,
+}
 
-// impl<'a> NodeRef<'a> {
-//     pub fn layout(&self) -> UVec2 {}
-// }
+impl<'a> WindowRef<'a> {
+    pub fn size(&self) -> UVec2 {
+        let rt = self.ctx.runtime.inner.lock();
+        let document = rt.documents.get(self.ctx.document.0).unwrap();
+        let window = rt.windows.get(&document.window).unwrap();
+        window.size
+    }
+
+    pub fn scale_factor(&self) -> f64 {
+        let rt = self.ctx.runtime.inner.lock();
+        let document = rt.documents.get(self.ctx.document.0).unwrap();
+        let window = rt.windows.get(&document.window).unwrap();
+        window.scale_factor
+    }
+}
 
 pub trait Event: Sized + Send + Sync + 'static {}
 
