@@ -11,6 +11,8 @@ mod selection;
 mod table;
 mod text;
 
+use crate::runtime::Context;
+
 pub use self::image::Image;
 pub use button::Button;
 pub use container::Container;
@@ -27,11 +29,8 @@ pub use text::Text;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
-use crate::reactive::Context;
-use crate::runtime::reactive::SignalId;
-
 pub trait Widget {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()>;
+    fn mount(self, parent: &Context) -> Context;
 }
 
 pub struct Callback<T>(Option<Arc<Mutex<dyn FnMut(T) + Send + Sync + 'static>>>);
@@ -72,20 +71,5 @@ impl<T> Debug for Callback<T> {
         f.debug_struct("Callback")
             .field("ptr", &self.0.as_ref().map(|arc| Arc::as_ptr(&arc)))
             .finish()
-    }
-}
-
-pub trait Widget2 {
-    fn mount(self, ctx: &crate::runtime::Context) -> crate::runtime::Context;
-}
-
-pub struct MountEffect {
-    f: Box<dyn Fn()>,
-    signals: Vec<SignalId>,
-}
-
-impl Widget2 for MountEffect {
-    fn mount(self, ctx: &crate::runtime::Context) -> crate::runtime::Context {
-        (self.f)();
     }
 }

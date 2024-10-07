@@ -8,7 +8,7 @@ pub mod layout;
 pub mod primitive;
 pub mod reactive;
 pub mod render;
-mod runtime;
+pub mod runtime;
 pub mod style;
 pub mod widgets;
 
@@ -69,16 +69,16 @@ impl UiState {
 
         match event {
             WindowEvent::CursorMoved(event) => {
-                events::call_events(window, &self.runtime, &cursor, event);
+                self.runtime.send_event(event);
             }
             WindowEvent::MouseButtonInput(event) => {
-                events::call_events(window, &self.runtime, &cursor, event);
+                self.runtime.send_event(event);
             }
             WindowEvent::MouseWheel(event) => {
-                events::call_events(window, &self.runtime, &cursor, event);
+                self.runtime.send_event(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                events::call_events(window, &self.runtime, &cursor, event);
+                self.runtime.send_event(event);
             }
             _ => (),
         }

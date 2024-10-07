@@ -4,7 +4,7 @@ use thiserror::Error;
 use tiny_skia::{PixmapMut, BYTES_PER_PIXEL};
 use usvg::{Options, Size, Transform, Tree};
 
-use crate::reactive::Context;
+use crate::runtime::Context;
 use crate::style::Color;
 
 use super::{Container, Image, Widget};
@@ -42,7 +42,7 @@ impl Svg {
 }
 
 impl Widget for Svg {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Svg::mount").entered();
 
         let wrapper = Container::new().mount(parent);

@@ -1,6 +1,6 @@
 use game_tracing::trace_span;
 
-use crate::reactive::Context;
+use crate::runtime::Context;
 use crate::style::{Border, Direction, Growth, Style};
 
 use super::{Container, Widget};
@@ -32,7 +32,7 @@ where
     H: Widget,
     D: Widget,
 {
-    fn mount<T>(mut self, parent: &Context<T>) -> Context<()> {
+    fn mount(mut self, parent: &Context) -> Context {
         let _span = trace_span!("Table::mount").entered();
 
         let table = Container::new()
