@@ -1,7 +1,7 @@
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Table, Text, Widget};
 
-pub fn table(ctx: Context<()>) {
+pub fn table(ctx: Context) {
     let table = Table::new(
         vec![Text::new("A"), Text::new("B"), Text::new("C")],
         vec![
