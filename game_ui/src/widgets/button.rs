@@ -1,6 +1,5 @@
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
-use wgpu::hal::auxil::db;
 
 use crate::runtime::Context;
 use crate::style::Style;
@@ -40,22 +39,20 @@ impl Widget for Button {
 
         let wrapper = Container::new().style(self.style).mount(parent);
 
-        dbg!(&wrapper.node());
         let ctx = wrapper.clone();
         parent.document().register_with_parent(
             wrapper.node().unwrap(),
             move |event: MouseButtonInput| {
-                dbg!(&event);
                 if !event.button.is_left() || !event.state.is_pressed() {
                     return;
                 }
 
-                if let Some(layout) = ctx.layout(ctx.node().unwrap()) {
-                    if layout.contains(ctx.cursor().as_uvec2()) {
+                if let (Some(layout), Some(cursor)) =
+                    (ctx.layout(ctx.node().unwrap()), ctx.cursor().position())
+                {
+                    if layout.contains(cursor) {
                         self.on_click.call(());
                     }
-                } else {
-                    dbg!("no layout");
                 }
             },
         );

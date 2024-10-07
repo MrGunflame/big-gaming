@@ -114,7 +114,7 @@ fn mount_selector(
     let layout = wrapper.layout(input_id).unwrap();
 
     options_wrapper.remove(options_wrapper.node().unwrap());
-    if check_position && !layout.contains(wrapper.cursor().as_uvec2()) {
+    if check_position && !layout.contains(wrapper.cursor().position().unwrap_or_default()) {
         return;
     }
 

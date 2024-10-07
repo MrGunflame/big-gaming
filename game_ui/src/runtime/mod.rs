@@ -13,7 +13,7 @@ use game_render::camera::RenderTarget;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_window::cursor::Cursor;
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 use parking_lot::Mutex;
 
 use crate::clipboard::Clipboard;
@@ -256,6 +256,12 @@ impl Context {
         ClipboardRef { rt: &self.runtime }
     }
 
+    /// Returns access to the cursor state.
+    #[inline]
+    pub fn cursor(&self) -> CursorRef<'_> {
+        CursorRef { rt: &self.runtime }
+    }
+
     pub fn append(&self, primitive: Primitive) -> Context {
         let mut rt = self.runtime.inner.lock();
         let document = rt.documents.get_mut(self.document.0).unwrap();
@@ -334,13 +340,6 @@ impl Context {
         DocumentRef {
             rt: &self.runtime,
             id: self.document,
-        }
-    }
-
-    pub fn cursor(&self) -> Vec2 {
-        match self.runtime.cursor.lock().as_ref() {
-            Some(cursor) => cursor.position(),
-            None => Vec2::ZERO,
         }
     }
 
@@ -437,8 +436,21 @@ impl<'a> DocumentRef<'a> {
     }
 }
 
+/// Access to the cursor.
+#[derive(Clone, Debug)]
 pub struct CursorRef<'a> {
     rt: &'a Runtime,
+}
+
+impl<'a> CursorRef<'a> {
+    /// Returns the current position of the cursor. Returns `None` if the cursor is not in the
+    /// current window.
+    pub fn position(&self) -> Option<UVec2> {
+        match &*self.rt.cursor.lock() {
+            Some(cursor) => Some(cursor.position().as_uvec2()),
+            None => None,
+        }
+    }
 }
 
 #[derive(Debug)]

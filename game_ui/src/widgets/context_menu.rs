@@ -114,7 +114,7 @@ impl Widget for ContextPanel {
                     return;
                 }
 
-                let cursor = ctx.cursor().as_uvec2();
+                let cursor = ctx.cursor().position().unwrap_or_default();
                 let Some(state) = ctx.document().get::<InternalContextMenuState>() else {
                     return;
                 };

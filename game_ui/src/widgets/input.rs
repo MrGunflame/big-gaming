@@ -169,7 +169,7 @@ impl Widget for Input {
                         continue;
                     };
 
-                    if layout.contains(ctx.cursor().as_uvec2()) {
+                    if layout.contains(ctx.cursor().position().unwrap_or_default()) {
                         *active = Some(ActiveNode {
                             node: node.ctx.node().unwrap(),
                             selection: None,
@@ -208,7 +208,11 @@ impl Widget for Input {
                     // This statement therefore underflow if the user clicked on the
                     // padding area.
                     // FIXME: We treat that case as zero, but is this desired?
-                    let position = ctx.cursor().as_uvec2().saturating_sub(layout.min);
+                    let position = ctx
+                        .cursor()
+                        .position()
+                        .unwrap_or_default()
+                        .saturating_sub(layout.min);
 
                     let cursor = crate::render::text::get_position_in_text(
                         &node.buffer,
