@@ -8,7 +8,7 @@ pub mod title_menu;
 
 use std::sync::mpsc;
 
-use game_ui::reactive::{Context, DocumentId, NodeId, Runtime};
+use game_ui::runtime::{Context, DocumentId, NodeId, Runtime};
 use game_ui::widgets::Widget;
 use game_wasm::world::RecordReference;
 
@@ -21,7 +21,7 @@ use self::health::HealthUi;
 #[derive(Debug)]
 pub struct UiRootContext {
     document: DocumentId,
-    widgets: Vec<Context<()>>,
+    widgets: Vec<Context>,
     runtime: Runtime,
 }
 
@@ -35,7 +35,7 @@ impl UiRootContext {
     }
 
     /// Spawns a new widget.
-    pub fn append<T>(&mut self, widget: T) -> Context<()>
+    pub fn append<T>(&mut self, widget: T) -> Context
     where
         T: Widget,
     {
@@ -103,7 +103,7 @@ impl UiElements {
     }
 
     /// Removes all widgets.
-    pub fn clear(&mut self, ctx: &Context<()>) {
+    pub fn clear(&mut self, ctx: &Context) {
         if let Some(id) = self.health {
             ctx.remove(id);
         }

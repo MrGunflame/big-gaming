@@ -18,7 +18,7 @@ use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
-use game_ui::reactive::NodeId;
+use game_ui::runtime::NodeId;
 use game_wasm::encoding::BinaryWriter;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;

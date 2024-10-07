@@ -3,7 +3,7 @@
 use std::sync::mpsc;
 
 use game_core::modules::Modules;
-use game_ui::reactive::{Context, NodeId};
+use game_ui::runtime::{Context, NodeId};
 use game_ui::style::{Bounds, Direction, Growth, Justify, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Callback, Container, ContextMenuState, ContextPanel, Text, Widget};
 use game_wasm::inventory::{Inventory, InventorySlotId, ItemStack};
@@ -25,7 +25,7 @@ pub struct InventoryUi<'a> {
 }
 
 impl<'a> Widget for InventoryUi<'a> {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 bounds: Bounds::from_min(SizeVec2::splat(Size::ZERO)),
@@ -52,7 +52,7 @@ struct InventoryBox<'a> {
 }
 
 impl<'a> Widget for InventoryBox<'a> {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let align_y = Container::new()
             .style(Style {
                 justify: Justify::Center,
@@ -93,7 +93,7 @@ impl<'a, I> Widget for ItemList<I>
 where
     I: Iterator<Item = (InventorySlotId, &'a ItemStack)>,
 {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         for (id, stack) in self.items {

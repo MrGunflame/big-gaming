@@ -1,4 +1,4 @@
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Bounds, Size, SizeVec2, Style};
 use game_ui::widgets::{Container, Text, Widget};
 
@@ -9,7 +9,7 @@ pub struct HealthUi {
 }
 
 impl Widget for HealthUi {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 bounds: Bounds::from_min(SizeVec2::splat(Size::ZERO)),

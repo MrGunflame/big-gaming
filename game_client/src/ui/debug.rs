@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use game_common::components::{RigidBody, Transform};
 use game_core::counter::UpdateCounter;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Container, Plot, Text, Widget};
 use glam::{UVec2, Vec2, Vec3};
 
@@ -16,7 +16,7 @@ pub struct DebugUi {
 }
 
 impl Widget for DebugUi {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let list = Container::new().mount(parent);
 
         Text::new(format!(
