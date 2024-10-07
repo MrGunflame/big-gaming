@@ -12,7 +12,7 @@ use image::Rgba;
 use parking_lot::Mutex;
 
 use crate::reactive::{Context, NodeDestroyed, NodeId, Runtime, TaskHandle};
-use crate::style::{Bounds, Color, Size, SizeVec2, Style};
+use crate::style::{Background, Bounds, Color, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
 
@@ -37,6 +37,7 @@ impl Input {
                 // Minimum size to prevent the input widget to
                 // completely disappear.
                 bounds: Bounds::from_min(SizeVec2::splat(Size::Pixels(10))),
+                background: Background::from_hex("42414d").unwrap(),
                 ..Default::default()
             },
         }

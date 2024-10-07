@@ -8,6 +8,7 @@ pub mod layout;
 pub mod primitive;
 pub mod reactive;
 pub mod render;
+mod runtime;
 pub mod style;
 pub mod widgets;
 
@@ -17,9 +18,9 @@ use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use glam::UVec2;
-use reactive::Runtime;
 
 use render::UiRenderer;
+use runtime::Runtime;
 
 pub struct UiState {
     renderer: UiRenderer,
@@ -40,22 +41,24 @@ impl UiState {
 
     pub fn create(&mut self, target: RenderTarget, props: WindowProperties) {
         self.renderer.insert(target, props.size, props.scale_factor);
-        self.runtime.create_window(target, props);
+        self.runtime.windows().create(target, props);
     }
 
     pub fn resize(&mut self, target: RenderTarget, size: UVec2) {
         self.renderer.resize(target, size);
-        self.runtime.resize_window(target, size);
+        self.runtime.windows().update_size(target, size);
     }
 
     pub fn update_scale_factor(&mut self, target: RenderTarget, scale_factor: f64) {
         self.renderer.update_scale_factor(target, scale_factor);
-        self.runtime.update_scale_factor(target, scale_factor);
+        self.runtime
+            .windows()
+            .update_scale_factor(target, scale_factor);
     }
 
     pub fn destroy(&mut self, target: RenderTarget) {
         self.renderer.remove(target);
-        self.runtime.destroy_window(target);
+        self.runtime.windows().destroy(target);
     }
 
     pub fn send_event(&mut self, cursor: &Arc<Cursor>, event: WindowEvent) {
@@ -84,20 +87,12 @@ impl UiState {
     pub fn update(&mut self) {
         let _span = trace_span!("UiState::update").entered();
 
-        let rt = &mut *self.runtime.inner.lock();
-        let mut docs = Vec::new();
-        for (id, window) in rt.windows.iter() {
-            for doc in &window.documents {
-                docs.push((*doc, id));
-            }
-        }
+        let mut rt = self.runtime.inner.lock();
+        for doc in rt.documents.values_mut() {
+            doc.tree.compute_layout();
+            let nodes = doc.tree.collect_all();
 
-        for (doc, win) in docs {
-            let doc = rt.documents.get_mut(doc.0).unwrap();
-            doc.layout.compute_layout();
-            let nodes = doc.layout.collect_all();
-
-            let tree = self.renderer.get_mut(*win).unwrap();
+            let tree = self.renderer.get_mut(doc.window).unwrap();
             *tree = nodes;
         }
 

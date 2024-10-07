@@ -2,7 +2,7 @@ use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
 use crate::style::Style;
 
-use super::Widget;
+use super::{Widget, Widget2};
 
 #[derive(Clone, Debug, Default)]
 pub struct Container {
@@ -27,5 +27,15 @@ impl Widget for Container {
             image: None,
             text: None,
         }))
+    }
+}
+
+impl Widget2 for Container {
+    fn mount(self, ctx: &crate::runtime::Context) -> crate::runtime::Context {
+        ctx.append(Primitive {
+            style: self.style,
+            image: None,
+            text: None,
+        })
     }
 }

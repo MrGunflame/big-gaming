@@ -78,6 +78,10 @@ impl LayoutTree {
         }
     }
 
+    pub fn children(&self, key: Key) -> Option<&[Key]> {
+        self.children.get(&key).map(|v| v.as_slice())
+    }
+
     /// Inserts a new [`Element`] at the given `index`.
     ///
     /// # Panics

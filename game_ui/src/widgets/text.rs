@@ -6,7 +6,7 @@ use crate::primitive::Primitive;
 use crate::reactive::{Context, Node};
 use crate::style::{Color, Style};
 
-use super::Widget;
+use super::{Widget, Widget2};
 
 #[derive(Clone, Debug)]
 pub struct Text {
@@ -67,5 +67,21 @@ impl Widget for Text {
                 selection_color: self.selection_color,
             }),
         }))
+    }
+}
+
+impl Widget2 for Text {
+    fn mount(self, ctx: &crate::runtime::Context) -> crate::runtime::Context {
+        ctx.append(Primitive {
+            style: Style::default(),
+            image: None,
+            text: Some(crate::render::Text {
+                text: self.text,
+                size: self.size,
+                caret: self.caret,
+                selection_range: self.selection_range,
+                selection_color: self.selection_color,
+            }),
+        })
     }
 }

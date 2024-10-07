@@ -4,7 +4,7 @@ use game_tracing::trace_span;
 use crate::reactive::Context;
 use crate::style::Style;
 
-use super::{Callback, Container, Widget};
+use super::{Callback, Container, MountEffect, Widget, Widget2};
 
 pub struct Button {
     pub style: Style,
@@ -55,5 +55,22 @@ impl Widget for Button {
         );
 
         wrapper
+    }
+}
+
+impl Widget2 for Button {
+    fn mount(self, ctx: &crate::runtime::Context) -> crate::runtime::Context {
+        let (state, set_state) = ctx.reactive().create_signal(false);
+
+        let root = Container::new().mount(ctx);
+
+        ctx.reactive().register_effect(&[state.id()], {
+            let root = root.clone();
+            move || {
+                root.clear_children();
+            }
+        });
+
+        root
     }
 }
