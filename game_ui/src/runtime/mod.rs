@@ -31,6 +31,7 @@ pub struct Runtime {
 }
 
 impl Runtime {
+    /// Creates a new `Runtime`.
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(RuntimeInner {
@@ -44,11 +45,13 @@ impl Runtime {
         }
     }
 
+    /// Returns access to the windows managed by this `Runtime`.
     #[inline]
     pub(crate) fn windows(&self) -> RuntimeWindows<'_> {
         RuntimeWindows { runtime: self }
     }
 
+    /// Dispatches a new event to this `Runtime`.
     pub(crate) fn send_event<E>(&self, event: E)
     where
         E: Event + Clone,
@@ -68,6 +71,7 @@ impl Runtime {
         }
     }
 
+    /// Returns a list of documents in this `Runtime`.
     pub fn documents(&self, window: RenderTarget) -> Vec<DocumentId> {
         let _span = trace_span!("Runtime::documents").entered();
 
@@ -78,6 +82,7 @@ impl Runtime {
             .unwrap_or(Vec::new())
     }
 
+    /// Returns a new [`Context`] to the root of a given [`DocumentId`].
     pub fn root_context(&self, document: DocumentId) -> Context {
         Context {
             runtime: self.clone(),
@@ -86,6 +91,8 @@ impl Runtime {
         }
     }
 
+    /// Creates a new document on the given [`RenderTarget`]. Returns `None` if no such
+    /// [`RenderTarget`] exists.
     pub fn create_document(&self, target: RenderTarget) -> Option<DocumentId> {
         let _span = trace_span!("Runtime::create_document").entered();
 
@@ -107,6 +114,7 @@ impl Runtime {
         Some(doc)
     }
 
+    /// Destroys the document with the given `document_id`.
     pub fn destroy_document(&self, document_id: DocumentId) {
         let _span = trace_span!("Runtime::destroy_document").entered();
 
@@ -185,6 +193,7 @@ impl Runtime {
             }
         }
 
+        // Destroy the deepest nodes first.
         for handler in node_destroyed_handlers.into_iter().rev() {
             handler.call(NodeDestroyed);
         }
@@ -197,6 +206,7 @@ pub struct RuntimeWindows<'a> {
 }
 
 impl<'a> RuntimeWindows<'a> {
+    /// Creates a new window with the given [`WindowProperties`].
     pub fn create(&self, window: RenderTarget, props: WindowProperties) {
         let _span = trace_span!("RuntimeWindows::create").entered();
 
@@ -211,6 +221,8 @@ impl<'a> RuntimeWindows<'a> {
         );
     }
 
+    /// Destroys the window with the given [`RenderTarget`]. Does nothing if no window with the
+    /// given [`RenderTarget`] exists.
     pub fn destroy(&self, target: RenderTarget) {
         let _span = trace_span!("RuntimeWindows::destroy").entered();
 
@@ -230,6 +242,7 @@ impl<'a> RuntimeWindows<'a> {
         rt.windows.remove(&target).unwrap();
     }
 
+    /// Updates the size of window with the given [`RenderTarget`].
     pub fn update_size(&self, window: RenderTarget, size: UVec2) {
         let _span = trace_span!("RuntimeWindows::update_size").entered();
 
@@ -246,6 +259,7 @@ impl<'a> RuntimeWindows<'a> {
         }
     }
 
+    /// Updates the scale factor of the window with the given [`RenderTarget`].
     pub fn update_scale_factor(&self, window: RenderTarget, scale_factor: f64) {
         let _span = trace_span!("RuntimeWindows::update_scale_factor").entered();
 
@@ -303,6 +317,7 @@ pub struct Node {
     event_handlers: Vec<EventHandlerId>,
 }
 
+/// A context to a node somewhere in the widget tree of a document.
 #[derive(Clone, Debug)]
 pub struct Context {
     runtime: Runtime,
@@ -311,10 +326,12 @@ pub struct Context {
 }
 
 impl Context {
+    /// Returns the [`NodeId`] referenced by this `Context`.
     pub fn node(&self) -> Option<NodeId> {
         self.node
     }
 
+    /// Returns a reference to the underlying [`Runtime`] that is managing this `Context`.
     pub fn runtime(&self) -> &Runtime {
         &self.runtime
     }
@@ -331,6 +348,12 @@ impl Context {
         CursorRef { rt: &self.runtime }
     }
 
+    /// Appends a new [`Primitive`] as the last child of this node. Returns the `Context` of the
+    /// newly appended node.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the node references by `self` has been destroyed.
     pub fn append(&self, primitive: Primitive) -> Context {
         let mut rt = self.runtime.inner.lock();
         let document = rt.documents.get_mut(self.document.0).unwrap();
@@ -365,10 +388,22 @@ impl Context {
         }
     }
 
+    /// Removes the given `node`. Does nothing if the given `node` does not exist.
     pub fn remove(&self, node: NodeId) {
         self.runtime.remove(self.document, node);
     }
 
+    /// Removes the node referenced by `self`.
+    ///
+    /// Note that this means some functions on this `Context` become invalid and may result in
+    /// panics if used.
+    pub fn remove_self(&self) {
+        if let Some(node) = self.node {
+            self.remove(node);
+        }
+    }
+
+    /// Removes all children of the current node. Does nothing if the current node does not exist.
     pub fn clear_children(&self) {
         let _span = trace_span!("Context::clear_children").entered();
 
@@ -390,10 +425,10 @@ impl Context {
         }
     }
 
-    // pub fn reactive(&self) -> &ReactiveContext {
-    //     &self.runtime.reactive
-    // }
-
+    /// Returns the layout of the given `node`.
+    ///
+    /// The returned [`Rect`] contains the area that the given `node` will use for painting.
+    /// Returns `None` if the given `node` does not exist.
     pub fn layout(&self, node: NodeId) -> Option<Rect> {
         let mut rt = self.runtime.inner.lock();
         let document = rt.documents.get_mut(self.document.0)?;
@@ -407,6 +442,7 @@ impl Context {
         })
     }
 
+    /// Returns a reference to the underlying document of this `Context`.
     pub fn document(&self) -> DocumentRef<'_> {
         DocumentRef {
             rt: &self.runtime,
@@ -414,6 +450,10 @@ impl Context {
         }
     }
 
+    /// Spawns a [`Future`] and returns a [`TaskHandle`].
+    ///
+    /// If the returned [`TaskHandle`] is dropped, the future is cancelled if it did not already
+    /// complete.
     pub fn spawn_task<F>(&self, future: F) -> TaskHandle<F::Output>
     where
         F: Future + Send + 'static,
@@ -424,12 +464,14 @@ impl Context {
     }
 }
 
+/// Access to a document.
 pub struct DocumentRef<'a> {
     rt: &'a Runtime,
     id: DocumentId,
 }
 
 impl<'a> DocumentRef<'a> {
+    /// Registers an document-wide event handler.
     pub fn register<E, F>(&self, handler: F)
     where
         F: FnMut(E) + Send + 'static,
@@ -438,6 +480,9 @@ impl<'a> DocumentRef<'a> {
         self.register_on_self(None, handler);
     }
 
+    /// Registers a document-wide event handler attached to a `parent` node.
+    ///
+    /// If the `parent` node is destroyed, the event handler is removed.
     pub fn register_with_parent<E, F>(&self, parent: NodeId, handler: F)
     where
         F: FnMut(E) + Send + 'static,
