@@ -20,7 +20,7 @@ use game_render::camera::RenderTarget;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
-use game_ui::reactive::DocumentId;
+use game_ui::runtime::DocumentId;
 use game_ui::widgets::{Callback, Widget};
 use game_ui::UiState;
 use game_wasm::record::ModuleId;

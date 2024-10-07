@@ -8,7 +8,7 @@ use std::time::SystemTime;
 
 use chrono::{DateTime, Local};
 use game_ui::layout::Key;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Background, Direction, Growth, Justify, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Input, Table, Text, Widget};
 use game_window::windows::WindowId;
@@ -40,7 +40,7 @@ impl Explorer {
 }
 
 impl Widget for Explorer {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 direction: Direction::Column,
@@ -200,12 +200,12 @@ pub enum Event {
 }
 
 struct Topbar {
-    table_parent: Arc<Mutex<Context<()>>>,
+    table_parent: Arc<Mutex<Context>>,
     state: Arc<Mutex<State>>,
 }
 
 impl Widget for Topbar {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let style = Style {
             direction: Direction::Column,
             ..Default::default()
@@ -228,7 +228,7 @@ impl Widget for Topbar {
     }
 }
 
-fn mount_path_input(parent_ctx: &Context<()>, state: &Arc<Mutex<State>>) {
+fn mount_path_input(parent_ctx: &Context, state: &Arc<Mutex<State>>) {
     Input::new()
         .value(state.lock().path.to_string_lossy())
         .on_change({
@@ -251,10 +251,7 @@ fn mount_path_input(parent_ctx: &Context<()>, state: &Arc<Mutex<State>>) {
         .mount(parent_ctx);
 }
 
-fn directory_up(
-    table_parent: Arc<Mutex<Context<()>>>,
-    state_mux: Arc<Mutex<State>>,
-) -> Callback<()> {
+fn directory_up(table_parent: Arc<Mutex<Context>>, state_mux: Arc<Mutex<State>>) -> Callback<()> {
     Callback::from(move |()| {
         {
             let mut state = state_mux.lock();
@@ -271,7 +268,7 @@ fn directory_up(
     })
 }
 
-fn mount_explorer_table(table_parent: &Arc<Mutex<Context<()>>>, state_mux: &Arc<Mutex<State>>) {
+fn mount_explorer_table(table_parent: &Arc<Mutex<Context>>, state_mux: &Arc<Mutex<State>>) {
     let mut state = state_mux.lock();
 
     if state.should_scan {
@@ -389,7 +386,7 @@ struct LabelButton {
 }
 
 impl Widget for LabelButton {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let button = Button::new()
             .style(self.style)
             .on_click(self.on_click)

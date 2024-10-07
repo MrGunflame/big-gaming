@@ -8,7 +8,7 @@ use game_prefab::Prefab;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_wasm::entity::EntityId;
 use game_wasm::record::RecordId;
@@ -37,7 +37,7 @@ pub struct EditWorldWindow {
 }
 
 impl EditWorldWindow {
-    pub fn new(ctx: &Context<()>, editor_state: EditorState) -> Self {
+    pub fn new(ctx: &Context, editor_state: EditorState) -> Self {
         let mut state = WorldWindowState::new();
         let mut prefabs = HashMap::default();
         let mut update_entities_panel = false;
@@ -256,7 +256,7 @@ struct EditWorld {
 }
 
 impl Widget for EditWorld {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
         Properties {
             writer: self.writer.clone(),
@@ -284,7 +284,7 @@ struct PrefabList {
 }
 
 impl Widget for PrefabList {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         for (module_id, record) in self.editor_state.records.iter() {

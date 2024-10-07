@@ -4,7 +4,7 @@ use game_common::components::components::RawComponent;
 use game_common::reflection::editor::ComponentEditor;
 use game_common::reflection::{ComponentDescriptor, FieldIndex, FieldKind, RecordDescriptor};
 use game_data::record::{Record, RecordKind};
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Background, Direction, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use game_wasm::record::ModuleId;
@@ -30,7 +30,7 @@ pub struct Records {
 }
 
 impl Widget for Records {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 direction: Direction::Column,
@@ -67,7 +67,7 @@ struct SidePanel {
 }
 
 impl Widget for SidePanel {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let records: Vec<_> = self
@@ -124,7 +124,7 @@ struct RecordList {
 }
 
 impl Widget for RecordList {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let keys = vec!["ID".to_owned(), "Name".to_owned()];
@@ -250,6 +250,6 @@ fn format_component_field(editor: &ComponentEditor<'_>, field: FieldIndex) -> Op
 
 struct State {
     selected: RecordKind,
-    record_list: Option<Context<()>>,
-    root: Context<()>,
+    record_list: Option<Context>,
+    root: Context,
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use game_common::module::Module;
 use game_common::reflection::RecordDescriptor;
 use game_data::record::{Record, RecordKind};
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Text, Widget};
 use game_wasm::record::{ModuleId, RecordId};
 use game_wasm::world::RecordReference;
@@ -22,7 +22,7 @@ pub struct EditRecord {
 }
 
 impl Widget for EditRecord {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let record = if let Some(id) = self.id {
@@ -157,7 +157,7 @@ impl Widget for EditRecord {
 struct EditComponentRecord {}
 
 impl Widget for EditComponentRecord {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
         Text::new("TODO").mount(&root);
         root
@@ -171,7 +171,7 @@ struct EditRecordRecord {
 }
 
 impl Widget for EditRecordRecord {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let components: Vec<_> = self
@@ -224,7 +224,7 @@ struct EditPrefabRecord {
 }
 
 impl Widget for EditPrefabRecord {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let button = Button::new()
@@ -248,7 +248,7 @@ struct EditScript {
 }
 
 impl Widget for EditScript {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         Input::new()
@@ -267,7 +267,7 @@ struct EditResource {
 }
 
 impl Widget for EditResource {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let button = Button::new()

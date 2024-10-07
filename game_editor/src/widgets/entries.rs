@@ -1,11 +1,14 @@
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Background, Border, Color, Direction, Growth, Padding, Size, Style};
 use game_ui::widgets::{
     Button, Callback, Container, ContextMenuState, ContextPanel, Table, TableStyle, Text, Widget,
 };
+use image::Rgba;
 
 const ROOT_CTX_PRIORITY: u32 = 0;
 const CELL_CTX_PRIORITY: u32 = 1;
+
+const CONTEXT_MENU_BACKGROUND: Color = Color(Rgba([0x42, 0x41, 0x4d, 0xff]));
 
 #[derive(Debug)]
 pub struct EntriesData {
@@ -30,7 +33,7 @@ pub struct Entries {
 }
 
 impl Widget for Entries {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let callbacks = ContextCallbacks {
             add_entry: self.data.add_entry,
             edit_entry: self.data.edit_entry,
@@ -116,8 +119,8 @@ fn spawn_ctx_menu(callbacks: &ContextCallbacks, index: usize) -> Callback<Contex
 
     Callback::from(move |state: ContextMenuState| {
         let style = Style {
-            background: Background::BLACK,
             padding: Padding::splat(Size::Pixels(5)),
+            background: Background::Color(CONTEXT_MENU_BACKGROUND.0),
             ..Default::default()
         };
 
@@ -172,7 +175,7 @@ struct TableCell<'a> {
 }
 
 impl<'a> Widget for TableCell<'a> {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let context_menu = ContextPanel::new()
             .spawn_menu(spawn_ctx_menu(&self.callbacks, self.index))
             .priority(CELL_CTX_PRIORITY)

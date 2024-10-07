@@ -1,10 +1,8 @@
-use game_ui::reactive::Context;
-use game_ui::style::{Background, BorderRadius, Bounds, Size, SizeVec2, Style};
+use game_ui::runtime::Context;
 use game_ui::widgets::{Callback, Container, Widget};
 
 use crate::state::EditorState;
 use crate::widgets::header::{ActionButton, Header};
-// use crate::widgets::header::{ActionButton, Header};
 use crate::windows::SpawnWindow;
 
 pub struct MainWindow {
@@ -12,7 +10,7 @@ pub struct MainWindow {
 }
 
 impl Widget for MainWindow {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let buttons = vec![
             ActionButton {
                 label: "Modules".to_owned(),
