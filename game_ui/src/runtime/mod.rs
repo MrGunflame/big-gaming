@@ -2,7 +2,7 @@ pub mod events;
 pub mod reactive;
 
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::mem::ManuallyDrop;
 use std::sync::Arc;
@@ -86,12 +86,41 @@ impl Runtime {
             tree: LayoutTree::new(),
             children: HashMap::new(),
             parents: HashMap::new(),
+            root: HashSet::new(),
             global_event_handlers: Vec::new(),
             type_map: HashMap::new(),
         }));
 
         window.documents.push(doc);
         Some(doc)
+    }
+
+    pub fn destroy_document(&self, document_id: DocumentId) {
+        let _span = trace_span!("Runtime::destroy_document").entered();
+
+        // Before we can remove the document we must destroy
+        // all nodes in the document.
+        let rt = self.inner.lock();
+        let Some(document) = rt.documents.get(document_id.0) else {
+            return;
+        };
+
+        let root = document.root.clone();
+
+        drop(rt);
+        for node in root {
+            self.remove(document_id, node);
+        }
+
+        let mut rt = self.inner.lock();
+        let document = rt.documents.remove(document_id.0).unwrap();
+
+        for id in document.global_event_handlers {
+            rt.event_handlers.remove(id);
+        }
+
+        let window = rt.windows.get_mut(&document.window).unwrap();
+        window.documents.retain(|id| *id != document_id);
     }
 
     fn remove(&self, document: DocumentId, node: NodeId) {
@@ -106,6 +135,8 @@ impl Runtime {
             if !document.nodes.contains_key(node.0) {
                 return;
             }
+
+            document.root.remove(&node);
 
             let mut nodes_removed = Vec::new();
             let mut queue = vec![node];
@@ -180,18 +211,32 @@ impl<'a> RuntimeWindows<'a> {
     pub fn update_size(&self, window: RenderTarget, size: UVec2) {
         let _span = trace_span!("RuntimeWindows::update_size").entered();
 
-        let mut rt = self.runtime.inner.lock();
-        if let Some(window) = rt.windows.get_mut(&window) {
-            window.size = size;
+        let rt = &mut *self.runtime.inner.lock();
+        let Some(window) = rt.windows.get_mut(&window) else {
+            return;
+        };
+
+        window.size = size;
+
+        for document_id in &window.documents {
+            let document = rt.documents.get_mut(document_id.0).unwrap();
+            document.tree.resize(size);
         }
     }
 
     pub fn update_scale_factor(&self, window: RenderTarget, scale_factor: f64) {
         let _span = trace_span!("RuntimeWindows::update_scale_factor").entered();
 
-        let mut rt = self.runtime.inner.lock();
-        if let Some(window) = rt.windows.get_mut(&window) {
-            window.scale_factor = scale_factor;
+        let rt = &mut *self.runtime.inner.lock();
+        let Some(window) = rt.windows.get_mut(&window) else {
+            return;
+        };
+
+        window.scale_factor = scale_factor;
+
+        for document_id in &window.documents {
+            let document = rt.documents.get_mut(document_id.0).unwrap();
+            document.tree.set_scale_factor(scale_factor);
         }
     }
 }
@@ -224,6 +269,8 @@ pub(crate) struct Document {
     nodes: Arena<Node>,
     parents: HashMap<NodeId, NodeId>,
     children: HashMap<NodeId, Vec<NodeId>>,
+    root: HashSet<NodeId>,
+
     global_event_handlers: Vec<EventHandlerId>,
     type_map: HashMap<TypeId, Arc<dyn Any + Send + Sync + 'static>>,
 }
@@ -285,6 +332,8 @@ impl Context {
         if let Some(parent) = self.node {
             document.parents.insert(key, parent);
             document.children.get_mut(&parent).unwrap().push(key);
+        } else {
+            document.root.insert(key);
         }
 
         Self {
