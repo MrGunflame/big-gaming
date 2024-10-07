@@ -25,32 +25,32 @@ pub struct NodeDestroyed;
 impl Event for NodeDestroyed {}
 
 #[derive(Debug)]
-pub struct EventHandlers {
-    handlers: Arena<Arc<Mutex<EventHandlerPtr>>>,
+pub(crate) struct EventHandlers {
+    handlers: Arena<(TypeId, Arc<Mutex<EventHandlerPtr>>)>,
     map: HashMap<TypeId, Vec<EventHandlerId>>,
 }
 
 impl EventHandlers {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             handlers: Arena::new(),
             map: HashMap::new(),
         }
     }
 
-    pub fn insert<E, F>(&mut self, handler: F) -> EventHandlerId
+    pub(crate) fn insert<E, F>(&mut self, handler: F) -> EventHandlerId
     where
         E: Event,
         F: FnMut(E) + Send + 'static,
     {
         let handler = Arc::new(Mutex::new(EventHandlerPtr::new(handler)));
-        let key = EventHandlerId(self.handlers.insert(handler));
+        let key = EventHandlerId(self.handlers.insert((TypeId::of::<E>(), handler)));
 
         self.map.entry(TypeId::of::<E>()).or_default().push(key);
         key
     }
 
-    pub fn remove(&mut self, id: EventHandlerId) {
+    pub(crate) fn remove(&mut self, id: EventHandlerId) {
         self.handlers.remove(id.0);
         self.map.retain(|_, keys| {
             keys.retain(|key| *key != id);
@@ -58,13 +58,13 @@ impl EventHandlers {
         });
     }
 
-    pub fn get_by_id<E>(&self, id: EventHandlerId) -> Option<EventHandler<E>>
+    pub(crate) fn get_by_id<E>(&self, id: EventHandlerId) -> Option<EventHandler<E>>
     where
         E: Event,
     {
-        let handler = self.handlers.get(id.0)?;
+        let (type_id, handler) = self.handlers.get(id.0)?;
 
-        if handler.lock().type_id != TypeId::of::<E>() {
+        if *type_id != TypeId::of::<E>() {
             None
         } else {
             Some(EventHandler {
@@ -74,7 +74,7 @@ impl EventHandlers {
         }
     }
 
-    pub fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
+    pub(crate) fn get<E>(&self) -> Option<Vec<EventHandler<E>>>
     where
         E: Event,
     {
@@ -83,7 +83,8 @@ impl EventHandlers {
         Some(
             keys.iter()
                 .map(|key| {
-                    let handler = self.handlers.get(key.0).unwrap();
+                    let (type_id, handler) = self.handlers.get(key.0).unwrap();
+                    debug_assert_eq!(TypeId::of::<E>(), *type_id);
                     EventHandler {
                         ptr: handler.clone(),
                         _marker: PhantomData,
@@ -95,7 +96,7 @@ impl EventHandlers {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EventHandlerId(Key);
+pub(crate) struct EventHandlerId(Key);
 
 #[derive(Debug, Clone)]
 pub(crate) struct EventHandler<E> {
@@ -104,7 +105,7 @@ pub(crate) struct EventHandler<E> {
 }
 
 impl<E> EventHandler<E> {
-    pub fn call(&self, event: E)
+    pub(crate) fn call(&self, event: E)
     where
         E: Event,
     {
@@ -157,7 +158,6 @@ unsafe impl<E, F> Send for RawEventHandler<E, F> where F: Send {}
 #[derive(Debug)]
 struct EventHandlerPtr {
     ptr: NonNull<()>,
-    type_id: TypeId,
 }
 
 impl EventHandlerPtr {
@@ -186,17 +186,13 @@ impl EventHandlerPtr {
             NonNull::new_unchecked(ptr).cast::<()>()
         };
 
-        Self {
-            ptr,
-            type_id: TypeId::of::<E>(),
-        }
+        Self { ptr }
     }
 
     unsafe fn call<E>(&mut self, event: E)
     where
         E: Event,
     {
-        debug_assert_eq!(TypeId::of::<E>(), self.type_id);
         let mut event = MaybeUninit::new(event);
 
         unsafe {

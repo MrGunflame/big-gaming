@@ -53,6 +53,8 @@ impl Runtime {
     where
         E: Event + Clone,
     {
+        let _span = trace_span!("Runtime::send_event").entered();
+
         let rt = self.inner.lock();
         let Some(handlers) = rt.event_handlers.get::<E>() else {
             return;
@@ -64,6 +66,16 @@ impl Runtime {
         for handler in handlers.into_iter().rev() {
             handler.call(event.clone());
         }
+    }
+
+    pub fn documents(&self, window: RenderTarget) -> Vec<DocumentId> {
+        let _span = trace_span!("Runtime::documents").entered();
+
+        let rt = self.inner.lock();
+        rt.windows
+            .get(&window)
+            .map(|w| w.documents.clone())
+            .unwrap_or(Vec::new())
     }
 
     pub fn root_context(&self, document: DocumentId) -> Context {
@@ -199,13 +211,23 @@ impl<'a> RuntimeWindows<'a> {
         );
     }
 
-    pub fn destroy(&self, window: RenderTarget) {
+    pub fn destroy(&self, target: RenderTarget) {
         let _span = trace_span!("RuntimeWindows::destroy").entered();
 
-        let mut rt = self.runtime.inner.lock();
-        let Some(window) = rt.windows.remove(&window) else {
+        let rt = self.runtime.inner.lock();
+        let Some(window) = rt.windows.get(&target) else {
             return;
         };
+
+        let documents = window.documents.clone();
+
+        drop(rt);
+        for document in documents {
+            self.runtime.destroy_document(document);
+        }
+
+        let mut rt = self.runtime.inner.lock();
+        rt.windows.remove(&target).unwrap();
     }
 
     pub fn update_size(&self, window: RenderTarget, size: UVec2) {
