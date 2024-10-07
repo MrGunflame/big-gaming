@@ -16,6 +16,7 @@ use game_window::cursor::Cursor;
 use glam::{UVec2, Vec2};
 use parking_lot::Mutex;
 
+use crate::clipboard::Clipboard;
 use crate::layout::{self, LayoutTree};
 use crate::primitive::Primitive;
 use crate::render::Rect;
@@ -26,6 +27,7 @@ pub struct Runtime {
     pub(crate) inner: Arc<Mutex<RuntimeInner>>,
     pub(crate) cursor: Arc<Mutex<Option<Arc<Cursor>>>>,
     pub(crate) pool: Arc<TaskPool>,
+    pub(crate) clipboard: Arc<Mutex<Clipboard>>,
 }
 
 impl Runtime {
@@ -38,6 +40,7 @@ impl Runtime {
             })),
             cursor: Arc::new(Mutex::new(None)),
             pool: Arc::new(TaskPool::new(1)),
+            clipboard: Arc::new(Mutex::new(Clipboard::new())),
         }
     }
 
@@ -143,14 +146,6 @@ impl Runtime {
             handler.call(NodeDestroyed);
         }
     }
-
-    pub fn clipboard_set(&self, value: &str) {
-        todo!()
-    }
-
-    pub fn clipboard_get(&self) -> Option<String> {
-        todo!()
-    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -255,6 +250,12 @@ impl Context {
         &self.runtime
     }
 
+    /// Returns access to the system clipboard.
+    #[inline]
+    pub fn clipboard(&self) -> ClipboardRef<'_> {
+        ClipboardRef { rt: &self.runtime }
+    }
+
     pub fn append(&self, primitive: Primitive) -> Context {
         let mut rt = self.runtime.inner.lock();
         let document = rt.documents.get_mut(self.document.0).unwrap();
@@ -318,8 +319,8 @@ impl Context {
 
     pub fn layout(&self, node: NodeId) -> Option<Rect> {
         let mut rt = self.runtime.inner.lock();
-        let document = rt.documents.get_mut(self.document.0).unwrap();
-        let node = document.nodes.get(node.0).unwrap();
+        let document = rt.documents.get_mut(self.document.0)?;
+        let node = document.nodes.get(node.0)?;
         document.tree.layout(node.layout_key).map(|layout| Rect {
             min: layout.position,
             max: UVec2 {
@@ -447,5 +448,23 @@ impl<T> Drop for TaskHandle<T> {
     fn drop(&mut self) {
         let task = unsafe { ManuallyDrop::take(&mut self.0) };
         task.cancel_now();
+    }
+}
+
+/// Access to the system clipboard.
+#[derive(Clone, Debug)]
+pub struct ClipboardRef<'a> {
+    rt: &'a Runtime,
+}
+
+impl<'a> ClipboardRef<'a> {
+    /// Sets the current value of the system clipboard.
+    pub fn set(&self, value: &str) {
+        self.rt.clipboard.lock().set(value);
+    }
+
+    /// Returns the given value of the system clipboard, if any.
+    pub fn get(&self) -> Option<String> {
+        self.rt.clipboard.lock().get()
     }
 }

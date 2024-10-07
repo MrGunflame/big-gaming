@@ -112,7 +112,6 @@ fn mount_selector(
     };
 
     let layout = wrapper.layout(input_id).unwrap();
-    dbg!(&layout);
 
     options_wrapper.remove(options_wrapper.node().unwrap());
     if check_position && !layout.contains(wrapper.cursor().as_uvec2()) {
@@ -140,7 +139,6 @@ fn mount_selector(
         let options = options.clone();
         let button = Button::new()
             .on_click(move |()| {
-                dbg!(index);
                 input_wrapper.try_lock().unwrap().clear_children();
                 let filter = filter.clone();
                 on_change.call(index);

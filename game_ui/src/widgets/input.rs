@@ -12,7 +12,7 @@ use image::Rgba;
 use parking_lot::Mutex;
 
 use crate::runtime::events::NodeDestroyed;
-use crate::runtime::{Context, NodeId, Runtime, TaskHandle};
+use crate::runtime::{ClipboardRef, Context, NodeId, Runtime, TaskHandle};
 use crate::style::{Background, Bounds, Color, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
@@ -276,7 +276,7 @@ impl Widget for Input {
                 let node = nodes.get_mut(&active_node.node).unwrap();
                 let key_states = state.key_states.lock();
                 if !update_buffer(
-                    ctx.runtime(),
+                    &ctx.clipboard(),
                     &mut node.buffer,
                     &key_states,
                     &mut active_node.selection,
@@ -307,7 +307,7 @@ impl Widget for Input {
 }
 
 fn update_buffer(
-    runtime: &Runtime,
+    clipboard: &ClipboardRef<'_>,
     buffer: &mut Buffer,
     key_states: &KeyStates,
     selection: &mut Option<Selection>,
@@ -322,14 +322,14 @@ fn update_buffer(
         Some(KeyCode::C) if key_states.is_control_pressed() => {
             if let Some(selection) = selection {
                 if let Some(text) = buffer.string.get(selection.range()) {
-                    runtime.clipboard_set(text);
+                    clipboard.set(text);
                 }
             }
 
             return false;
         }
         Some(KeyCode::V) if key_states.is_control_pressed() => {
-            if let Some(text) = runtime.clipboard_get() {
+            if let Some(text) = clipboard.get() {
                 buffer.insert(&text);
             }
 
