@@ -45,7 +45,7 @@ impl Primitive {
             let img = render_to_texture(
                 &text.text,
                 text.size * scale_factor as f32,
-                UVec2::ZERO,
+                style.bounds.max - style.bounds.min,
                 text.caret,
                 text.selection_range.clone(),
                 text.selection_color,
@@ -71,7 +71,7 @@ impl Primitive {
             (Some(text), None) => render_to_texture(
                 &text.text,
                 text.size * scale_factor as f32,
-                UVec2::ZERO,
+                style.bounds.max - style.bounds.min,
                 text.caret,
                 text.selection_range.clone(),
                 text.selection_color,
