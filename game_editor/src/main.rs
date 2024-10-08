@@ -171,10 +171,14 @@ impl game_window::App for App {
                 let scale_factor = window.scale_factor();
                 dbg!(scale_factor);
 
-                self.renderer.create(event.window, window);
+                self.renderer.create(event.window, window.clone());
                 self.ui_state.create(
                     RenderTarget::Window(event.window),
-                    WindowProperties { size, scale_factor },
+                    WindowProperties {
+                        size,
+                        scale_factor,
+                        state: window,
+                    },
                 );
 
                 if let Some(spawn) = self.loading_windows.remove(&event.window) {

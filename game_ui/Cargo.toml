@@ -24,10 +24,8 @@ ab_glyph = "0.2.28"
 image = "0.25.1"
 wgpu = "0.19.1"
 bytemuck = "1.16.1"
-parking_lot = { version = "0.12.3", features = ["deadlock_detection"] }
-slotmap = "1.0.7"
+parking_lot = "0.12.3"
 tracing = "0.1.40"
-hex = "0.4.3"
 thiserror = "1.0.61"
 async-io = "2.3.3"
 futures = "0.3.30"
@@ -39,6 +37,10 @@ tiny-skia = "0.11.4"
 
 # Clipboard
 arboard = "3.4.0"
+
+[target.'cfg(unix)'.dependencies]
+smithay-clipboard = "0.7.2"
+raw-window-handle = "0.6.0"
 
 [dev-dependencies]
 criterion = "0.5.1"

@@ -4,10 +4,12 @@ pub mod windows;
 
 mod backend;
 
+pub use backend::Backend;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc};
 
-use backend::{Backend, DEFAULT_BACKEND};
+use backend::DEFAULT_BACKEND;
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
     convert_key_code, CursorEntered, CursorLeft, CursorMoved, WindowCloseRequested, WindowCreated,

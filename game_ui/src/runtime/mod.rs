@@ -13,6 +13,7 @@ use game_render::camera::RenderTarget;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
 use game_window::cursor::Cursor;
+use game_window::windows::WindowId;
 use glam::UVec2;
 use parking_lot::Mutex;
 
@@ -27,7 +28,7 @@ pub struct Runtime {
     pub(crate) inner: Arc<Mutex<RuntimeInner>>,
     pub(crate) cursor: Arc<Mutex<Option<Arc<Cursor>>>>,
     pub(crate) pool: Arc<TaskPool>,
-    pub(crate) clipboard: Arc<Mutex<Clipboard>>,
+    clipboard: Arc<Mutex<Clipboard>>,
 }
 
 impl Runtime {
@@ -236,12 +237,18 @@ impl<'a> RuntimeWindows<'a> {
                 scale_factor: props.scale_factor,
             },
         );
+
+        self.runtime.clipboard.lock().create(props.state);
     }
 
     /// Destroys the window with the given [`RenderTarget`]. Does nothing if no window with the
     /// given [`RenderTarget`] exists.
     pub fn destroy(&self, target: RenderTarget) {
         let _span = trace_span!("RuntimeWindows::destroy").entered();
+
+        if let Some(window) = target.as_window() {
+            self.runtime.clipboard.lock().destroy(*window);
+        }
 
         let rt = self.runtime.inner.lock();
         let Some(window) = rt.windows.get(&target) else {
@@ -357,7 +364,10 @@ impl Context {
     /// Returns access to the system clipboard.
     #[inline]
     pub fn clipboard(&self) -> ClipboardRef<'_> {
-        ClipboardRef { rt: &self.runtime }
+        ClipboardRef {
+            rt: &self.runtime,
+            document: self.document,
+        }
     }
 
     /// Returns access to the cursor state.
@@ -602,16 +612,35 @@ impl<T> Drop for TaskHandle<T> {
 #[derive(Clone, Debug)]
 pub struct ClipboardRef<'a> {
     rt: &'a Runtime,
+    document: DocumentId,
 }
 
 impl<'a> ClipboardRef<'a> {
     /// Sets the current value of the system clipboard.
     pub fn set(&self, value: &str) {
-        self.rt.clipboard.lock().set(value);
+        let Some(window) = self.window() else {
+            return;
+        };
+
+        self.rt.clipboard.lock().set(window, value);
     }
 
     /// Returns the given value of the system clipboard, if any.
     pub fn get(&self) -> Option<String> {
-        self.rt.clipboard.lock().get()
+        let Some(window) = self.window() else {
+            return None;
+        };
+
+        self.rt.clipboard.lock().get(window)
+    }
+
+    fn window(&self) -> Option<WindowId> {
+        let rt = self.rt.inner.lock();
+        let Some(document) = rt.documents.get(self.document.0) else {
+            return None;
+        };
+
+        // Images have no associated clipboard.
+        document.window.as_window().copied()
     }
 }
