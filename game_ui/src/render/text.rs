@@ -143,7 +143,7 @@ impl Text {
             size,
             caret,
             selection_range: None,
-            selection_color: Color::BLACK,
+            selection_color: Color::default(),
         }
     }
 
