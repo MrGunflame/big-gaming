@@ -224,19 +224,20 @@ pub(crate) fn render_to_texture(
 
     let mut image = RgbaImage::new(image_size.x, image_size.y);
 
-    for (index, glyph) in glyphs.iter().enumerate() {
+    if let Some(range) = &selection_range {
+        draw_selection_range(
+            scaled_font,
+            &mut image,
+            text,
+            &glyphs,
+            range.clone(),
+            selection_color,
+        );
+    }
+
+    for glyph in glyphs.iter() {
         if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph.clone()) {
             let bounds = outlined_glyph.px_bounds();
-
-            if let Some(selection_range) = &selection_range {
-                if selection_range.contains(&index) {
-                    for x in bounds.min.x.floor() as u32..bounds.max.x.ceil() as u32 {
-                        for y in bounds.min.y.floor() as u32..bounds.max.y.ceil() as u32 {
-                            image.put_pixel(x, y, selection_color.0);
-                        }
-                    }
-                }
-            }
 
             outlined_glyph.draw(|x, y, cov| {
                 let pixel = (cov * 255.0) as u8;
@@ -275,6 +276,78 @@ pub(crate) fn render_to_texture(
         image.clone(),
     );
     image
+}
+
+fn draw_selection_range<SF, F>(
+    font: SF,
+    image: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    text: &str,
+    glyphs: &[Glyph],
+    range: Range<usize>,
+    color: Color,
+) where
+    SF: ScaleFont<F>,
+    F: Font,
+{
+    let _span = trace_span!("draw_selection_range").entered();
+
+    if range.is_empty() {
+        return;
+    }
+
+    let Some(selected_text) = text.get(range.clone()) else {
+        return;
+    };
+
+    let v_advance = font.height() + font.line_gap();
+
+    // Since newlines are not rendered to glyphs we must
+    // skip over any newline chars that exist before `index`.
+    let offset = match text.get(..range.start) {
+        Some(text) => text.chars().filter(|ch| *ch == '\n').count(),
+        None => 0,
+    };
+
+    let mut line_offset = 0;
+    for (line_index, line) in selected_text.split('\n').enumerate() {
+        let start = line_offset;
+        let end = line.len() + start;
+        line_offset += line.len() + 1;
+
+        // For every line we iterate over there is a newline char
+        // that needs to be skipped.
+        let offset = offset + line_index;
+
+        // Map the text line to the list of glyphs in the line.
+        let line_glyphs = &glyphs[range.start + start - offset..range.start + end - offset];
+
+        let start_x = match line_glyphs.first() {
+            Some(glyph) => glyph.position.x as u32,
+            None => 0,
+        };
+        let end_x = match line_glyphs.last() {
+            Some(glyph) => (glyph.position.x + font.h_advance(glyph.id)) as u32,
+            None => 0,
+        };
+
+        let min = UVec2 {
+            x: start_x,
+            y: (v_advance * offset as f32) as u32,
+        };
+        let max = UVec2 {
+            x: end_x,
+            y: (v_advance * offset as f32 + font.height()) as u32,
+        };
+
+        debug_assert!(max.x >= min.x);
+        debug_assert!(max.y >= min.y);
+
+        for x in min.x..max.x {
+            for y in min.y..max.y {
+                image.put_pixel(x, y, color.0);
+            }
+        }
+    }
 }
 
 fn get_caret<SF, F>(font: SF, text: &str, glyphs: &[Glyph], index: usize) -> Caret
