@@ -19,7 +19,7 @@ impl Clipboard {
     pub(crate) fn create(&mut self, window: WindowState) {
         let _span = trace_span!("Clipboard::create").entered();
 
-        if let Backend::NotInit = &self.backend {
+        if matches!(self.backend, Backend::NotInit) {
             self.backend = if window.backend().is_wayland() {
                 Backend::Wayland(WaylandBackend {
                     clipboards: HashMap::new(),
