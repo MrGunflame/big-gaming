@@ -67,16 +67,16 @@ impl UiState {
 
         match event {
             WindowEvent::CursorMoved(event) => {
-                self.runtime.send_event(event);
+                self.runtime.send_event(window.into(), event);
             }
             WindowEvent::MouseButtonInput(event) => {
-                self.runtime.send_event(event);
+                self.runtime.send_event(window.into(), event);
             }
             WindowEvent::MouseWheel(event) => {
-                self.runtime.send_event(event);
+                self.runtime.send_event(window.into(), event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.runtime.send_event(event);
+                self.runtime.send_event(window.into(), event);
             }
             _ => (),
         }

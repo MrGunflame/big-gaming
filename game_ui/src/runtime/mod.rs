@@ -52,16 +52,32 @@ impl Runtime {
     }
 
     /// Dispatches a new event to this `Runtime`.
-    pub(crate) fn send_event<E>(&self, event: E)
+    pub(crate) fn send_event<E>(&self, window: RenderTarget, event: E)
     where
         E: Event + Clone,
     {
         let _span = trace_span!("Runtime::send_event").entered();
 
         let rt = self.inner.lock();
-        let Some(handlers) = rt.event_handlers.get::<E>() else {
-            return;
-        };
+        let mut handlers = Vec::new();
+
+        for document in rt.documents.values() {
+            if document.window != window {
+                continue;
+            }
+
+            for id in &document.node_event_handlers {
+                if let Some(handler) = rt.event_handlers.get_by_id::<E>(*id) {
+                    handlers.push(handler);
+                }
+            }
+
+            for id in &document.global_event_handlers {
+                if let Some(handler) = rt.event_handlers.get_by_id::<E>(*id) {
+                    handlers.push(handler);
+                }
+            }
+        }
 
         drop(rt);
 
@@ -106,6 +122,7 @@ impl Runtime {
             children: HashMap::new(),
             parents: HashMap::new(),
             root: HashSet::new(),
+            node_event_handlers: HashSet::new(),
             global_event_handlers: Vec::new(),
             type_map: HashMap::new(),
         }));
@@ -307,6 +324,7 @@ pub(crate) struct Document {
     children: HashMap<NodeId, Vec<NodeId>>,
     root: HashSet<NodeId>,
 
+    node_event_handlers: HashSet<EventHandlerId>,
     global_event_handlers: Vec<EventHandlerId>,
     type_map: HashMap<TypeId, Arc<dyn Any + Send + Sync + 'static>>,
 }
@@ -504,6 +522,7 @@ impl<'a> DocumentRef<'a> {
         if let Some(parent) = parent {
             let node = document.nodes.get_mut(parent.0).unwrap();
             node.event_handlers.push(id);
+            document.node_event_handlers.insert(id);
         } else {
             if TypeId::of::<E>() == TypeId::of::<NodeDestroyed>() {
                 panic!("NodeDestroyed event handler must be attached to a node");
