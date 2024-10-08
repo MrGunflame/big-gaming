@@ -147,12 +147,22 @@ impl Text {
         }
     }
 
+    /// Returns the size of the the texture used to rasterize this `Text` without actually doing
+    /// any rasterization.
+    ///
+    /// The returned size is equivalent to the size of the [`ImageBuffer`] returned by
+    /// [`render_to_texture`].
+    ///
+    /// [`render_to_texture`]: Self::render_to_texture
     pub(crate) fn bounds(&self, bounds: UVec2) -> UVec2 {
         let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
         let scaled_font = font.as_scaled(PxScale::from(self.size));
         layout_glyphs(scaled_font, &self.text, bounds.as_vec2(), &mut Vec::new())
     }
 
+    /// Rasterizes this `Text` onto a texture with a `bounds` constraint.
+    ///
+    /// The returned [`ImageBuffer`] will never be bigger than `bounds`.
     pub(crate) fn render_to_texture(&self, bounds: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
         let key = BorrowedKey {
             text: &self.text,
