@@ -51,6 +51,20 @@ pub enum RenderTarget {
     Image(RenderImageId),
 }
 
+impl From<WindowId> for RenderTarget {
+    #[inline]
+    fn from(value: WindowId) -> Self {
+        Self::Window(value)
+    }
+}
+
+impl From<RenderImageId> for RenderTarget {
+    #[inline]
+    fn from(value: RenderImageId) -> Self {
+        Self::Image(value)
+    }
+}
+
 /// Perspective camera projection paramters
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Projection {
