@@ -11,7 +11,6 @@ use game_tracing::trace_span;
 use glam::{UVec2, Vec2};
 use image::{ImageBuffer, Pixel, Rgba, RgbaImage};
 use parking_lot::Mutex;
-use wgpu::hal::auxil::db;
 
 use super::image::Image;
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
@@ -253,7 +252,7 @@ pub(crate) fn render_to_texture(
 
     // Render the caret.
     if let Some(caret) = caret {
-        let caret = get_caret(scaled_font, &glyphs, caret as usize);
+        let caret = get_caret(scaled_font, text, &glyphs, caret as usize);
 
         for x in caret.position.x as u32..caret.position.x as u32 + caret.width as u32 {
             for y in caret.position.y as u32..caret.position.y as u32 + caret.height as u32 {
@@ -278,29 +277,68 @@ pub(crate) fn render_to_texture(
     image
 }
 
-fn get_caret<SF, F>(font: SF, glyphs: &[Glyph], index: usize) -> Caret
+fn get_caret<SF, F>(font: SF, text: &str, glyphs: &[Glyph], index: usize) -> Caret
 where
     SF: ScaleFont<F>,
     F: Font,
 {
     let _span = trace_span!("get_caret").entered();
 
-    let position = match glyphs.get(index) {
-        Some(glyph) => {
-            let mut pos = glyph.position;
-            pos.y -= font.ascent();
-            pos
-        }
-        None => match glyphs.last() {
-            Some(glyph) => {
-                let mut pos = glyph.position;
-                pos.x += font.h_advance(glyph.id);
-                pos.y -= font.ascent();
-                pos
-            }
-            None => Point { x: 0.0, y: 0.0 },
-        },
+    let v_advance = font.height() + font.line_gap();
+
+    // Since newlines are not rendered to glyphs we must
+    // skip over any newline chars that exist before `index`.
+    let offset = match text.get(..index) {
+        Some(text) => text.chars().filter(|ch| *ch == '\n').count(),
+        None => 0,
     };
+
+    let mut position = Point {
+        x: 0.0,
+        y: v_advance * offset as f32,
+    };
+
+    let prev = index
+        .checked_sub(1)
+        .and_then(|prev_index| text.chars().nth(prev_index));
+
+    let next = text.chars().nth(index);
+
+    match next {
+        // Both the next and previous chars are newlines.
+        // This means were are in an empty line.
+        Some('\n') if prev == Some('\n') => (),
+        // The next char is a newline and the previous char is a normal glyph.
+        // This means we are at the end of the line and need to set the caret
+        // after the last glyph of the line.
+        Some('\n') => {
+            // Note that this operation can never underflow since there are always
+            // `offset` newline chars before `next`. Together with `next` this makes
+            // `offset + 1`.
+            if let Some(glyph) = glyphs.get(index - offset - 1) {
+                position.x = glyph.position.x + font.h_advance(glyph.id);
+            }
+        }
+        // The next char is a normal glyph.
+        // This means that we are in a line and need to the set the caret to the
+        // glyph of `next`, placing it between `prev` and `next`.
+        Some(_) => {
+            if let Some(glyph) = glyphs.get(index - offset) {
+                position.x = glyph.position.x;
+            }
+        }
+        // There exists no next char and the previous char is a newline.
+        // This means we are in an empty line at the end of `text`.
+        None if prev == Some('\n') => (),
+        // There exists no next char.
+        // This means we are at the end of the `text` and must set the caret after
+        // the last glyph in the `text`.
+        None => {
+            if let Some(glyph) = glyphs.last() {
+                position.x = glyph.position.x + font.h_advance(glyph.id);
+            }
+        }
+    }
 
     let height = font.height();
     let width = 2.0;
