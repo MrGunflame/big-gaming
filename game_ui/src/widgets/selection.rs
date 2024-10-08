@@ -5,7 +5,7 @@ use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
 
-use crate::reactive::Context;
+use crate::runtime::Context;
 use crate::style::{Position, Style};
 
 use super::{Button, Callback, Container, Input, Text, Widget};
@@ -16,7 +16,7 @@ pub struct Selection {
 }
 
 impl Widget for Selection {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Selection::mount").entered();
 
         let wrapper = Container::new().mount(parent);
@@ -72,7 +72,7 @@ impl Widget for Selection {
             let wrapper_mux = wrapper_mux.clone();
             parent.document().register_with_parent(
                 wrapper.node().unwrap(),
-                move |_ctx: Context<MouseButtonInput>| {
+                move |_event: MouseButtonInput| {
                     mount_selector(
                         &options_wrapper,
                         &input_wrapper,
@@ -92,10 +92,10 @@ impl Widget for Selection {
 }
 
 fn mount_selector(
-    options_wrapper_mux: &Arc<Mutex<Context<()>>>,
-    input_wrapper: &Arc<Mutex<Context<()>>>,
-    wrapper_mux: &Arc<Mutex<Context<()>>>,
-    input: &Arc<Mutex<Option<Context<()>>>>,
+    options_wrapper_mux: &Arc<Mutex<Context>>,
+    input_wrapper: &Arc<Mutex<Context>>,
+    wrapper_mux: &Arc<Mutex<Context>>,
+    input: &Arc<Mutex<Option<Context>>>,
     filter: &Arc<Mutex<String>>,
     options: &Arc<Vec<String>>,
     on_change: &Callback<usize>,
@@ -113,8 +113,8 @@ fn mount_selector(
 
     let layout = wrapper.layout(input_id).unwrap();
 
-    options_wrapper.remove(options_wrapper.node.unwrap());
-    if check_position && !layout.contains(wrapper.cursor().as_uvec2()) {
+    options_wrapper.remove(options_wrapper.node().unwrap());
+    if check_position && !layout.contains(wrapper.cursor().position().unwrap_or_default()) {
         return;
     }
 

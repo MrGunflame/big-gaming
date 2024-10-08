@@ -11,8 +11,9 @@ use glam::UVec2;
 use image::Rgba;
 use parking_lot::Mutex;
 
-use crate::reactive::{Context, NodeDestroyed, NodeId, Runtime, TaskHandle};
-use crate::style::{Bounds, Color, Size, SizeVec2, Style};
+use crate::runtime::events::NodeDestroyed;
+use crate::runtime::{ClipboardRef, Context, NodeId, Runtime, TaskHandle};
+use crate::style::{Background, Bounds, Color, Size, SizeVec2, Style};
 
 use super::{Callback, Container, Text, Widget};
 
@@ -37,6 +38,7 @@ impl Input {
                 // Minimum size to prevent the input widget to
                 // completely disappear.
                 bounds: Bounds::from_min(SizeVec2::splat(Size::Pixels(10))),
+                background: Background::from_hex("42414d").unwrap(),
                 ..Default::default()
             },
         }
@@ -65,7 +67,7 @@ impl Input {
 }
 
 impl Widget for Input {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Input::mount").entered();
 
         let wrapper = Container::new().style(self.style).mount(parent);
@@ -75,21 +77,23 @@ impl Widget for Input {
             .node()
             .unwrap();
 
-        parent.document().register_with_parent(
-            wrapper.node().unwrap(),
-            move |ctx: Context<NodeDestroyed>| {
-                let node = ctx.node().unwrap();
-                let state = ctx.document().get::<InputState>().unwrap();
-                let mut active = state.active.lock();
-                let mut nodes = state.nodes.lock();
+        parent
+            .document()
+            .register_with_parent(wrapper.node().unwrap(), {
+                let ctx = wrapper.clone();
+                move |event: NodeDestroyed| {
+                    let node = ctx.node().unwrap();
+                    let state = ctx.document().get::<InputState>().unwrap();
+                    let mut active = state.active.lock();
+                    let mut nodes = state.nodes.lock();
 
-                if active.as_ref().is_some_and(|active| active.node == node) {
-                    *active = None;
+                    if active.as_ref().is_some_and(|active| active.node == node) {
+                        *active = None;
+                    }
+
+                    nodes.remove(&node);
                 }
-
-                nodes.remove(&node);
-            },
-        );
+            });
 
         if let Some(state) = parent.document().get::<InputState>() {
             tracing::debug!("reusing existing InputState");
@@ -118,7 +122,7 @@ impl Widget for Input {
             );
 
             let ctx = wrapper.clone();
-            let handle = parent.runtime().spawn_task(async move {
+            let handle = parent.spawn_task(async move {
                 let mut timer = Timer::interval(CARET_BLINK_INTERVAL);
                 let mut cursor_blink = false;
                 loop {
@@ -148,82 +152,85 @@ impl Widget for Input {
                 }
             });
 
-            parent
-                .document()
-                .register(move |ctx: Context<MouseButtonInput>| {
-                    let Some(state) = ctx.document().get::<InputState>() else {
-                        return;
+            let ctx = wrapper.clone();
+            parent.document().register(move |event: MouseButtonInput| {
+                let Some(state) = ctx.document().get::<InputState>() else {
+                    return;
+                };
+
+                let mut nodes = state.nodes.lock();
+                let mut active = state.active.lock();
+
+                let prev_active = active.clone();
+
+                let mut selected = false;
+                for node in nodes.values() {
+                    let Some(layout) = ctx.layout(node.ctx.node().unwrap()) else {
+                        continue;
                     };
 
-                    let mut nodes = state.nodes.lock();
-                    let mut active = state.active.lock();
-
-                    let prev_active = active.clone();
-
-                    let mut selected = false;
-                    for node in nodes.values() {
-                        let Some(layout) = ctx.layout(node.ctx.node().unwrap()) else {
-                            continue;
-                        };
-
-                        if layout.contains(ctx.cursor().as_uvec2()) {
-                            *active = Some(ActiveNode {
-                                node: node.ctx.node().unwrap(),
-                                selection: None,
-                            });
-                            selected = true;
-                            break;
-                        }
+                    if layout.contains(ctx.cursor().position().unwrap_or_default()) {
+                        *active = Some(ActiveNode {
+                            node: node.ctx.node().unwrap(),
+                            selection: None,
+                        });
+                        selected = true;
+                        break;
                     }
+                }
 
-                    if !selected {
-                        *active = None
-                    }
+                if !selected {
+                    *active = None
+                }
 
-                    if let Some(prev_active) = prev_active {
-                        let node = nodes.get_mut(&prev_active.node).unwrap();
-                        node.ctx.clear_children();
-                        let text = Text::new(node.buffer.string.clone())
-                            .size(32.0)
-                            .caret(None)
-                            .mount(&node.ctx);
-                        node.text_node = text.node().unwrap();
-                    }
+                if let Some(prev_active) = prev_active {
+                    let node = nodes.get_mut(&prev_active.node).unwrap();
+                    node.ctx.clear_children();
+                    let text = Text::new(node.buffer.string.clone())
+                        .size(32.0)
+                        .caret(None)
+                        .mount(&node.ctx);
+                    node.text_node = text.node().unwrap();
+                }
 
-                    if let Some(active) = active.clone() {
-                        let node = nodes.get_mut(&active.node).unwrap();
+                if let Some(active) = active.clone() {
+                    let node = nodes.get_mut(&active.node).unwrap();
 
-                        // Note that we must use the text node instead of the wrapper
-                        // container node as the container may have additional styling
-                        // (e.g. padding) that may change the layout and cause the position
-                        // to become inprecise.
-                        // The text node has no additional styling properties that may cause
-                        // the layout to shift.
-                        let layout = ctx.layout(node.text_node).unwrap();
+                    // Note that we must use the text node instead of the wrapper
+                    // container node as the container may have additional styling
+                    // (e.g. padding) that may change the layout and cause the position
+                    // to become inprecise.
+                    // The text node has no additional styling properties that may cause
+                    // the layout to shift.
+                    let layout = ctx.layout(node.text_node).unwrap();
 
-                        // We detect whether an input is active based on the outer container.
-                        // This statement therefore underflow if the user clicked on the
-                        // padding area.
-                        // FIXME: We treat that case as zero, but is this desired?
-                        let position = ctx.cursor().as_uvec2().saturating_sub(layout.min);
+                    // We detect whether an input is active based on the outer container.
+                    // This statement therefore underflow if the user clicked on the
+                    // padding area.
+                    // FIXME: We treat that case as zero, but is this desired?
+                    let position = ctx
+                        .cursor()
+                        .position()
+                        .unwrap_or_default()
+                        .saturating_sub(layout.min);
 
-                        let cursor = crate::render::text::get_position_in_text(
-                            &node.buffer,
-                            32.0,
-                            UVec2::MAX,
-                            position,
-                        );
-                        node.buffer.cursor = cursor;
+                    let cursor = crate::render::text::get_position_in_text(
+                        &node.buffer,
+                        32.0,
+                        UVec2::MAX,
+                        position,
+                    );
+                    node.buffer.cursor = cursor;
 
-                        node.ctx.clear_children();
+                    node.ctx.clear_children();
 
-                        let text = Text::new(node.buffer.string.clone())
-                            .size(32.0)
-                            .caret(Some(node.buffer.cursor as u32))
-                            .mount(&node.ctx);
-                        node.text_node = text.node().unwrap();
-                    }
-                });
+                    let text = Text::new(node.buffer.string.clone())
+                        .size(32.0)
+                        .caret(Some(node.buffer.cursor as u32))
+                        .mount(&node.ctx);
+                    node.text_node = text.node().unwrap();
+                }
+            });
 
             parent.document().insert(InputState {
                 nodes: Mutex::new(nodes),
@@ -237,67 +244,66 @@ impl Widget for Input {
                 }),
             });
 
-            parent
-                .document()
-                .register(move |ctx: Context<KeyboardInput>| {
-                    let Some(state) = ctx.document().get::<InputState>() else {
-                        return;
-                    };
+            let ctx = wrapper.clone();
+            parent.document().register(move |event: KeyboardInput| {
+                let Some(state) = ctx.document().get::<InputState>() else {
+                    return;
+                };
 
-                    match ctx.event.key_code {
-                        Some(KeyCode::LShift) => {
-                            state.key_states.lock().lshift = ctx.event.state.is_pressed();
-                            return;
-                        }
-                        Some(KeyCode::RShift) => {
-                            state.key_states.lock().rshift = ctx.event.state.is_pressed();
-                            return;
-                        }
-                        Some(KeyCode::LControl) => {
-                            state.key_states.lock().lctrl = ctx.event.state.is_pressed();
-                            return;
-                        }
-                        Some(KeyCode::RControl) => {
-                            state.key_states.lock().rctrl = ctx.event.state.is_pressed();
-                            return;
-                        }
-                        _ => (),
-                    }
-
-                    let mut nodes = state.nodes.lock();
-                    let mut active = state.active.lock();
-
-                    let Some(active_node) = &mut *active else {
-                        return;
-                    };
-
-                    let node = nodes.get_mut(&active_node.node).unwrap();
-                    let key_states = state.key_states.lock();
-                    if !update_buffer(
-                        &ctx.runtime,
-                        &mut node.buffer,
-                        &key_states,
-                        &mut active_node.selection,
-                        &ctx.event,
-                    ) {
+                match event.key_code {
+                    Some(KeyCode::LShift) => {
+                        state.key_states.lock().lshift = event.state.is_pressed();
                         return;
                     }
+                    Some(KeyCode::RShift) => {
+                        state.key_states.lock().rshift = event.state.is_pressed();
+                        return;
+                    }
+                    Some(KeyCode::LControl) => {
+                        state.key_states.lock().lctrl = event.state.is_pressed();
+                        return;
+                    }
+                    Some(KeyCode::RControl) => {
+                        state.key_states.lock().rctrl = event.state.is_pressed();
+                        return;
+                    }
+                    _ => (),
+                }
 
-                    node.ctx.clear_children();
-                    let text = Text::new(node.buffer.string.clone())
-                        .size(32.0)
-                        .caret(Some(node.buffer.cursor as u32))
-                        .selection_range(active_node.selection.map(|s| s.range()))
-                        .selection_color(SELECTION_COLOR)
-                        .mount(&node.ctx);
-                    node.text_node = text.node().unwrap();
+                let mut nodes = state.nodes.lock();
+                let mut active = state.active.lock();
 
-                    let string = node.buffer.string.clone();
-                    let on_change = node.on_change.clone();
-                    drop(nodes);
-                    drop(active);
-                    on_change.call(string);
-                });
+                let Some(active_node) = &mut *active else {
+                    return;
+                };
+
+                let node = nodes.get_mut(&active_node.node).unwrap();
+                let key_states = state.key_states.lock();
+                if !update_buffer(
+                    &ctx.clipboard(),
+                    &mut node.buffer,
+                    &key_states,
+                    &mut active_node.selection,
+                    &event,
+                ) {
+                    return;
+                }
+
+                node.ctx.clear_children();
+                let text = Text::new(node.buffer.string.clone())
+                    .size(32.0)
+                    .caret(Some(node.buffer.cursor as u32))
+                    .selection_range(active_node.selection.map(|s| s.range()))
+                    .selection_color(SELECTION_COLOR)
+                    .mount(&node.ctx);
+                node.text_node = text.node().unwrap();
+
+                let string = node.buffer.string.clone();
+                let on_change = node.on_change.clone();
+                drop(nodes);
+                drop(active);
+                on_change.call(string);
+            });
         }
 
         wrapper
@@ -305,7 +311,7 @@ impl Widget for Input {
 }
 
 fn update_buffer(
-    runtime: &Runtime,
+    clipboard: &ClipboardRef<'_>,
     buffer: &mut Buffer,
     key_states: &KeyStates,
     selection: &mut Option<Selection>,
@@ -320,14 +326,14 @@ fn update_buffer(
         Some(KeyCode::C) if key_states.is_control_pressed() => {
             if let Some(selection) = selection {
                 if let Some(text) = buffer.string.get(selection.range()) {
-                    runtime.clipboard_set(text);
+                    clipboard.set(text);
                 }
             }
 
             return false;
         }
         Some(KeyCode::V) if key_states.is_control_pressed() => {
-            if let Some(text) = runtime.clipboard_get() {
+            if let Some(text) = clipboard.get() {
                 buffer.insert(&text);
             }
 
@@ -479,7 +485,7 @@ impl KeyStates {
 
 #[derive(Debug)]
 struct NodeState {
-    ctx: Context<()>,
+    ctx: Context,
     text_node: NodeId,
     on_change: Callback<String>,
     buffer: Buffer,

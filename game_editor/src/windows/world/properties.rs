@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 
 use game_render::options::ShadingMode;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Container, Text, Widget};
 
 use super::Event;
@@ -12,7 +12,7 @@ pub struct Properties {
 }
 
 impl Widget for Properties {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let mut shading_mode = ShadingMode::Full;

@@ -1,12 +1,9 @@
 use std::sync::{mpsc, Arc};
 
-use chrono::naive;
 use game_common::collections::string::SmallStr;
 use game_common::entity::EntityId;
-use game_ui::reactive::Context;
-use game_ui::style::{
-    Background, Bounds, Color, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
-};
+use game_ui::runtime::Context;
+use game_ui::style::{Background, Bounds, Color, Direction, Growth, Size, SizeVec2, Style};
 use game_ui::widgets::{Button, Callback, Container, Svg, SvgData, SvgStyle, Text, Widget};
 use image::Rgba;
 use parking_lot::Mutex;
@@ -26,7 +23,7 @@ pub struct Panel {
 }
 
 impl Widget for Panel {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let style = Style {
             background: Background::Color(PANEL_COLOR.0),
             growth: Growth::splat(1.0),
@@ -63,7 +60,7 @@ struct EntityList {
 }
 
 impl Widget for EntityList {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let parent_ctx = Arc::new(Mutex::new(root.clone()));
@@ -91,7 +88,7 @@ pub struct Entity {
 }
 
 fn mount_entity_list(
-    parent: &Arc<Mutex<Context<()>>>,
+    parent: &Arc<Mutex<Context>>,
     state_mux: &Arc<Mutex<SceneState>>,
     writer: &mpsc::Sender<Event>,
 ) {

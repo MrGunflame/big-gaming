@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use game_common::module::{Dependency, Module, ModuleId, ModuleIdExt, Version};
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{
     Background, BorderRadius, Bounds, Direction, Growth, Justify, Padding, Size, SizeVec2, Style,
 };
@@ -22,7 +22,7 @@ pub struct CreateModule {
 }
 
 impl Widget for CreateModule {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         EditModule {
             modules: self.modules,
             id: None,
@@ -38,7 +38,7 @@ pub struct EditModule {
 }
 
 impl Widget for EditModule {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let fields = if let Some(id) = self.id {
             let module = self.modules.get(id).unwrap();
 

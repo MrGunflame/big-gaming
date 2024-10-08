@@ -7,7 +7,7 @@ use game_core::time::Time;
 use game_render::camera::RenderTarget;
 use game_script::Executor;
 use game_tracing::trace_span;
-use game_ui::reactive::Runtime;
+use game_ui::runtime::Runtime;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 

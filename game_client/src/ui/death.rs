@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_wasm::world::RecordReference;
@@ -12,7 +12,7 @@ pub struct DealthUi {
 }
 
 impl Widget for DealthUi {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 growth: Growth::new(1.0, 1.0),

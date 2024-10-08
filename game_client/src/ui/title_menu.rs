@@ -1,6 +1,6 @@
 use std::sync::{mpsc, Arc};
 
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
 use parking_lot::Mutex;
 
@@ -9,7 +9,7 @@ pub struct TitleMenu {
 }
 
 impl Widget for TitleMenu {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let ctx = root.clone();
@@ -20,7 +20,7 @@ impl Widget for TitleMenu {
     }
 }
 
-fn on_state_change(events: mpsc::Sender<MenuEvent>, ctx: Context<()>) -> Callback<State> {
+fn on_state_change(events: mpsc::Sender<MenuEvent>, ctx: Context) -> Callback<State> {
     Callback::from(move |state| {
         let events = events.clone();
         ctx.clear_children();
@@ -53,7 +53,7 @@ struct MainTitleMenu {
 }
 
 impl Widget for MainTitleMenu {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         for option in [
@@ -112,7 +112,7 @@ struct MultiPlayerMenu {
 }
 
 impl Widget for MultiPlayerMenu {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let value = Arc::new(Mutex::new(String::new()));

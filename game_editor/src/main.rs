@@ -11,6 +11,7 @@ use std::sync::{mpsc, Arc};
 use backend::{Backend, Handle, Response};
 
 use game_common::world::World;
+use game_crash_handler::main;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
 use game_render::options::MainPassOptions;
@@ -74,6 +75,7 @@ impl State {
     }
 }
 
+#[main]
 fn main() {
     game_core::logger::init();
 

@@ -1,4 +1,4 @@
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Bounds, Direction, Padding, Size, SizeVec2, Style};
 use game_ui::widgets::{Container, Image, Text, Widget};
 
@@ -7,7 +7,7 @@ pub struct Error {
 }
 
 impl Widget for Error {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let style = Style {
             direction: Direction::Column,
             padding: Padding::splat(Size::Pixels(10)),

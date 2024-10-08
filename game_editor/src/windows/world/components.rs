@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
-use std::env::var;
 use std::fmt::{self, Display, Formatter};
-use std::io::Read;
 use std::str::FromStr;
 use std::sync::{mpsc, Arc};
 
@@ -11,12 +9,11 @@ use game_common::reflection::{ComponentDescriptor, EnumFieldVariant, Field, Fiel
 use game_common::utils::vec_ext::VecExt;
 use game_core::modules::Modules;
 use game_data::record::RecordKind;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{
     Background, BorderRadius, Bounds, Color, Direction, Growth, Padding, Size, SizeVec2, Style,
 };
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Svg, SvgData, Text, Widget};
-use game_wasm::resource::ResourceId;
 use game_wasm::world::RecordReference;
 use image::Rgba;
 use indexmap::IndexMap;
@@ -43,7 +40,7 @@ pub struct ComponentsPanel {
 }
 
 impl Widget for ComponentsPanel {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let style = Style {
             background: Background::Color(PANEL_COLOR.0),
             growth: Growth::splat(1.0),
@@ -74,7 +71,7 @@ impl Widget for ComponentsPanel {
 }
 
 fn mount_component_panel(
-    parent: &Arc<Mutex<Context<()>>>,
+    parent: &Arc<Mutex<Context>>,
     state: &Arc<Mutex<SceneState>>,
     modules: &Modules,
     writer: &mpsc::Sender<Event>,
@@ -145,7 +142,7 @@ define_color! {
     COLOR_W = "7b24c1",
 }
 
-fn display_value<T, F>(ctx: &Context<()>, color: Color, label: &str, value: T, on_change: F)
+fn display_value<T, F>(ctx: &Context, color: Color, label: &str, value: T, on_change: F)
 where
     T: Display + FromStr + 'static,
     F: Into<Callback<T>>,
@@ -206,7 +203,7 @@ struct ComponentWrapper {
 }
 
 impl Widget for ComponentWrapper {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let header = Container::new()
@@ -230,7 +227,7 @@ impl Widget for ComponentWrapper {
             body.clear_children();
 
             let lock = collapse_button_id2.lock();
-            let collapse_button_id: &Context<()> = lock.as_ref().unwrap();
+            let collapse_button_id: &Context = lock.as_ref().unwrap();
             collapse_button_id.clear_children();
 
             if is_active {
@@ -276,7 +273,7 @@ impl Widget for ComponentWrapper {
 }
 
 fn render_component(
-    ctx: &Context<()>,
+    ctx: &Context,
     id: RecordReference,
     descriptor: &ComponentDescriptor,
     writer: &mpsc::Sender<Event>,
@@ -298,7 +295,7 @@ fn render_fields<'a>(
     id: RecordReference,
     descriptor: &'a ComponentDescriptor,
     // parent, field, parent_key
-    mut queue: VecDeque<(Context<()>, &'a Field, Option<ComponentOffsetKey>)>,
+    mut queue: VecDeque<(Context, &'a Field, Option<ComponentOffsetKey>)>,
     writer: &mpsc::Sender<Event>,
     // If every input field gets a direct clone of the component
     // at the time of creation of the panel they cannot track changes
@@ -579,7 +576,7 @@ fn render_fields<'a>(
                             }
 
                             let children_ctx = children_ctx.lock();
-                            let children_ctx: &Context<()> = children_ctx.as_ref().unwrap();
+                            let children_ctx: &Context = children_ctx.as_ref().unwrap();
                             children_ctx.clear_children();
 
                             let mut queue = VecDeque::new();
@@ -630,7 +627,7 @@ impl<'a, T> Widget for KeyValuePair<'a, T>
 where
     T: ToString + FromStr + 'static,
 {
-    fn mount<U>(self, parent: &Context<U>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 direction: Direction::Column,
@@ -677,7 +674,7 @@ impl FromStr for FormatFloat {
 }
 
 fn mount_new_component_selector(
-    cx: &Context<()>,
+    cx: &Context,
     components: Vec<(RecordReference, String, ComponentDescriptor)>,
     writer: &mpsc::Sender<Event>,
 ) {

@@ -3,7 +3,8 @@
 use game_input::mouse::MouseButtonInput;
 use parking_lot::Mutex;
 
-use crate::reactive::{Context, NodeDestroyed, NodeId};
+use crate::runtime::events::NodeDestroyed;
+use crate::runtime::{Context, NodeId};
 use crate::style::{Position, Style};
 use crate::widgets::{Callback, Container, Widget};
 
@@ -54,35 +55,37 @@ impl ContextPanel {
 }
 
 impl Widget for ContextPanel {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let wrapper = Container::new().style(self.style).mount(parent);
 
         // Cleanup when the parent is removed.
-        parent.document().register_with_parent(
-            wrapper.node().unwrap(),
-            move |ctx: Context<NodeDestroyed>| {
-                let node = ctx.node().unwrap();
-                let state = ctx.document().get::<InternalContextMenuState>().unwrap();
+        parent
+            .document()
+            .register_with_parent(wrapper.node().unwrap(), {
+                let ctx = wrapper.clone();
+                move |event: NodeDestroyed| {
+                    let node = ctx.node().unwrap();
+                    let state = ctx.document().get::<InternalContextMenuState>().unwrap();
 
-                // If the context menu is still open we should
-                // close it before we remove it.
-                let mut active = state.active.try_lock().unwrap();
-                if *active == Some(node) {
-                    ctx.runtime().remove(node);
-                    *active = None;
+                    // If the context menu is still open we should
+                    // close it before we remove it.
+                    let mut active = state.active.try_lock().unwrap();
+                    if *active == Some(node) {
+                        ctx.remove(node);
+                        *active = None;
+                    }
+
+                    let mut parents = state.parents.try_lock().unwrap();
+                    parents.retain(|item| item.node.node().unwrap() != node);
+                    parents.sort_by(|a, b| a.priority.cmp(&b.priority).reverse());
+
+                    // We just destroyed the last context menu parent element.
+                    // Remove the remaining state from the document.
+                    if parents.is_empty() {
+                        ctx.document().remove::<InternalContextMenuState>();
+                    }
                 }
-
-                let mut parents = state.parents.try_lock().unwrap();
-                parents.retain(|item| item.node.node().unwrap() != node);
-                parents.sort_by(|a, b| a.priority.cmp(&b.priority).reverse());
-
-                // We just destroyed the last context menu parent element.
-                // Remove the remaining state from the document.
-                if parents.is_empty() {
-                    ctx.document().remove::<InternalContextMenuState>();
-                }
-            },
-        );
+            });
 
         if let Some(state) = parent.document().get::<InternalContextMenuState>() {
             let mut parents = state.parents.try_lock().unwrap();
@@ -105,79 +108,78 @@ impl Widget for ContextPanel {
 
             parent.document().insert(state);
 
-            parent
-                .document()
-                .register(move |ctx: Context<MouseButtonInput>| {
-                    if !ctx.event.state.is_pressed() {
+            let ctx = wrapper.clone();
+            parent.document().register(move |event: MouseButtonInput| {
+                if !event.state.is_pressed() {
+                    return;
+                }
+
+                let cursor = ctx.cursor().position().unwrap_or_default();
+                let Some(state) = ctx.document().get::<InternalContextMenuState>() else {
+                    return;
+                };
+
+                // - If the context menu is open and a click originated inside the
+                // context menu do nothing.
+                // - If the context menu is open and a click originated outside the
+                // context menu close the context menu.
+                // - If no context menu is open do nothing.
+                let mut active = state.active.try_lock().unwrap();
+                if let Some(node) = *active {
+                    if ctx.layout(node).unwrap().contains(cursor) {
                         return;
                     }
 
-                    let cursor = ctx.cursor().as_uvec2();
-                    let Some(state) = ctx.document().get::<InternalContextMenuState>() else {
-                        return;
+                    ctx.remove(node);
+                    *active = None;
+                }
+
+                if !event.button.is_right() {
+                    return;
+                }
+
+                let parents = state.parents.try_lock().unwrap();
+                for item in parents.iter() {
+                    let Some(layout) = ctx.layout(item.node.node().unwrap()) else {
+                        continue;
                     };
 
-                    // - If the context menu is open and a click originated inside the
-                    // context menu do nothing.
-                    // - If the context menu is open and a click originated outside the
-                    // context menu close the context menu.
-                    // - If no context menu is open do nothing.
-                    let mut active = state.active.try_lock().unwrap();
-                    if let Some(node) = *active {
-                        if ctx.layout(node).unwrap().contains(cursor) {
-                            return;
-                        }
+                    if layout.contains(cursor) {
+                        *active = Some(item.node.node().unwrap());
 
-                        ctx.runtime().remove(node);
-                        *active = None;
+                        let ctx2 = ctx.clone();
+                        let closer = Callback::from(move |()| {
+                            let Some(state) = ctx2.document().get::<InternalContextMenuState>()
+                            else {
+                                return;
+                            };
+
+                            if let Some(node) = state.active.try_lock().unwrap().take() {
+                                ctx2.remove(node);
+                            };
+                        });
+
+                        let menu_ctx = Container::new()
+                            .style(Style {
+                                position: Position::Absolute(cursor),
+                                ..Default::default()
+                            })
+                            .mount(&item.node);
+
+                        *active = Some(menu_ctx.node().unwrap());
+                        let cb = item.callback.clone();
+                        drop(parents);
+                        drop(active);
+
+                        cb.call(ContextMenuState {
+                            ctx: menu_ctx,
+                            closer: ContextMenuCloser { closer },
+                        });
+
+                        break;
                     }
-
-                    if !ctx.event.button.is_right() {
-                        return;
-                    }
-
-                    let parents = state.parents.try_lock().unwrap();
-                    for item in parents.iter() {
-                        let Some(layout) = ctx.layout(item.node.node().unwrap()) else {
-                            continue;
-                        };
-
-                        if layout.contains(cursor) {
-                            *active = Some(item.node.node().unwrap());
-
-                            let ctx2 = ctx.clone();
-                            let closer = Callback::from(move |()| {
-                                let Some(state) = ctx2.document().get::<InternalContextMenuState>()
-                                else {
-                                    return;
-                                };
-
-                                if let Some(node) = state.active.try_lock().unwrap().take() {
-                                    ctx2.runtime().remove(node);
-                                };
-                            });
-
-                            let menu_ctx = Container::new()
-                                .style(Style {
-                                    position: Position::Absolute(cursor),
-                                    ..Default::default()
-                                })
-                                .mount(&item.node);
-
-                            *active = Some(menu_ctx.node().unwrap());
-                            let cb = item.callback.clone();
-                            drop(parents);
-                            drop(active);
-
-                            cb.call(ContextMenuState {
-                                ctx: menu_ctx,
-                                closer: ContextMenuCloser { closer },
-                            });
-
-                            break;
-                        }
-                    }
-                });
+                }
+            });
         }
 
         wrapper
@@ -186,7 +188,7 @@ impl Widget for ContextPanel {
 
 #[derive(Clone, Debug)]
 pub struct ContextMenuState {
-    pub ctx: Context<()>,
+    pub ctx: Context,
     pub closer: ContextMenuCloser,
 }
 
@@ -209,7 +211,7 @@ struct InternalContextMenuState {
 
 #[derive(Debug)]
 struct ContextMenuItem {
-    node: Context<()>,
+    node: Context,
     callback: Callback<ContextMenuState>,
     priority: u32,
 }

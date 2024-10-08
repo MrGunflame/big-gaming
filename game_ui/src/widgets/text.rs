@@ -3,7 +3,7 @@ use std::ops::Range;
 use game_tracing::trace_span;
 
 use crate::primitive::Primitive;
-use crate::reactive::{Context, Node};
+use crate::runtime::Context;
 use crate::style::{Color, Style};
 
 use super::Widget;
@@ -53,10 +53,10 @@ impl Text {
 }
 
 impl Widget for Text {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Text::mount").entered();
 
-        parent.append(Node::new(Primitive {
+        parent.append(Primitive {
             style: Style::default(),
             image: None,
             text: Some(crate::render::Text {
@@ -66,6 +66,6 @@ impl Widget for Text {
                 selection_range: self.selection_range,
                 selection_color: self.selection_color,
             }),
-        }))
+        })
     }
 }

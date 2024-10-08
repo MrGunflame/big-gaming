@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Growth, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 use parking_lot::Mutex;
@@ -19,7 +19,7 @@ pub struct Modules {
 }
 
 impl Widget for Modules {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let mods = Container::new()
@@ -103,7 +103,7 @@ fn on_save(state: EditorState) -> Callback<()> {
     })
 }
 
-fn mount_module_table(parent: &Arc<Mutex<Context<()>>>, state: EditorState) {
+fn mount_module_table(parent: &Arc<Mutex<Context>>, state: EditorState) {
     let ctx = parent.lock();
     ctx.clear_children();
 

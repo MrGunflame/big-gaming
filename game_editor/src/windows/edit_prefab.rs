@@ -5,7 +5,7 @@ use game_common::world::World;
 use game_core::modules::Modules;
 use game_prefab::Prefab;
 use game_tracing::trace_span;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Direction, Justify, Style};
 use game_ui::widgets::{Callback, Container, Widget};
 use game_window::windows::WindowId;
@@ -46,7 +46,7 @@ pub struct EditPrefabWindow {
 }
 
 impl EditPrefabWindow {
-    pub fn new(ctx: &Context<()>, edit_state: Arc<Mutex<EditState>>, modules: Modules) -> Self {
+    pub fn new(ctx: &Context, edit_state: Arc<Mutex<EditState>>, modules: Modules) -> Self {
         let world = load_prefab(&edit_state);
 
         let mut state = WorldWindowState::new();
@@ -203,7 +203,7 @@ pub struct PrefabEditor {
 }
 
 impl Widget for PrefabEditor {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let style = Style {
             direction: Direction::Column,
             justify: Justify::SpaceBetween,
