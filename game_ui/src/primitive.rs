@@ -5,7 +5,6 @@ use image::{ImageBuffer, Rgba};
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 use crate::render::debug::{debug_border, debug_padding, is_debug_render_enabled};
 use crate::render::image::{apply_background, apply_border, apply_border_radius};
-use crate::render::text::render_to_texture;
 use crate::render::{DrawCommand, Rect, Text};
 use crate::style::Style;
 
@@ -42,16 +41,11 @@ impl Primitive {
         }
 
         if let Some(text) = &self.text {
-            let img = render_to_texture(
-                &text.text,
-                text.size * scale_factor as f32,
-                UVec2::ZERO,
-                text.caret,
-                text.selection_range.clone(),
-                text.selection_color,
-            );
-
-            size = size.saturating_add(UVec2::new(img.width(), img.height()));
+            // TODO: We don't want to clone just to adjust the size.
+            let mut text = text.clone();
+            text.size *= scale_factor as f32;
+            let bounds = text.bounds(style.bounds.max - style.bounds.min);
+            size = size.saturating_add(bounds);
         }
 
         ComputedBounds {
@@ -68,14 +62,12 @@ impl Primitive {
         scale_factor: f64,
     ) -> Option<DrawCommand> {
         let mut img = match (&self.text, &self.image) {
-            (Some(text), None) => render_to_texture(
-                &text.text,
-                text.size * scale_factor as f32,
-                UVec2::ZERO,
-                text.caret,
-                text.selection_range.clone(),
-                text.selection_color,
-            ),
+            (Some(text), None) => {
+                // TODO: We don't want to clone just to adjust the size.
+                let mut text = text.clone();
+                text.size *= scale_factor as f32;
+                text.render_to_texture(style.bounds.max - style.bounds.min)
+            }
             (None, Some(image)) => image.clone(),
             (None, None) => {
                 // Truncate the container at the viewport size. This prevents rendering
