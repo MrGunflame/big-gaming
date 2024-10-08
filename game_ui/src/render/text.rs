@@ -12,8 +12,6 @@ use glam::{UVec2, Vec2};
 use image::{ImageBuffer, Pixel, Rgba, RgbaImage};
 use parking_lot::Mutex;
 
-use super::image::Image;
-use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 use crate::style::Color;
 
 const DEFAULT_FONT: &[u8] = include_bytes!("../../../assets/fonts/OpenSans/OpenSans-Regular.ttf");
@@ -149,16 +147,10 @@ impl Text {
         }
     }
 
-    pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
-        let image = render_to_texture(
-            &self.text,
-            self.size,
-            UVec2::splat(0),
-            self.caret,
-            self.selection_range.clone(),
-            self.selection_color,
-        );
-        Image { image }.bounds(style)
+    pub(crate) fn bounds(&self, bounds: UVec2) -> UVec2 {
+        let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
+        let scaled_font = font.as_scaled(PxScale::from(self.size));
+        layout_glyphs(scaled_font, &self.text, bounds.as_vec2(), &mut Vec::new())
     }
 
     pub(crate) fn render_to_texture(&self, bounds: UVec2) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
@@ -179,103 +171,70 @@ impl Text {
             return res.clone();
         }
 
+        let _span = trace_span!("text::render_to_texture").entered();
+
         let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
 
-        // let scaled_font = font.as_scaled(PxScale::from(size));
+        let scaled_font = font.as_scaled(PxScale::from(self.size));
 
-        todo!()
-    }
-}
+        let mut glyphs = Vec::new();
+        let image_size = layout_glyphs(scaled_font, &self.text, bounds.as_vec2(), &mut glyphs);
 
-pub(crate) fn render_to_texture(
-    text: &str,
-    size: f32,
-    max: UVec2,
-    // Position of the caret where 0 is before the first character.
-    caret: Option<u32>,
-    selection_range: Option<Range<usize>>,
-    selection_color: Color,
-) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
-    let key = BorrowedKey {
-        text,
-        size: size.to_bits(),
-        bounds: max,
-        caret,
-        selection_range: selection_range.clone(),
-        selection_color,
-    };
+        let mut image = RgbaImage::new(image_size.x, image_size.y);
 
-    if let Some(res) = TEXT_CACHE
-        .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
-        .lock()
-        .get(&key)
-    {
-        return res.clone();
-    }
-
-    let _span = trace_span!("text::render_to_texture").entered();
-
-    let font = FontRef::try_from_slice(DEFAULT_FONT).unwrap();
-
-    let scaled_font = font.as_scaled(PxScale::from(size));
-
-    let mut glyphs = Vec::new();
-    let image_size = layout_glyphs(scaled_font, text, max.as_vec2(), &mut glyphs);
-
-    let mut image = RgbaImage::new(image_size.x, image_size.y);
-
-    if let Some(range) = &selection_range {
-        draw_selection_range(
-            scaled_font,
-            &mut image,
-            text,
-            &glyphs,
-            range.clone(),
-            selection_color,
-        );
-    }
-
-    for glyph in glyphs.iter() {
-        if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph.clone()) {
-            let bounds = outlined_glyph.px_bounds();
-
-            outlined_glyph.draw(|x, y, cov| {
-                let pixel = (cov * 255.0) as u8;
-
-                if let Some(px) =
-                    image.get_pixel_mut_checked(bounds.min.x as u32 + x, bounds.min.y as u32 + y)
-                {
-                    px.blend(&Rgba([pixel; 4]));
-                }
-            });
+        if let Some(range) = &self.selection_range {
+            draw_selection_range(
+                scaled_font,
+                &mut image,
+                &self.text,
+                &glyphs,
+                range.clone(),
+                self.selection_color,
+            );
         }
-    }
 
-    // Render the caret.
-    if let Some(caret) = caret {
-        let caret = get_caret(scaled_font, text, &glyphs, caret as usize);
+        for glyph in glyphs.iter() {
+            if let Some(outlined_glyph) = scaled_font.outline_glyph(glyph.clone()) {
+                let bounds = outlined_glyph.px_bounds();
 
-        for x in caret.position.x as u32..caret.position.x as u32 + caret.width as u32 {
-            for y in caret.position.y as u32..caret.position.y as u32 + caret.height as u32 {
-                if let Some(pixel) = image.get_pixel_mut_checked(x, y) {
-                    *pixel = Rgba([255, 255, 255, 255]);
+                outlined_glyph.draw(|x, y, cov| {
+                    let pixel = (cov * 255.0) as u8;
+
+                    if let Some(px) = image
+                        .get_pixel_mut_checked(bounds.min.x as u32 + x, bounds.min.y as u32 + y)
+                    {
+                        px.blend(&Rgba([pixel; 4]));
+                    }
+                });
+            }
+        }
+
+        // Render the caret.
+        if let Some(caret) = self.caret {
+            let caret = get_caret(scaled_font, &self.text, &glyphs, caret as usize);
+
+            for x in caret.position.x as u32..caret.position.x as u32 + caret.width as u32 {
+                for y in caret.position.y as u32..caret.position.y as u32 + caret.height as u32 {
+                    if let Some(pixel) = image.get_pixel_mut_checked(x, y) {
+                        *pixel = Rgba([255, 255, 255, 255]);
+                    }
                 }
             }
         }
-    }
 
-    TEXT_CACHE.get().unwrap().lock().insert(
-        OwnedKey::new(
-            text.to_owned(),
-            size.to_bits(),
-            max,
-            caret,
-            selection_range,
-            selection_color,
-        ),
-        image.clone(),
-    );
-    image
+        TEXT_CACHE.get().unwrap().lock().insert(
+            OwnedKey::new(
+                self.text.to_owned(),
+                self.size.to_bits(),
+                bounds,
+                self.caret,
+                self.selection_range.clone(),
+                self.selection_color,
+            ),
+            image.clone(),
+        );
+        image
+    }
 }
 
 fn draw_selection_range<SF, F>(
@@ -538,9 +497,7 @@ mod tests {
 
     use crate::style::Color;
 
-    use super::{
-        layout_glyphs, render_to_texture, BorrowedKey, DEFAULT_FONT, TEXT_CACHE, TEXT_CACHE_CAP,
-    };
+    use super::{layout_glyphs, BorrowedKey, Text, DEFAULT_FONT, TEXT_CACHE, TEXT_CACHE_CAP};
 
     fn test_font() -> FontRef<'static> {
         FontRef::try_from_slice(DEFAULT_FONT).unwrap()
@@ -550,27 +507,27 @@ mod tests {
     fn render_to_texture_singleline() {
         let text = "abcdefghijklmnopqrstuvwxyz";
         let size = 100.0;
-        let max = UVec2::MAX;
+        let bounds = UVec2::MAX;
 
-        render_to_texture(text, size, max, None, None, Color::default());
+        Text::new(text, size, None).render_to_texture(bounds);
     }
 
     #[test]
     fn render_to_texture_newline() {
         let text = "abcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyz";
         let size = 100.0;
-        let max = UVec2::MAX;
+        let bounds = UVec2::MAX;
 
-        render_to_texture(text, size, max, None, None, Color::default());
+        Text::new(text, size, None).render_to_texture(bounds);
     }
 
     #[test]
     fn render_to_texture_overflow() {
         let text: String = (0..1000).map(|_| "a").collect();
         let size = 10.0;
-        let max = UVec2::splat(1000);
+        let bounds = UVec2::splat(1000);
 
-        render_to_texture(&text, size, max, None, None, Color::default());
+        Text::new(text, size, None).render_to_texture(bounds);
     }
 
     #[test]
@@ -588,12 +545,12 @@ mod tests {
     fn text_cache_get() {
         let text = "Hello World";
         let size: f32 = 24.0;
-        let max = UVec2::splat(128);
+        let bounds = UVec2::splat(128);
 
         let key = BorrowedKey {
             text,
             size: size.to_bits(),
-            bounds: max,
+            bounds,
             caret: None,
             selection_range: None,
             selection_color: Color::default(),
@@ -606,8 +563,8 @@ mod tests {
             .is_none());
 
         // Call render twice, the second call will hit the cache.
-        render_to_texture(text, size, max, None, None, Color::default());
-        render_to_texture(text, size, max, None, None, Color::default());
+        Text::new(text, size, None).render_to_texture(bounds);
+        Text::new(text, size, None).render_to_texture(bounds);
 
         assert!(TEXT_CACHE
             .get_or_init(|| Mutex::new(LruCache::new(TEXT_CACHE_CAP)))
