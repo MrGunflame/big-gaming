@@ -5,8 +5,9 @@ use game_core::hierarchy::Hierarchy;
 use game_render::entities::Object;
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
+use game_render::scene::RendererScene;
+use game_render::shape;
 use game_render::texture::Image;
-use game_render::{shape, Renderer};
 use game_tracing::trace_span;
 
 use crate::scene2::{Key, SceneResources, SpawnedScene};
@@ -41,7 +42,7 @@ pub struct ObjectNode {
 }
 
 impl Scene {
-    pub(crate) fn setup_materials(&mut self, renderer: &mut Renderer) -> SceneResources {
+    pub(crate) fn setup_materials(&mut self, renderer: &mut RendererScene<'_>) -> SceneResources {
         let meshes = self
             .meshes
             .drain(..)
@@ -85,7 +86,7 @@ impl Scene {
     pub(crate) fn instantiate(
         &self,
         res: &SceneResources,
-        renderer: &mut Renderer,
+        renderer: &mut RendererScene<'_>,
     ) -> SpawnedScene {
         let _span = trace_span!("Scene::instantiate").entered();
 
@@ -160,7 +161,7 @@ impl Scene {
                 Color::BLUE,
             ),
         ] {
-            renderer.entities.objects.insert(Object {
+            renderer.scene.entities.objects.insert(Object {
                 transform: Default::default(),
                 mesh: renderer.meshes.insert(mesh.into()),
                 material: renderer.materials.insert(PbrMaterial {
@@ -180,7 +181,7 @@ impl Scene {
                     let material = res.materials[object.material];
                     let transform = *spawned_scene.global_transform.get(&Key(key)).unwrap();
 
-                    let id = renderer.entities.objects.insert(Object {
+                    let id = renderer.scene.entities.objects.insert(Object {
                         transform,
                         mesh,
                         material,

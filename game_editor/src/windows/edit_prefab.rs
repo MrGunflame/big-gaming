@@ -101,12 +101,7 @@ impl WindowTrait for EditPrefabWindow {
         self.state.handle_event(event, window_id, renderer);
     }
 
-    fn update(
-        &mut self,
-        world: &mut World,
-        renderer: &mut game_render::Renderer,
-        options: &mut game_render::options::MainPassOptions,
-    ) {
+    fn update(&mut self, world: &mut World, options: &mut game_render::options::MainPassOptions) {
         let mut update_entities_panel = false;
         let mut update_components_panel = false;
         let mut update_entities = false;

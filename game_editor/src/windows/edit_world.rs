@@ -1,7 +1,7 @@
 use std::sync::{mpsc, Arc};
 
 use ahash::HashMap;
-use game_common::components::{GlobalTransform, Transform};
+use game_common::components::Transform;
 use game_common::world::World;
 use game_data::record::{Record, RecordKind};
 use game_prefab::Prefab;
@@ -174,12 +174,7 @@ impl WindowTrait for EditWorldWindow {
         self.state.handle_event(event, window_id, renderer);
     }
 
-    fn update(
-        &mut self,
-        world: &mut World,
-        renderer: &mut Renderer,
-        options: &mut MainPassOptions,
-    ) {
+    fn update(&mut self, world: &mut World, options: &mut MainPassOptions) {
         let mut do_sync = false;
 
         while let Ok(event) = self.rx.try_recv() {

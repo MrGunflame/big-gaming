@@ -331,14 +331,16 @@ impl<'a> game_window::App for RendererAppState<'a> {
         if let Some(modules) = &*self.modules.read() {
             let world = { self.world.lock().clone() };
 
-            self.entities.update(
-                modules,
-                &world,
-                &self.pool,
-                &mut self.renderer,
-                self.window_id,
-                &self.gizmos,
-            );
+            if let Some(mut scene) = self.renderer.scene_mut(self.window_id.into()) {
+                self.entities.update(
+                    modules,
+                    &world,
+                    &self.pool,
+                    &mut scene,
+                    self.window_id,
+                    &self.gizmos,
+                );
+            }
         }
 
         self.renderer.render(&self.pool);

@@ -12,6 +12,7 @@ use game_gizmos::Gizmos;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
+use game_render::scene::RendererScene;
 use game_render::Renderer;
 use game_scene::{InstanceId, SceneId, SceneSpawner};
 use game_tasks::TaskPool;
@@ -38,7 +39,7 @@ impl SceneEntities {
         records: &Records,
         world: &World,
         pool: &TaskPool,
-        renderer: &mut Renderer,
+        renderer: &mut RendererScene<'_>,
         window: WindowId,
         gizmos: &Gizmos,
     ) {
@@ -99,7 +100,12 @@ impl SceneEntities {
 
             match self.directional_lights.get(&entity) {
                 Some(id) => {
-                    let mut dir_light = renderer.entities.directional_lights.get_mut(*id).unwrap();
+                    let mut dir_light = renderer
+                        .scene
+                        .entities
+                        .directional_lights
+                        .get_mut(*id)
+                        .unwrap();
                     dir_light.color = light.color;
                     dir_light.illuminance = light.illuminance;
                     dir_light.transform = transform;
@@ -111,7 +117,7 @@ impl SceneEntities {
                         transform,
                     };
 
-                    let id = renderer.entities.directional_lights.insert(dir_light);
+                    let id = renderer.scene.entities.directional_lights.insert(dir_light);
                     self.directional_lights.insert(entity, id);
                 }
             }
@@ -124,7 +130,8 @@ impl SceneEntities {
 
             match self.point_lights.get(&entity) {
                 Some(id) => {
-                    let mut point_light = renderer.entities.point_lights.get_mut(*id).unwrap();
+                    let mut point_light =
+                        renderer.scene.entities.point_lights.get_mut(*id).unwrap();
                     point_light.color = light.color;
                     point_light.intensity = light.intensity;
                     point_light.radius = light.radius;
@@ -138,7 +145,7 @@ impl SceneEntities {
                         transform,
                     };
 
-                    let id = renderer.entities.point_lights.insert(point_light);
+                    let id = renderer.scene.entities.point_lights.insert(point_light);
                     self.point_lights.insert(entity, id);
                 }
             }
@@ -151,7 +158,7 @@ impl SceneEntities {
 
             match self.spot_lights.get(&entity) {
                 Some(id) => {
-                    let mut spot_light = renderer.entities.spot_lights.get_mut(*id).unwrap();
+                    let mut spot_light = renderer.scene.entities.spot_lights.get_mut(*id).unwrap();
                     spot_light.color = light.color;
                     spot_light.intensity = light.intensity;
                     spot_light.radius = light.radius;
@@ -169,7 +176,7 @@ impl SceneEntities {
                         transform,
                     };
 
-                    let id = renderer.entities.spot_lights.insert(spot_light);
+                    let id = renderer.scene.entities.spot_lights.insert(spot_light);
                     self.spot_lights.insert(entity, id);
                 }
             }
@@ -182,16 +189,14 @@ impl SceneEntities {
 
             match self.primary_cameras.get(&entity) {
                 Some(id) => {
-                    let mut camera = renderer.entities.cameras.get_mut(*id).unwrap();
+                    let mut camera = renderer.scene.entities.cameras.get_mut(*id).unwrap();
                     camera.transform = transform;
                     gizmos.update_camera(*camera);
                 }
                 None => {
                     // Surface might not yet be ready, defer creation until
                     // next frame.
-                    let Some(size) = renderer.get_surface_size(window) else {
-                        continue;
-                    };
+                    let size = renderer.get_surface_size();
 
                     let mut camera = Camera {
                         transform,
@@ -202,7 +207,7 @@ impl SceneEntities {
 
                     gizmos.update_camera(camera);
 
-                    let id = renderer.entities.cameras.insert(camera);
+                    let id = renderer.scene.entities.cameras.insert(camera);
                     self.primary_cameras.insert(entity, id);
                 }
             }
@@ -231,22 +236,22 @@ impl SceneEntities {
         }
 
         for (entity, id) in removed_dir_lights {
-            renderer.entities.directional_lights.remove(id);
+            renderer.scene.entities.directional_lights.remove(id);
             self.directional_lights.remove(&entity);
         }
 
         for (entity, id) in removed_point_lights {
-            renderer.entities.point_lights.remove(id);
+            renderer.scene.entities.point_lights.remove(id);
             self.point_lights.remove(&entity);
         }
 
         for (entity, id) in removed_spot_lights {
-            renderer.entities.spot_lights.remove(id);
+            renderer.scene.entities.spot_lights.remove(id);
             self.spot_lights.remove(&entity);
         }
 
         for (entity, id) in removed_primary_cameras {
-            renderer.entities.cameras.remove(id);
+            renderer.scene.entities.cameras.remove(id);
             self.primary_cameras.remove(&entity);
         }
 
