@@ -14,7 +14,6 @@ use game_common::world::World;
 use game_crash_handler::main;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
-use game_render::options::MainPassOptions;
 use game_render::{FpsLimit, Renderer};
 use game_tasks::TaskPool;
 use game_ui::{UiState, WindowProperties};
@@ -41,9 +40,6 @@ struct State {
 impl State {
     fn new(handle: Handle) -> (Self, mpsc::Receiver<SpawnWindow>) {
         let mut render_state = Renderer::new().unwrap();
-        render_state.set_options(MainPassOptions {
-            shading: game_render::options::ShadingMode::Albedo,
-        });
         render_state.set_fps_limit(FpsLimit::limited(60.try_into().unwrap()));
 
         let (tx, rx) = mpsc::channel();
@@ -287,14 +283,22 @@ impl game_window::App for App {
         }
 
         for (id, window) in self.active_windows.iter_mut() {
-            window.update(&mut self.world, &mut self.renderer);
+            let Some(mut scene) = self.renderer.scene_mut((*id).into()) else {
+                continue;
+            };
+            let mut options = scene.scene.options().clone();
+
+            window.update(&mut options);
+            if scene.scene.options() != &options {
+                scene.scene.set_options(options);
+            }
 
             // if matches!(window, crate::windows::Window::View(_, _)) {
-            self.scene.update(
+            window.scene.update(
                 &self.state.records,
-                &self.world,
+                &window.world,
                 &self.pool,
-                &mut self.renderer,
+                &mut scene,
                 *id,
                 &self.gizmos,
             );

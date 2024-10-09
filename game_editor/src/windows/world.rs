@@ -68,7 +68,7 @@ impl WorldWindowState {
     }
 
     pub fn handle_event(&mut self, event: WindowEvent, window: WindowId, renderer: &mut Renderer) {
-        let viewport_size = renderer.get_surface_size(window).unwrap();
+        let viewport_size = renderer.get_surface_size(window.into()).unwrap();
 
         let mut camera = Camera {
             transform: self.camera_controller.transform,

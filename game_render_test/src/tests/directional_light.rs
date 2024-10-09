@@ -12,7 +12,7 @@ use crate::Harness;
 
 pub(super) fn directional_light() -> Harness {
     Harness::new(stringify!(directional_light), |renderer, target| {
-        renderer.entities.cameras.insert(Camera {
+        renderer.scene.entities.cameras.insert(Camera {
             transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
             target,
             projection: Projection {
@@ -27,13 +27,14 @@ pub(super) fn directional_light() -> Harness {
         let mesh = renderer.meshes.insert(plane);
         let material = renderer.materials.insert(PbrMaterial::default());
 
-        renderer.entities.objects.insert(Object {
+        renderer.scene.entities.objects.insert(Object {
             transform: Transform::default(),
             mesh,
             material,
         });
 
         renderer
+            .scene
             .entities
             .directional_lights
             .insert(DirectionalLight {

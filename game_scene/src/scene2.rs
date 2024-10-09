@@ -6,8 +6,8 @@ use game_common::components::{Color, Transform};
 use game_render::entities::ObjectId;
 use game_render::pbr::material::MaterialId;
 use game_render::pbr::mesh::MeshId;
+use game_render::scene::RendererScene;
 use game_render::texture::ImageId;
-use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::Vec3;
 
@@ -127,9 +127,9 @@ impl SpawnedScene {
         self.nodes.iter().map(|(k, v)| (Key(k), v))
     }
 
-    pub(crate) fn despawn(self, renderer: &mut Renderer) {
+    pub(crate) fn despawn(self, renderer: &mut RendererScene<'_>) {
         for id in self.entities.values() {
-            renderer.entities.objects.remove(*id);
+            renderer.scene.entities.objects.remove(*id);
         }
     }
 }

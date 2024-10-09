@@ -35,6 +35,10 @@ impl RenderTextures {
         self.events.push_back(RenderTextureEvent::Destroy(id));
         Some(val)
     }
+
+    pub(crate) fn get(&self, id: RenderImageId) -> Option<&RenderTexture> {
+        self.textures.get(id.0)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
