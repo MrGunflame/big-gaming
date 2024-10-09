@@ -1,9 +1,13 @@
-use std::collections::HashMap;
+#[cfg(unix)]
+mod wayland;
+
 use std::fmt::{self, Debug, Formatter};
 
 use game_tracing::trace_span;
 use game_window::windows::{WindowId, WindowState};
-use raw_window_handle::{HasDisplayHandle, RawDisplayHandle};
+
+#[cfg(unix)]
+use wayland::WaylandBackend;
 
 pub(crate) struct Clipboard {
     backend: Backend,
@@ -20,77 +24,35 @@ impl Clipboard {
         let _span = trace_span!("Clipboard::create").entered();
 
         if matches!(self.backend, Backend::NotInit) {
-            self.backend = if window.backend().is_wayland() {
-                Backend::Wayland(WaylandBackend {
-                    clipboards: HashMap::new(),
-                    windows: HashMap::new(),
-                })
+            if window.backend().is_wayland() {
+                #[cfg(unix)]
+                {
+                    self.backend = Backend::Wayland(WaylandBackend::new())
+                }
             } else {
-                match arboard::Clipboard::new() {
+                self.backend = match arboard::Clipboard::new() {
                     Ok(clipboard) => Backend::Arboard(clipboard),
                     Err(err) => {
                         tracing::error!("failed to open clipboard: {}", err);
                         tracing::warn!("clipboard operations will not available");
                         Backend::None
                     }
-                }
-            };
+                };
+            }
         }
 
-        // Note that the clipboad on wayland works different:
-        // Instead of the there being a global clipboard instance
-        // every wayland "display" has its own clipboard. On most
-        // systems there is only one such "display".
-        // However to know the value of the display handle we must
-        // first have a window and that window must stay alive
-        // until the clipboard has been dropped.
+        #[cfg(unix)]
         if let Backend::Wayland(backend) = &mut self.backend {
-            let display_handle = match window.display_handle().map(|v| v.as_raw()) {
-                Ok(RawDisplayHandle::Wayland(display_handle)) => display_handle,
-                _ => return,
-            };
-
-            backend
-                .clipboards
-                .entry(display_handle.display.as_ptr() as usize)
-                .or_insert_with(|| {
-                    // SAFETY: To guarantee that the display handle becomes invalid we
-                    // keep a local copy of the `WindowState` that owns the handle.
-                    let clipboard = unsafe {
-                        smithay_clipboard::Clipboard::new(display_handle.display.as_ptr())
-                    };
-
-                    WaylandClipboard {
-                        clipboard,
-                        window_count: 0,
-                    }
-                })
-                .window_count += 1;
-
-            backend.windows.insert(
-                window.id(),
-                WaylandWindow {
-                    display_handle: display_handle.display.as_ptr() as usize,
-                    _window: window,
-                },
-            );
+            backend.create(window);
         }
     }
 
     pub(crate) fn destroy(&mut self, window: WindowId) {
         let _span = trace_span!("Backend::destroy").entered();
 
+        #[cfg(unix)]
         if let Backend::Wayland(backend) = &mut self.backend {
-            let Some(window) = backend.windows.remove(&window) else {
-                return;
-            };
-
-            let clipboard = backend.clipboards.get_mut(&window.display_handle).unwrap();
-            clipboard.window_count -= 1;
-
-            if clipboard.window_count == 0 {
-                backend.clipboards.remove(&window.display_handle);
-            }
+            backend.destroy(window);
         }
     }
 
@@ -103,7 +65,8 @@ impl Clipboard {
         match &mut self.backend {
             Backend::NotInit | Backend::None => None,
             Backend::Arboard(backend) => backend.get_text().ok(),
-            Backend::Wayland(backend) => backend.clipboard(window)?.clipboard.load().ok(),
+            #[cfg(unix)]
+            Backend::Wayland(backend) => backend.clipboard(window)?.get(),
         }
     }
 
@@ -116,9 +79,10 @@ impl Clipboard {
             Backend::Arboard(backend) => {
                 backend.set_text(value).ok();
             }
+            #[cfg(unix)]
             Backend::Wayland(backend) => {
                 if let Some(clipboard) = backend.clipboard(window) {
-                    clipboard.clipboard.store(value);
+                    clipboard.set(value);
                 }
             }
         }
@@ -135,42 +99,6 @@ enum Backend {
     NotInit,
     None,
     Arboard(arboard::Clipboard),
+    #[cfg(unix)]
     Wayland(WaylandBackend),
-}
-
-#[derive(Debug)]
-struct WaylandBackend {
-    clipboards: HashMap<usize, WaylandClipboard>,
-    windows: HashMap<WindowId, WaylandWindow>,
-}
-
-impl WaylandBackend {
-    /// Returns the clipboard for a specific window, if any.
-    fn clipboard(&self, window: WindowId) -> Option<&WaylandClipboard> {
-        let window = self.windows.get(&window)?;
-        self.clipboards.get(&window.display_handle)
-    }
-}
-
-/// A Wayland window.
-#[derive(Debug)]
-struct WaylandWindow {
-    display_handle: usize,
-    _window: WindowState,
-}
-
-/// A Wayland clipboard, bound to a display.
-struct WaylandClipboard {
-    /// The underlying clipboard.
-    clipboard: smithay_clipboard::Clipboard,
-    /// The number of [`WaylandWindow`]s pointing at this `WaylandClipboard`.
-    window_count: usize,
-}
-
-impl Debug for WaylandClipboard {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("WaylandClipboard")
-            .field("window_count", &self.window_count)
-            .finish_non_exhaustive()
-    }
 }
