@@ -15,6 +15,7 @@ use game_render::Renderer;
 use game_tracing::trace_span;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
+use game_window::windows::WindowState;
 use glam::UVec2;
 
 use render::UiRenderer;
@@ -98,8 +99,9 @@ impl UiState {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct WindowProperties {
+    pub state: WindowState,
     pub size: UVec2,
     pub scale_factor: f64,
 }

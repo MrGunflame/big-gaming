@@ -139,6 +139,10 @@ impl WindowState {
         self.id
     }
 
+    pub fn backend(&self) -> Backend {
+        self.backend
+    }
+
     pub fn inner_size(&self) -> UVec2 {
         let size = self.inner.inner_size();
         UVec2 {

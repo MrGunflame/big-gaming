@@ -15,6 +15,7 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 
+use ahash::HashMap;
 use clap::Parser;
 use config::{Config, ConfigError};
 use game_common::sync::spsc;
@@ -32,7 +33,7 @@ use game_tracing::trace_span;
 use game_ui::{UiState, WindowProperties};
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowBuilder, WindowId};
+use game_window::windows::{WindowBuilder, WindowId, WindowState};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
@@ -134,6 +135,8 @@ fn main() -> ExitCode {
     let (init_tx, init_rx) = mpsc::channel();
     let modules = RwLock::new(None);
 
+    let windows = RwLock::new(HashMap::default());
+
     let game_state = GameAppState {
         state,
         world: &world,
@@ -147,6 +150,7 @@ fn main() -> ExitCode {
         gizmos: &gizmos,
         init_rx,
         modules: &modules,
+        windows: &windows,
     };
 
     let renderer_state = RendererAppState {
@@ -160,6 +164,7 @@ fn main() -> ExitCode {
         shutdown: &shutdown,
         gizmos: &gizmos,
         modules: &modules,
+        windows: &windows,
     };
 
     std::thread::scope(|scope| {
@@ -203,6 +208,7 @@ pub struct GameAppState<'a> {
     pool: &'a TaskPool,
     init_rx: mpsc::Receiver<InitEvent>,
     modules: &'a RwLock<Option<Modules>>,
+    windows: &'a RwLock<HashMap<WindowId, WindowState>>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -228,11 +234,15 @@ impl<'a> GameAppState<'a> {
             // Handle window events for the UI.
             match event {
                 WindowEvent::WindowCreated(event) => {
+                    let windows = self.windows.read();
+                    let window = windows.get(&event.window).unwrap();
+
                     self.ui_state.create(
                         RenderTarget::Window(event.window),
                         WindowProperties {
                             size: UVec2::ZERO,
                             scale_factor: 1.0,
+                            state: window.clone(),
                         },
                     );
                 }
@@ -301,6 +311,7 @@ pub struct RendererAppState<'a> {
     shutdown: &'a AtomicBool,
     gizmos: &'a Gizmos,
     modules: &'a RwLock<Option<Modules>>,
+    windows: &'a RwLock<HashMap<WindowId, WindowState>>,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -341,6 +352,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
 
                 let window = ctx.windows.state(event.window).unwrap();
 
+                self.windows.write().insert(event.window, window.clone());
                 self.renderer.create(event.window, window);
             }
             WindowEvent::WindowResized(event) => {
@@ -357,6 +369,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 self.renderer.destroy(event.window);
 
                 self.shutdown.store(true, Ordering::Release);
+                self.windows.write().remove(&event.window);
                 ctx.exit();
             }
             WindowEvent::WindowCloseRequested(event) => {

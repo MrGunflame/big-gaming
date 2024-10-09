@@ -62,6 +62,7 @@ impl game_window::App for App {
                     WindowProperties {
                         size: window.inner_size(),
                         scale_factor: window.scale_factor(),
+                        state: window.clone(),
                     },
                 );
                 self.renderer.create(event.window, window);
