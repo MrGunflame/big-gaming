@@ -95,7 +95,6 @@ impl UiRenderer {
                     cmds.track(*key);
                     continue;
                 }
-                dbg!("changed");
 
                 let mut should_render = true;
 
