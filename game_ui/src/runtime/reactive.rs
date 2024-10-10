@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Formatter};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use game_tracing::trace_span;
@@ -42,8 +43,8 @@ impl ReactiveRuntime {
         let inner = Arc::new(SignalInner {
             ctx: self.clone(),
             id,
-            read_count: Mutex::new(1),
-            write_count: Mutex::new(1),
+            read_count: AtomicUsize::new(1),
+            write_count: AtomicUsize::new(1),
             value: Mutex::new(value),
         });
 
@@ -385,8 +386,10 @@ where
 {
     ctx: ReactiveRuntime,
     id: SignalId,
-    read_count: Mutex<usize>,
-    write_count: Mutex<usize>,
+    /// The number of [`ReadSignal`] handles that exist.
+    read_count: AtomicUsize,
+    /// The number of [`WriteSignal`] handles that exist.
+    write_count: AtomicUsize,
     value: Mutex<T>,
 }
 
@@ -394,33 +397,46 @@ impl<T> SignalInner<T>
 where
     T: ?Sized,
 {
+    /// Increments the number of [`WriteSignal`] handles.
     fn increment_write_count(&self) {
-        *self.write_count.lock() += 1;
+        let old_count = self.write_count.fetch_add(1, Ordering::Relaxed);
+        debug_assert_ne!(old_count, usize::MAX);
     }
 
+    /// Decrements the number of [`WriteSignal`] handles.
     fn decrement_write_count(&self) {
-        let mut count = self.write_count.lock();
-        *count -= 1;
-
-        if *count != 0 {
+        let old_count = self.write_count.fetch_sub(1, Ordering::Release);
+        if old_count != 1 {
             return;
         }
 
+        self.write_count.load(Ordering::Acquire);
+
+        // If the last `WriteSignal` handle was dropped, the value will
+        // never be updated again.
+        // We can unregister the signal from any subscribers since it will
+        // now never change.
         self.ctx.unregister_signal(self.id);
     }
 
+    /// Increments the number of [`ReadSignal`] handles.
     fn increment_read_count(&self) {
-        *self.read_count.lock() += 1;
+        let old_count = self.read_count.fetch_add(1, Ordering::Relaxed);
+        debug_assert_ne!(old_count, usize::MAX);
     }
 
+    /// Decrements the number of [`ReadSignal`] handles.
     fn decrement_read_count(&self) {
-        let mut count = self.read_count.lock();
-        *count -= 1;
-
-        if *count != 0 {
+        let old_count = self.read_count.fetch_sub(1, Ordering::Release);
+        if old_count != 1 {
             return;
         }
 
+        self.read_count.load(Ordering::Acquire);
+
+        // If the last `ReadSignal` handle was dropped, the value will
+        // never be accessed in a "reading" context again.
+        // We can unregister the signal from any subscribers.
         self.ctx.unregister_signal(self.id);
     }
 }
