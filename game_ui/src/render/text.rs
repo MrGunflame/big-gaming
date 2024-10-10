@@ -1,4 +1,4 @@
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::fmt::{self, Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::mem::ManuallyDrop;
@@ -124,26 +124,36 @@ struct BorrowedKey<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Text {
-    pub text: String,
+pub struct Text<'a> {
+    pub text: Cow<'a, str>,
     pub size: f32,
     pub caret: Option<u32>,
     pub selection_range: Option<Range<usize>>,
     pub selection_color: Color,
 }
 
-impl Text {
+impl<'a> Text<'a> {
     #[inline]
     pub fn new<T>(text: T, size: f32, caret: Option<u32>) -> Self
     where
         T: ToString,
     {
         Self {
-            text: text.to_string(),
+            text: Cow::Owned(text.to_string()),
             size,
             caret,
             selection_range: None,
             selection_color: Color::default(),
+        }
+    }
+
+    pub(crate) fn as_ref(&self) -> Text<'_> {
+        Text {
+            text: Cow::Borrowed(&self.text),
+            size: self.size,
+            caret: self.caret,
+            selection_range: self.selection_range.clone(),
+            selection_color: self.selection_color,
         }
     }
 
@@ -234,7 +244,7 @@ impl Text {
 
         TEXT_CACHE.get().unwrap().lock().insert(
             OwnedKey::new(
-                self.text.to_owned(),
+                self.text.to_string(),
                 self.size.to_bits(),
                 bounds,
                 self.caret,
