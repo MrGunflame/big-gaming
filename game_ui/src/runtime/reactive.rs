@@ -173,6 +173,12 @@ impl ReactiveRuntime {
     }
 }
 
+impl Default for ReactiveRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug)]
 struct ContextInner {
     next_signal_id: SignalId,
