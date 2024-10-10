@@ -15,7 +15,7 @@ pub type Image = ImageBuffer<Rgba<u8>, Vec<u8>>;
 pub struct Primitive {
     pub style: Style,
     pub image: Option<Image>,
-    pub text: Option<Text>,
+    pub text: Option<Text<'static>>,
 }
 
 impl Primitive {
@@ -42,8 +42,7 @@ impl Primitive {
         }
 
         if let Some(text) = &self.text {
-            // TODO: We don't want to clone just to adjust the size.
-            let mut text = text.clone();
+            let mut text = text.as_ref();
             text.size *= scale_factor as f32;
             let bounds = text.bounds(style.bounds.max - style.bounds.min);
             size = size.saturating_add(bounds);
@@ -66,8 +65,7 @@ impl Primitive {
 
         let mut img = match (&self.text, &self.image) {
             (Some(text), None) => {
-                // TODO: We don't want to clone just to adjust the size.
-                let mut text = text.clone();
+                let mut text = text.as_ref();
                 text.size *= scale_factor as f32;
                 text.render_to_texture(style.bounds.max - style.bounds.min)
             }

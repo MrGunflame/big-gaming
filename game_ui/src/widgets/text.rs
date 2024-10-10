@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ops::Range;
 
 use game_tracing::trace_span;
@@ -60,7 +61,7 @@ impl Widget for Text {
             style: Style::default(),
             image: None,
             text: Some(crate::render::Text {
-                text: self.text,
+                text: Cow::Owned(self.text),
                 size: self.size,
                 caret: self.caret,
                 selection_range: self.selection_range,
