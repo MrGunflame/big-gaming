@@ -5,18 +5,21 @@ use std::sync::Arc;
 use game_tracing::trace_span;
 use parking_lot::Mutex;
 
+/// A unique identifier for a signal.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SignalId(u64);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EffectId(u64);
 
+/// A runtime for a reactive context.
 #[derive(Clone, Debug)]
 pub struct ReactiveRuntime {
     inner: Arc<Mutex<ContextInner>>,
 }
 
 impl ReactiveRuntime {
+    /// Creates a new `ReactiveRuntime`.
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(ContextInner {
@@ -29,6 +32,7 @@ impl ReactiveRuntime {
         }
     }
 
+    /// Creates a new [`ReadSignal`]/[`WriteSignal`] pair with the given initial `value`.
     pub fn create_signal<T>(&self, value: T) -> (ReadSignal<T>, WriteSignal<T>) {
         let mut inner = self.inner.lock();
 
@@ -51,10 +55,22 @@ impl ReactiveRuntime {
         )
     }
 
+    /// Registers a new [`Effect`].
+    ///
+    /// Note that the effect is not immediately scheduled which means that if [`init`] does not
+    /// register sources the effect will never trigger and may be dropped immediately.
+    ///
+    /// See [`register_and_schedule_effect`] for a version that schedules the effect immediately,
+    /// even if [`init`] does not register any sources.
+    ///
+    /// [`init`]: Effect::init
+    /// [`register_and_schedule_effect`]: Self::register_and_schedule_effect
     pub fn register_effect<T>(&self, effect: T) -> EffectId
     where
         T: Effect,
     {
+        let _span = trace_span!("ReactiveRuntime::register_effect").entered();
+
         let mut inner = self.inner.lock();
         let id = inner.next_effect_id;
         inner.next_effect_id.0 += 1;
@@ -81,10 +97,13 @@ impl ReactiveRuntime {
         id
     }
 
+    /// Registers a new [`Effect`] and immediately schedules for execution.
     pub fn register_and_schedule_effect<T>(&self, effect: T) -> EffectId
     where
         T: Effect,
     {
+        let _span = trace_span!("ReactiveRuntime::register_and_schedule_effect").entered();
+
         let id = self.register_effect(effect);
 
         let mut inner = self.inner.lock();
@@ -93,6 +112,7 @@ impl ReactiveRuntime {
         id
     }
 
+    /// Runs an update cycle on the `ReactiveRuntime`.
     pub(crate) fn update(&self) {
         let _span = trace_span!("ReactiveRuntime::update").entered();
 
@@ -197,9 +217,16 @@ impl Debug for Subscriber {
     }
 }
 
+/// A effect is a observer that is called whenever a signal changes.
 pub trait Effect: Send + 'static {
+    /// Initializes the state of this `Effect`.
+    ///
+    /// This function is called exactly once when the `Effect` is first registered.
     fn init(&self, ctx: &mut NodeContext);
 
+    /// Executes the `Effect` once.
+    ///
+    /// This function is called whenever the subscriber wakes up the `Effect`.
     fn run(&mut self, ctx: &mut NodeContext);
 }
 
@@ -214,16 +241,40 @@ where
     }
 }
 
+/// The read handle to a signal.
 #[derive(Debug)]
-pub struct ReadSignal<T> {
+pub struct ReadSignal<T>
+where
+    T: ?Sized,
+{
     inner: Arc<SignalInner<T>>,
 }
 
-impl<T> ReadSignal<T> {
+impl<T> ReadSignal<T>
+where
+    T: ?Sized,
+{
+    /// Returns the [`SignalId`] of the underyling signal.
     pub fn id(&self) -> SignalId {
         self.inner.id
     }
 
+    /// Runs the given closure `F` on the underlying value.
+    ///
+    /// Note that `with` should not be nested with operations on the same underlying signal. The
+    /// effects may include deadlocks or panics:
+    /// ```no_run
+    /// # fn main(rt: &ReactiveRutime) {
+    /// let (value, set_value) = rt.create_signal(0);
+    /// value.with(|| {
+    ///     set_value.set(1); // <-- Don't do this
+    /// });
+    /// # }
+    /// ```
+    ///
+    /// [`get`] does not have this potential for bugs and should be preferred if possible.
+    ///
+    /// [`get`]: Self::get
     pub fn with<F, U>(&self, f: F) -> U
     where
         F: FnOnce(&T) -> U,
@@ -232,15 +283,19 @@ impl<T> ReadSignal<T> {
         f(&value)
     }
 
+    /// Returns the underlying value.
     pub fn get(&self) -> T
     where
-        T: Clone,
+        T: Sized + Clone,
     {
         self.inner.value.lock().clone()
     }
 }
 
-impl<T> Clone for ReadSignal<T> {
+impl<T> Clone for ReadSignal<T>
+where
+    T: ?Sized,
+{
     fn clone(&self) -> Self {
         self.inner.increment_read_count();
         Self {
@@ -249,22 +304,34 @@ impl<T> Clone for ReadSignal<T> {
     }
 }
 
-impl<T> Drop for ReadSignal<T> {
+impl<T> Drop for ReadSignal<T>
+where
+    T: ?Sized,
+{
     fn drop(&mut self) {
         self.inner.decrement_read_count();
     }
 }
 
+/// A write handle to a signal.
 #[derive(Debug)]
-pub struct WriteSignal<T> {
+pub struct WriteSignal<T>
+where
+    T: ?Sized,
+{
     inner: Arc<SignalInner<T>>,
 }
 
-impl<T> WriteSignal<T> {
+impl<T> WriteSignal<T>
+where
+    T: ?Sized,
+{
+    /// Returns the [`SignalId`] of the underlying signal.
     pub fn id(&self) -> SignalId {
         self.inner.id
     }
 
+    /// Updates the underlying value with the given closure.
     pub fn update<F, U>(&self, f: F) -> U
     where
         F: FnOnce(&mut T) -> U,
@@ -273,7 +340,11 @@ impl<T> WriteSignal<T> {
         f(&mut value)
     }
 
-    pub fn set(&self, value: T) {
+    /// Sets the value of the underlying signal to `value`.
+    pub fn set(&self, value: T)
+    where
+        T: Sized,
+    {
         *self.inner.value.lock() = value;
         self.wake();
     }
@@ -286,7 +357,10 @@ impl<T> WriteSignal<T> {
     }
 }
 
-impl<T> Clone for WriteSignal<T> {
+impl<T> Clone for WriteSignal<T>
+where
+    T: ?Sized,
+{
     fn clone(&self) -> Self {
         self.inner.increment_write_count();
         Self {
@@ -295,22 +369,31 @@ impl<T> Clone for WriteSignal<T> {
     }
 }
 
-impl<T> Drop for WriteSignal<T> {
+impl<T> Drop for WriteSignal<T>
+where
+    T: ?Sized,
+{
     fn drop(&mut self) {
         self.inner.decrement_write_count();
     }
 }
 
 #[derive(Debug)]
-struct SignalInner<T> {
+struct SignalInner<T>
+where
+    T: ?Sized,
+{
     ctx: ReactiveRuntime,
     id: SignalId,
-    value: Mutex<T>,
     read_count: Mutex<usize>,
     write_count: Mutex<usize>,
+    value: Mutex<T>,
 }
 
-impl<T> SignalInner<T> {
+impl<T> SignalInner<T>
+where
+    T: ?Sized,
+{
     fn increment_write_count(&self) {
         *self.write_count.lock() += 1;
     }
