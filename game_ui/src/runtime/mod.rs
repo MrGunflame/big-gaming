@@ -16,6 +16,7 @@ use game_window::cursor::Cursor;
 use game_window::windows::WindowId;
 use glam::UVec2;
 use parking_lot::Mutex;
+use reactive::ReactiveRuntime;
 
 use crate::clipboard::Clipboard;
 use crate::layout::{self, LayoutTree};
@@ -29,6 +30,7 @@ pub struct Runtime {
     pub(crate) cursor: Arc<Mutex<Option<Arc<Cursor>>>>,
     pub(crate) pool: Arc<TaskPool>,
     clipboard: Arc<Mutex<Clipboard>>,
+    reactive: ReactiveRuntime,
 }
 
 impl Runtime {
@@ -43,7 +45,12 @@ impl Runtime {
             cursor: Arc::new(Mutex::new(None)),
             pool: Arc::new(TaskPool::new(1)),
             clipboard: Arc::new(Mutex::new(Clipboard::new())),
+            reactive: ReactiveRuntime::new(),
         }
+    }
+
+    pub fn reactive(&self) -> &ReactiveRuntime {
+        &self.reactive
     }
 
     /// Returns access to the windows managed by this `Runtime`.
@@ -212,7 +219,7 @@ impl Runtime {
         }
 
         // Destroy the deepest nodes first.
-        for handler in node_destroyed_handlers.into_iter().rev() {
+        for handler in node_destroyed_handlers.into_iter() {
             handler.call(NodeDestroyed);
         }
     }
