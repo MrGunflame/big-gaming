@@ -91,8 +91,9 @@ impl UiState {
             doc.tree.compute_layout();
             let nodes = doc.tree.collect_all();
 
-            let tree = self.renderer.get_mut(doc.window).unwrap();
-            *tree = nodes;
+            let state = self.renderer.get_mut(doc.window).unwrap();
+            state.nodes = nodes;
+            debug_assert_eq!(doc.tree.size(), state.size);
         }
 
         self.renderer.update();

@@ -1,4 +1,5 @@
 use game_common::components::Color;
+use game_tracing::trace_span;
 use glam::UVec2;
 use image::{ImageBuffer, Rgba};
 
@@ -61,6 +62,8 @@ impl Primitive {
         size: UVec2,
         scale_factor: f64,
     ) -> Option<DrawCommand> {
+        let _span = trace_span!("Primitive::draw").entered();
+
         let mut img = match (&self.text, &self.image) {
             (Some(text), None) => {
                 // TODO: We don't want to clone just to adjust the size.

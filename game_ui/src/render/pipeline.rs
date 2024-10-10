@@ -23,7 +23,7 @@ use wgpu::{
 };
 
 use super::remap::remap;
-use super::{DrawCommand, SurfaceDrawCommands};
+use super::{DrawCommand, GpuDrawCommandState, SurfaceDrawCommands};
 
 const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
 
@@ -152,7 +152,7 @@ impl UiPipeline {
 /// A vertex in the UI.
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
-struct Vertex {
+pub(super) struct Vertex {
     color: [f32; 4],
     position: [f32; 3],
     texture_index: u32,
@@ -206,20 +206,38 @@ impl UiPass {
         texture_buffer.clear();
         *instance_count = 0;
 
-        let draw_cmds = self.elements.read();
-        let Some(cmds) = draw_cmds.get(&target) else {
+        let mut draw_cmds = self.elements.write();
+        let Some(cmds) = draw_cmds.get_mut(&target) else {
             return;
         };
 
-        for cmd in cmds.commands() {
-            create_element(
-                cmd,
-                viewport_size,
-                &mut vertex_buffer,
-                &mut texture_buffer,
-                device,
-                queue,
-            );
+        for cmd in cmds.commands_mut() {
+            let state = match &mut cmd.gpu_state {
+                // For uploaded textures we must ensure that the texture size
+                // matches the size of the current viewport, otherwise textures
+                // will become squashed.
+                // This can happen when the window is rapidly resized and the
+                // ui state and renderer temporarily report different window sizes.
+                Some(state) if state.size != viewport_size => {
+                    let gpu_state = create_element(&cmd.cmd, viewport_size, device, queue);
+                    cmd.gpu_state.insert(gpu_state)
+                }
+                None => {
+                    let gpu_state = create_element(&cmd.cmd, viewport_size, device, queue);
+                    cmd.gpu_state.insert(gpu_state)
+                }
+                Some(state) => state,
+            };
+
+            let texture_index = texture_buffer.len() as u32;
+            texture_buffer.push(state.texture.create_view(&TextureViewDescriptor::default()));
+
+            for vertex in &mut state.vertices {
+                vertex.texture_index = texture_index;
+            }
+
+            vertex_buffer.extend(bytemuck::bytes_of(&state.vertices));
+
             *instance_count += 1;
         }
     }
@@ -338,11 +356,9 @@ const INDICES: &[u16] = &[0, 1, 2, 3, 0, 2];
 fn create_element(
     cmd: &DrawCommand,
     viewport_size: UVec2,
-    vertex_buffer: &mut Vec<u8>,
-    texture_buffer: &mut Vec<TextureView>,
     device: &Device,
     queue: &Queue,
-) {
+) -> GpuDrawCommandState {
     let _span = trace_span!("create_element").entered();
 
     if cfg!(debug_assertions) && (cmd.image.height() == 0 || cmd.image.width() == 0) {
@@ -388,10 +404,6 @@ fn create_element(
         },
     );
 
-    let texture_view = texture.create_view(&TextureViewDescriptor::default());
-    let texture_index = texture_buffer.len() as u32;
-    texture_buffer.push(texture_view);
-
     let min = remap(cmd.position.min.as_vec2(), viewport_size.as_vec2());
     let max = remap(cmd.position.max.as_vec2(), viewport_size.as_vec2());
 
@@ -401,30 +413,34 @@ fn create_element(
             uv: [0.0, 0.0],
             color: cmd.color.as_rgba(),
             _pad0: [0; 2],
-            texture_index,
+            texture_index: 0,
         },
         Vertex {
             position: [min.x, max.y, 0.0],
             uv: [0.0, 1.0],
             color: cmd.color.as_rgba(),
             _pad0: [0; 2],
-            texture_index,
+            texture_index: 0,
         },
         Vertex {
             position: [max.x, max.y, 0.0],
             uv: [1.0, 1.0],
             color: cmd.color.as_rgba(),
             _pad0: [0; 2],
-            texture_index,
+            texture_index: 0,
         },
         Vertex {
             position: [max.x, min.y, 0.0],
             uv: [1.0, 0.0],
             color: cmd.color.as_rgba(),
             _pad0: [0; 2],
-            texture_index,
+            texture_index: 0,
         },
     ];
 
-    vertex_buffer.extend(bytemuck::cast_slice(&vertices));
+    GpuDrawCommandState {
+        vertices,
+        texture,
+        size: viewport_size,
+    }
 }

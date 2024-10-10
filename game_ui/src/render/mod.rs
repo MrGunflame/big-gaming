@@ -15,6 +15,8 @@ use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::RwLock;
+use pipeline::Vertex;
+use wgpu::Texture;
 
 use crate::layout::{Key, Layout};
 use crate::primitive::Primitive;
@@ -56,8 +58,8 @@ impl UiRenderer {
         elems.insert(target, SurfaceDrawCommands::new());
     }
 
-    pub fn get_mut(&mut self, target: RenderTarget) -> Option<&mut Vec<(Key, Layout, Primitive)>> {
-        self.targets.get_mut(&target).map(|v| &mut v.nodes)
+    pub(crate) fn get_mut(&mut self, target: RenderTarget) -> Option<&mut SurfaceState> {
+        self.targets.get_mut(&target)
     }
 
     pub fn remove(&mut self, target: RenderTarget) {
@@ -68,6 +70,7 @@ impl UiRenderer {
     }
 
     pub fn resize(&mut self, target: RenderTarget, size: UVec2) {
+        tracing::trace!("resize {size}");
         if let Some(state) = self.targets.get_mut(&target) {
             state.size = size;
         }
@@ -164,12 +167,12 @@ impl Rect {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct SurfaceDrawCommands {
     // Note: We use `None` to represent primitives that do
     // not need to be rendered. We can still retain them
     // over frames.
-    cmds: BTreeMap<Key, Option<DrawCommand>>,
+    cmds: BTreeMap<Key, Option<DrawCommandState>>,
     tracked: HashSet<Key>,
 }
 
@@ -196,18 +199,38 @@ impl SurfaceDrawCommands {
     fn insert(&mut self, key: Key, cmd: Option<DrawCommand>) {
         debug_assert!(!self.tracked.contains(&key));
 
-        self.cmds.insert(key, cmd);
+        self.cmds.insert(
+            key,
+            cmd.map(|cmd| DrawCommandState {
+                cmd,
+                gpu_state: None,
+            }),
+        );
         self.tracked.insert(key);
     }
 
-    fn commands(&self) -> impl Iterator<Item = &DrawCommand> + '_ {
-        self.cmds.values().filter_map(|v| v.as_ref())
+    fn commands_mut(&mut self) -> impl Iterator<Item = &mut DrawCommandState> + '_ {
+        self.cmds.values_mut().filter_map(|v| v.as_mut())
     }
 }
 
 #[derive(Clone, Debug)]
-struct SurfaceState {
+pub(crate) struct SurfaceState {
+    pub(crate) size: UVec2,
+    pub(crate) scale_factor: f64,
+    pub(crate) nodes: Vec<(Key, Layout, Primitive)>,
+}
+
+#[derive(Debug)]
+struct DrawCommandState {
+    cmd: DrawCommand,
+    gpu_state: Option<GpuDrawCommandState>,
+}
+
+#[derive(Debug)]
+struct GpuDrawCommandState {
+    vertices: [Vertex; 4],
+    texture: Texture,
+    /// Viewport size for which this draw command is build.
     size: UVec2,
-    scale_factor: f64,
-    nodes: Vec<(Key, Layout, Primitive)>,
 }
