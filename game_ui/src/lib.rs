@@ -86,6 +86,8 @@ impl UiState {
     pub fn update(&mut self) {
         let _span = trace_span!("UiState::update").entered();
 
+        self.runtime.reactive().update();
+
         let mut rt = self.runtime.inner.lock();
         for doc in rt.documents.values_mut() {
             doc.tree.compute_layout();

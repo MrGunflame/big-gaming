@@ -1,23 +1,22 @@
-use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Formatter};
-use std::rc::Rc;
 use std::sync::Arc;
 
+use game_tracing::trace_span;
 use parking_lot::Mutex;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SignalId(u64);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-struct EffectId(u64);
+pub struct EffectId(u64);
 
 #[derive(Clone, Debug)]
-pub struct ReactiveContext {
+pub struct ReactiveRuntime {
     inner: Arc<Mutex<ContextInner>>,
 }
 
-impl ReactiveContext {
+impl ReactiveRuntime {
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(ContextInner {
@@ -25,7 +24,7 @@ impl ReactiveContext {
                 next_effect_id: EffectId(0),
                 signal_effects: HashMap::new(),
                 effects: HashMap::new(),
-                signals_updated: HashSet::new(),
+                effects_scheduled: HashSet::new(),
             })),
         }
     }
@@ -36,12 +35,12 @@ impl ReactiveContext {
         let id = inner.next_signal_id;
         inner.next_signal_id.0 += 1;
 
-        let inner = Rc::new(SignalInner {
+        let inner = Arc::new(SignalInner {
             ctx: self.clone(),
             id,
-            read_count: Cell::new(1),
-            write_count: Cell::new(1),
-            value: RefCell::new(value),
+            read_count: Mutex::new(1),
+            write_count: Mutex::new(1),
+            value: Mutex::new(value),
         });
 
         (
@@ -52,36 +51,104 @@ impl ReactiveContext {
         )
     }
 
-    pub fn register_effect<F>(&self, signals: &[SignalId], f: F)
+    pub fn register_effect<T>(&self, effect: T) -> EffectId
     where
-        F: FnMut() + 'static,
+        T: Effect,
     {
         let mut inner = self.inner.lock();
         let id = inner.next_effect_id;
         inner.next_effect_id.0 += 1;
 
+        let mut ctx = NodeContext {
+            add_signals: Vec::new(),
+            remove_signals: Vec::new(),
+        };
+
+        effect.init(&mut ctx);
+
+        for signal in &ctx.add_signals {
+            inner.signal_effects.entry(*signal).or_default().push(id);
+        }
+
         inner.effects.insert(
             id,
-            Effect {
-                signal_count: signals.len(),
-                f: Rc::new(RefCell::new(f)),
-            },
+            Arc::new(Mutex::new(Subscriber {
+                sources: ctx.add_signals.into_iter().collect(),
+                effect: Box::new(effect),
+            })),
         );
 
-        for signal in signals {
-            inner.signal_effects.insert(*signal, id);
+        id
+    }
+
+    pub fn register_and_schedule_effect<T>(&self, effect: T) -> EffectId
+    where
+        T: Effect,
+    {
+        let id = self.register_effect(effect);
+
+        let mut inner = self.inner.lock();
+        inner.effects_scheduled.insert(id);
+
+        id
+    }
+
+    pub(crate) fn update(&self) {
+        let _span = trace_span!("ReactiveRuntime::update").entered();
+
+        let mut inner = self.inner.lock();
+
+        let mut effects = Vec::new();
+        for id in core::mem::take(&mut inner.effects_scheduled) {
+            let effect = inner.effects.get(&id).unwrap();
+            effects.push((id, effect.clone()));
+        }
+
+        drop(inner);
+
+        for (id, subscriber) in effects {
+            let mut subscriber = subscriber.lock();
+
+            let mut ctx = NodeContext {
+                add_signals: Vec::new(),
+                remove_signals: Vec::new(),
+            };
+
+            subscriber.effect.run(&mut ctx);
+
+            let mut inner = self.inner.lock();
+
+            for signal in ctx.add_signals {
+                if !subscriber.sources.insert(signal) {
+                    continue;
+                }
+
+                let entry = inner.signal_effects.entry(signal).or_default();
+                entry.push(id);
+            }
+
+            for signal in ctx.remove_signals {
+                if !subscriber.sources.remove(&signal) {
+                    continue;
+                }
+
+                if let Some(subscribers) = inner.signal_effects.get_mut(&signal) {
+                    subscribers.retain(|sub_id| *sub_id != id);
+                }
+            }
+
+            // If the subscriber has no more sources it can never be
+            // called again and we can remove it.
+            if subscriber.sources.is_empty() {
+                inner.effects.remove(&id);
+            }
         }
     }
 
     fn unregister_signal(&self, id: SignalId) {
         let mut inner = self.inner.lock();
 
-        let effect_id = inner.signal_effects.remove(&id).unwrap();
-        let effect = inner.effects.get_mut(&effect_id).unwrap();
-        effect.signal_count -= 1;
-        if effect.signal_count == 0 {
-            inner.effects.remove(&effect_id);
-        }
+        inner.signal_effects.remove(&id);
     }
 }
 
@@ -89,27 +156,67 @@ impl ReactiveContext {
 struct ContextInner {
     next_signal_id: SignalId,
     next_effect_id: EffectId,
-    signal_effects: HashMap<SignalId, EffectId>,
-    effects: HashMap<EffectId, Effect>,
-    signals_updated: HashSet<SignalId>,
+    signal_effects: HashMap<SignalId, Vec<EffectId>>,
+    effects: HashMap<EffectId, Arc<Mutex<Subscriber>>>,
+    effects_scheduled: HashSet<EffectId>,
 }
 
-struct Effect {
-    signal_count: usize,
-    f: Rc<RefCell<dyn FnMut()>>,
+#[derive(Clone, Debug)]
+pub struct NodeContext {
+    add_signals: Vec<SignalId>,
+    remove_signals: Vec<SignalId>,
 }
 
-impl Debug for Effect {
+impl NodeContext {
+    /// Subscribes the current node to changes from the given [`SignalId`].
+    pub fn subscribe(&mut self, id: SignalId) {
+        self.add_signals.push(id);
+    }
+
+    /// Unregisters the current node from the given [`SignalId`].
+    ///
+    /// If all [`SignalId`]s are unregistered the node will never be called again and may be
+    /// dropped.
+    pub fn unregister(&mut self, id: SignalId) {
+        self.add_signals.retain(|signal| *signal != id);
+        self.remove_signals.push(id);
+    }
+}
+
+struct Subscriber {
+    /// List of sources that can trigger this effect.
+    sources: HashSet<SignalId>,
+    effect: Box<dyn Effect>,
+}
+
+impl Debug for Subscriber {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Effect")
-            .field("signal_count", &self.signal_count)
+        f.debug_struct("Subscriber")
+            .field("sources", &self.sources)
             .finish_non_exhaustive()
+    }
+}
+
+pub trait Effect: Send + 'static {
+    fn init(&self, ctx: &mut NodeContext);
+
+    fn run(&mut self, ctx: &mut NodeContext);
+}
+
+impl<F> Effect for F
+where
+    F: FnMut(&mut NodeContext) + Send + 'static,
+{
+    fn init(&self, _ctx: &mut NodeContext) {}
+
+    fn run(&mut self, ctx: &mut NodeContext) {
+        self(ctx);
     }
 }
 
 #[derive(Debug)]
 pub struct ReadSignal<T> {
-    inner: Rc<SignalInner<T>>,
+    inner: Arc<SignalInner<T>>,
 }
 
 impl<T> ReadSignal<T> {
@@ -117,17 +224,40 @@ impl<T> ReadSignal<T> {
         self.inner.id
     }
 
+    pub fn with<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&T) -> U,
+    {
+        let value = self.inner.value.lock();
+        f(&value)
+    }
+
     pub fn get(&self) -> T
     where
         T: Clone,
     {
-        self.inner.value.borrow().clone()
+        self.inner.value.lock().clone()
+    }
+}
+
+impl<T> Clone for ReadSignal<T> {
+    fn clone(&self) -> Self {
+        self.inner.increment_read_count();
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<T> Drop for ReadSignal<T> {
+    fn drop(&mut self) {
+        self.inner.decrement_read_count();
     }
 }
 
 #[derive(Debug)]
 pub struct WriteSignal<T> {
-    inner: Rc<SignalInner<T>>,
+    inner: Arc<SignalInner<T>>,
 }
 
 impl<T> WriteSignal<T> {
@@ -135,20 +265,30 @@ impl<T> WriteSignal<T> {
         self.inner.id
     }
 
+    pub fn update<F, U>(&self, f: F) -> U
+    where
+        F: FnOnce(&mut T) -> U,
+    {
+        let mut value = self.inner.value.lock();
+        f(&mut value)
+    }
+
     pub fn set(&self, value: T) {
-        *self.inner.value.borrow_mut() = value;
+        *self.inner.value.lock() = value;
         self.wake();
     }
 
     fn wake(&self) {
-        let mut inner = self.inner.ctx.inner.lock();
-        inner.signals_updated.insert(self.inner.id);
+        let inner = &mut *self.inner.ctx.inner.lock();
+        if let Some(effects) = inner.signal_effects.get_mut(&self.inner.id) {
+            inner.effects_scheduled.extend(effects.iter().copied());
+        }
     }
 }
 
 impl<T> Clone for WriteSignal<T> {
     fn clone(&self) -> Self {
-        self.inner.increment_read_count();
+        self.inner.increment_write_count();
         Self {
             inner: self.inner.clone(),
         }
@@ -163,24 +303,23 @@ impl<T> Drop for WriteSignal<T> {
 
 #[derive(Debug)]
 struct SignalInner<T> {
-    ctx: ReactiveContext,
+    ctx: ReactiveRuntime,
     id: SignalId,
-    value: RefCell<T>,
-    read_count: Cell<usize>,
-    write_count: Cell<usize>,
+    value: Mutex<T>,
+    read_count: Mutex<usize>,
+    write_count: Mutex<usize>,
 }
 
 impl<T> SignalInner<T> {
     fn increment_write_count(&self) {
-        let count = self.write_count.get();
-        self.write_count.set(count + 1);
+        *self.write_count.lock() += 1;
     }
 
     fn decrement_write_count(&self) {
-        let count = self.write_count.get();
-        self.write_count.set(count - 1);
+        let mut count = self.write_count.lock();
+        *count -= 1;
 
-        if count != 1 {
+        if *count != 0 {
             return;
         }
 
@@ -188,15 +327,14 @@ impl<T> SignalInner<T> {
     }
 
     fn increment_read_count(&self) {
-        let count = self.read_count.get();
-        self.read_count.set(count + 1);
+        *self.read_count.lock() += 1;
     }
 
     fn decrement_read_count(&self) {
-        let count = self.read_count.get();
-        self.read_count.set(count - 1);
+        let mut count = self.read_count.lock();
+        *count -= 1;
 
-        if count != 1 {
+        if *count != 0 {
             return;
         }
 
