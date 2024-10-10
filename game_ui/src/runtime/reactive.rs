@@ -345,7 +345,9 @@ where
         F: FnOnce(&mut T) -> U,
     {
         let mut value = self.inner.value.lock();
-        f(&mut value)
+        let res = f(&mut value);
+        self.wake();
+        res
     }
 
     /// Sets the value of the underlying signal to `value`.
