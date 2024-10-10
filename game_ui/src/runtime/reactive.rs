@@ -271,12 +271,13 @@ where
     /// Note that `with` should not be nested with operations on the same underlying signal. The
     /// effects may include deadlocks or panics:
     /// ```no_run
-    /// # fn main(rt: &ReactiveRutime) {
+    /// # use game_ui::runtime::reactive::ReactiveRuntime;
+    /// #
+    /// # let rt: ReactiveRuntime = panic!();
     /// let (value, set_value) = rt.create_signal(0);
-    /// value.with(|| {
+    /// value.with(|_| {
     ///     set_value.set(1); // <-- Don't do this
     /// });
-    /// # }
     /// ```
     ///
     /// [`get`] does not have this potential for bugs and should be preferred if possible.
