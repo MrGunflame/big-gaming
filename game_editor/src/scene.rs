@@ -25,7 +25,7 @@ use crate::state::record::Records;
 pub struct SceneEntities {
     resource_to_scene: HashMap<ResourceId, SceneState>,
     scene_to_resource: HashMap<SceneId, ResourceId>,
-    mesh_instances: HashMap<EntityId, Option<InstanceId>>,
+    mesh_instances: HashMap<EntityId, InstantiatedMeshInstance>,
     directional_lights: HashMap<EntityId, DirectionalLightId>,
     point_lights: HashMap<EntityId, PointLightId>,
     spot_lights: HashMap<EntityId, SpotLightId>,
@@ -55,16 +55,34 @@ impl SceneEntities {
             removed_mesh_instances.remove(&entity);
 
             match self.mesh_instances.get(&entity) {
-                Some(id) => {
-                    if let Some(id) = id {
-                        self.spawner.set_transform(*id, transform);
+                Some(instance) => {
+                    // If the instance has changed we must reload the model.
+                    // This is currently done by destroying the mesh instance
+                    // and then letting it become a new entity in the next
+                    // frame.
+                    // FIXME: We could also for once do the smart thing and
+                    // immediately unload the old model and load the new model
+                    // in the current frame.
+                    if mesh_instance.model != instance.model {
+                        removed_mesh_instances.insert(entity, *instance);
+                        continue;
+                    }
+
+                    if let Some(id) = instance.instance {
+                        self.spawner.set_transform(id, transform);
                     }
                 }
                 None => match self.resource_to_scene.get_mut(&mesh_instance.model) {
                     Some(state) => {
                         state.instances += 1;
                         let instance = self.spawner.spawn(state.id);
-                        self.mesh_instances.insert(entity, Some(instance));
+                        self.mesh_instances.insert(
+                            entity,
+                            InstantiatedMeshInstance {
+                                instance: Some(instance),
+                                model: mesh_instance.model,
+                            },
+                        );
                     }
                     None => {
                         let instance = match load_resource(mesh_instance.model, records, world) {
@@ -87,7 +105,13 @@ impl SceneEntities {
                             None => None,
                         };
 
-                        self.mesh_instances.insert(entity, instance);
+                        self.mesh_instances.insert(
+                            entity,
+                            InstantiatedMeshInstance {
+                                instance,
+                                model: mesh_instance.model,
+                            },
+                        );
                     }
                 },
             }
@@ -213,10 +237,10 @@ impl SceneEntities {
             }
         }
 
-        for (entity, id) in removed_mesh_instances {
+        for (entity, instance) in removed_mesh_instances {
             self.mesh_instances.remove(&entity);
 
-            let Some(id) = id else {
+            let Some(id) = instance.instance else {
                 continue;
             };
 
@@ -277,4 +301,10 @@ fn load_resource<'a>(id: ResourceId, records: &'a Records, world: &'a World) -> 
         }
         ResourceId::Runtime(id) => world.get_resource(id).map(|v| v.to_vec()),
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct InstantiatedMeshInstance {
+    instance: Option<InstanceId>,
+    model: ResourceId,
 }
