@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 
 use super::record::EditState;
 use super::world::components::ComponentsPanel;
-use super::world::panel::Panel;
+use super::world::entity_hierarchy::EntityHierarchy;
 use super::world::properties::Properties;
 use super::world::{Event, OnWorldChangeEvent, SceneState, WorldEvent, WorldWindowState};
 use super::WindowTrait;
@@ -211,7 +211,7 @@ impl Widget for PrefabEditor {
             writer: self.writer.clone(),
         }
         .mount(&root);
-        Panel {
+        EntityHierarchy {
             writer: self.writer.clone(),
             state: self.state.clone(),
         }

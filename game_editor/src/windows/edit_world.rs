@@ -21,7 +21,7 @@ use parking_lot::Mutex;
 use crate::state::EditorState;
 use crate::windows::world::WorldWindowState;
 
-use super::world::panel::Panel;
+use super::world::entity_hierarchy::EntityHierarchy;
 use super::world::properties::Properties;
 use super::world::{Event, SceneState, WorldEvent};
 use super::WindowTrait;
@@ -262,7 +262,7 @@ impl Widget for EditWorld {
             writer: self.new_prefab_writer,
         }
         .mount(&root);
-        Panel {
+        EntityHierarchy {
             state: self.state,
             writer: self.writer,
         }
