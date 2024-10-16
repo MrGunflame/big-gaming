@@ -67,7 +67,8 @@ struct Args {
 
 #[main]
 fn main() -> ExitCode {
-    game_core::logger::init();
+    let sender = game_core::logger::ipc::Sender::load();
+    game_core::logger::init(sender);
 
     let args = Args::parse();
 

@@ -1,3 +1,5 @@
+pub mod ipc;
+
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Display, Formatter, Write};
 use std::io::IsTerminal;
@@ -5,6 +7,7 @@ use std::num::NonZeroU64;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use chrono::Local;
+use ipc::Sender;
 use parking_lot::RwLock;
 use tracing::field::{Field, Visit};
 use tracing::metadata::LevelFilter;
@@ -15,11 +18,11 @@ use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
-pub fn init() {
+pub fn init(sender: Sender) {
     set_global_default(
         tracing_subscriber::registry()
             .with(game_tracing::TracyLayer::default())
-            .with(Logger::new()),
+            .with(Logger::new(sender)),
     )
     .unwrap();
 }
@@ -33,7 +36,7 @@ pub struct Logger {
 }
 
 impl Logger {
-    pub fn new() -> Self {
+    pub fn new(sender: Sender) -> Self {
         let level = std::env::var("RUST_LOG")
             .map(|e| match e.as_str() {
                 "error" | "ERROR" => LevelFilter::ERROR,
@@ -89,12 +92,6 @@ impl Logger {
 
             println!("{} {} {} {}", now, level, name, content);
         };
-    }
-}
-
-impl Default for Logger {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
