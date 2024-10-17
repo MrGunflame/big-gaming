@@ -24,4 +24,7 @@ features = [
     "context-switch-tracing",
     # Require manual client startup before it can be used.
     "manual-lifetime",
+    "callstack-inlines",
+    "code-transfer",
+    "broadcast",
 ]

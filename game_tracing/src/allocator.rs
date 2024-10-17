@@ -1,6 +1,9 @@
 use std::alloc::{GlobalAlloc, Layout};
+use std::ffi::c_int;
 
 use tracy_client::Client;
+
+const CALLSTACK_DEPTH: c_int = 128;
 
 pub struct ProfiledAllocator<T>(T);
 
@@ -15,7 +18,12 @@ impl<T> ProfiledAllocator<T> {
         }
 
         unsafe {
-            tracy_client::sys::___tracy_emit_memory_alloc(ptr.cast(), size, 1);
+            tracy_client::sys::___tracy_emit_memory_alloc_callstack(
+                ptr.cast(),
+                size,
+                CALLSTACK_DEPTH,
+                1,
+            );
         }
     }
 
@@ -25,7 +33,7 @@ impl<T> ProfiledAllocator<T> {
         }
 
         unsafe {
-            tracy_client::sys::___tracy_emit_memory_free(ptr.cast(), 1);
+            tracy_client::sys::___tracy_emit_memory_free_callstack(ptr.cast(), CALLSTACK_DEPTH, 1);
         }
     }
 }
