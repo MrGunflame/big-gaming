@@ -1,3 +1,4 @@
+pub mod debug;
 pub mod format;
 mod loader;
 mod model;
