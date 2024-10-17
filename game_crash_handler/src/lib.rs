@@ -55,9 +55,15 @@ where
             }
         }
 
+        // Start the profiler before the application starts.
+        game_tracing::Client::start();
+
         let termination = main();
         return termination.report();
     }
+
+    // The profiler should not run on the parent process.
+    debug_assert!(!game_tracing::Client::is_running());
 
     match fork_main(args) {
         Ok(Status::Sucess) => {

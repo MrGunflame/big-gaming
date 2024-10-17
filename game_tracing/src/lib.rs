@@ -1,11 +1,11 @@
-use tracing_subscriber::layer::SubscriberExt;
+mod allocator;
 
-pub mod world;
+pub use allocator::ProfiledAllocator;
+pub use tracing_tracy::TracyLayer;
+pub use tracy_client::Client;
 
 #[doc(hidden)]
 pub use tracing;
-
-pub use tracing_tracy::TracyLayer;
 
 #[macro_export]
 macro_rules! trace_span {
@@ -34,3 +34,6 @@ impl Span {
 pub struct EnteredSpan {
     _inner: tracing::span::EnteredSpan,
 }
+
+#[cfg_attr(all(not(miri), not(test)), global_allocator)]
+static GLOBAL: ProfiledAllocator<std::alloc::System> = ProfiledAllocator::new(std::alloc::System);
