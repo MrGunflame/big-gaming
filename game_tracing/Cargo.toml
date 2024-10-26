@@ -9,9 +9,22 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [dependencies]
-game_common = { version = "0.1.0", path = "../game_common" }
 glam = "0.28.0"
 tracing = "0.1.40"
 
 tracing-subscriber = "0.3.18"
-tracing-tracy = "0.11.0"
+tracing-tracy = "0.11.1"
+
+[dependencies.tracy-client]
+version = "=0.17.1"
+default-features = false
+features = [
+    "enable",
+    "system-tracing",
+    "context-switch-tracing",
+    # Require manual client startup before it can be used.
+    "manual-lifetime",
+    "callstack-inlines",
+    "code-transfer",
+    "broadcast",
+]
