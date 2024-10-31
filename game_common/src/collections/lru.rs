@@ -124,7 +124,7 @@ impl<K, V> LruCache<K, V> {
         // Promote the bucket by placing it at `self.head`.
         unsafe {
             let bucket = ptr.as_ref();
-            let pointers = bucket.pointers.get();
+            let pointers = bucket.pointers.borrow();
 
             if cfg!(debug_assertions) {
                 if let (Some(next), Some(prev)) = (pointers.next, pointers.prev) {
@@ -136,12 +136,12 @@ impl<K, V> LruCache<K, V> {
             // Remove the entry from the linked list.
 
             match pointers.next {
-                Some(next) => next.as_ref().pointers.get_mut().prev = pointers.prev,
+                Some(next) => next.as_ref().pointers.borrow_mut().prev = pointers.prev,
                 None => self.tail = pointers.prev,
             }
 
             match pointers.prev {
-                Some(prev) => prev.as_ref().pointers.get_mut().next = pointers.next,
+                Some(prev) => prev.as_ref().pointers.borrow_mut().next = pointers.next,
                 None => self.head = pointers.next,
             }
 
@@ -154,12 +154,12 @@ impl<K, V> LruCache<K, V> {
 
     fn insert_bucket(&mut self, bucket: NonNull<Bucket<K, V>>) {
         unsafe {
-            bucket.as_ref().pointers.get_mut().prev = None;
-            bucket.as_ref().pointers.get_mut().next = self.head;
+            bucket.as_ref().pointers.borrow_mut().prev = None;
+            bucket.as_ref().pointers.borrow_mut().next = self.head;
         }
 
         match self.head {
-            Some(head) => unsafe { head.as_ref().pointers.get_mut().prev = Some(bucket) },
+            Some(head) => unsafe { head.as_ref().pointers.borrow_mut().prev = Some(bucket) },
             None => self.tail = Some(bucket),
         }
 
@@ -180,10 +180,10 @@ impl<K, V> LruCache<K, V> {
 
         unsafe {
             let boxed = Box::from_raw(tail.as_ptr());
-            let pointers = boxed.pointers.get_mut();
+            let pointers = boxed.pointers.borrow_mut();
 
             match pointers.prev {
-                Some(prev) => prev.as_ref().pointers.get_mut().next = None,
+                Some(prev) => prev.as_ref().pointers.borrow_mut().next = None,
                 None => self.head = None,
             }
 

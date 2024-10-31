@@ -133,7 +133,7 @@ impl Renderer {
         let pipeline = Pipeline::new(instance, adapter, device, queue);
 
         {
-            let mut graph = unsafe { pipeline.shared.graph.get_mut() };
+            let mut graph = unsafe { pipeline.shared.graph.borrow_mut() };
             graph.push(RenderPass {
                 state: state.clone(),
                 forward: forward.clone(),
@@ -185,7 +185,7 @@ impl Renderer {
     pub fn add_to_graph(&self, node: impl Node) {
         self.pipeline.wait_idle();
 
-        let mut graph = unsafe { self.pipeline.shared.graph.get_mut() };
+        let mut graph = unsafe { self.pipeline.shared.graph.borrow_mut() };
         graph.push(node);
     }
 
@@ -240,7 +240,7 @@ impl Renderer {
     pub fn get_surface_size(&self, target: RenderTarget) -> Option<UVec2> {
         match target {
             RenderTarget::Window(id) => {
-                let surfaces = unsafe { self.pipeline.shared.surfaces.get() };
+                let surfaces = unsafe { self.pipeline.shared.surfaces.borrow() };
                 surfaces
                     .get(id)
                     .map(|s| UVec2::new(s.config.width, s.config.height))
@@ -295,7 +295,7 @@ impl Renderer {
         }
 
         {
-            let mut render_textures = unsafe { self.pipeline.shared.render_textures.get_mut() };
+            let mut render_textures = unsafe { self.pipeline.shared.render_textures.borrow_mut() };
 
             for event in self.render_textures.events.drain(..) {
                 match event {
@@ -316,7 +316,7 @@ impl Renderer {
         }
 
         {
-            let mut jobs = unsafe { self.pipeline.shared.jobs.get_mut() };
+            let mut jobs = unsafe { self.pipeline.shared.jobs.borrow_mut() };
             std::mem::swap(&mut self.jobs, &mut jobs);
         }
 
@@ -330,7 +330,7 @@ impl Renderer {
     ///
     ///  Caller guarantees that the renderer is idle.
     unsafe fn update_surfaces(&mut self) {
-        let mut surfaces = unsafe { self.pipeline.shared.surfaces.get_mut() };
+        let mut surfaces = unsafe { self.pipeline.shared.surfaces.borrow_mut() };
         let instance = &self.pipeline.shared.instance;
         let adapter = &self.pipeline.shared.adapter;
         let device = &self.pipeline.shared.device;
