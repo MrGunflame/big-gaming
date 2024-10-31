@@ -151,10 +151,10 @@ fn start_render_thread(shared: Arc<SharedState>) -> Arc<Parker> {
 unsafe fn execute_render(shared: &SharedState) {
     let _span = trace_span!("render_frame").entered();
 
-    let surfaces = unsafe { shared.surfaces.get() };
-    let graph = unsafe { shared.graph.get() };
-    let mut mipmap = unsafe { shared.mipmap_generator.get_mut() };
-    let mut fps_limiter = unsafe { shared.fps_limiter.get_mut() };
+    let surfaces = unsafe { shared.surfaces.borrow() };
+    let graph = unsafe { shared.graph.borrow() };
+    let mut mipmap = unsafe { shared.mipmap_generator.borrow_mut() };
+    let mut fps_limiter = unsafe { shared.fps_limiter.borrow_mut() };
 
     let mut encoder = shared
         .device
@@ -195,7 +195,7 @@ unsafe fn execute_render(shared: &SharedState) {
         outputs.push((surface, output));
     }
 
-    let mut render_textures = unsafe { shared.render_textures.get_mut() };
+    let mut render_textures = unsafe { shared.render_textures.borrow_mut() };
     for (id, render_texture) in render_textures.iter_mut() {
         let texture = render_texture.texture.get_or_insert_with(|| {
             let texture = shared.device.create_texture(&TextureDescriptor {
@@ -236,7 +236,7 @@ unsafe fn execute_render(shared: &SharedState) {
 
     let mut mapping_buffers = Vec::new();
 
-    let mut jobs = unsafe { shared.jobs.get_mut() };
+    let mut jobs = unsafe { shared.jobs.borrow_mut() };
     for job in jobs.drain(..) {
         match job {
             Job::SetFpsLimit(limit) => {

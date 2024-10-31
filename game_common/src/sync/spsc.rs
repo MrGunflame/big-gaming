@@ -168,6 +168,7 @@ impl<T> Sender<T> {
 
 unsafe impl<T> Send for Sender<T> where T: Send {}
 
+#[derive(Debug)]
 pub struct Receiver<T> {
     inner: Arc<Queue<T>>,
 }
