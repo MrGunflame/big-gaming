@@ -60,21 +60,30 @@ impl Widget for EditRecord {
             .map(|module| module.module)
             .collect();
 
+        let selected_module = match self.id {
+            Some(id) => modules.iter().position(|module| module.id == id.module),
+            None => None,
+        };
+
         let options = modules.iter().map(|module| module.name.clone()).collect();
 
-        Selection::new(options)
-            .on_change({
-                let set_edit_state = set_edit_state.clone();
+        let mut selection = Selection::new(options).on_change({
+            let set_edit_state = set_edit_state.clone();
 
-                move |index| {
-                    let module: &Module = &modules[index];
+            move |index| {
+                let module: &Module = &modules[index];
 
-                    set_edit_state.update(|state| {
-                        state.module = Some(module.id);
-                    });
-                }
-            })
-            .mount(&root);
+                set_edit_state.update(|state| {
+                    state.module = Some(module.id);
+                });
+            }
+        });
+
+        if let Some(index) = selected_module {
+            selection = selection.value(index);
+        }
+
+        selection.mount(&root);
 
         Text::new("Name").mount(&root);
         Input::new()
@@ -87,6 +96,7 @@ impl Widget for EditRecord {
                     });
                 }
             })
+            .value(edit_state.with(|state| state.record.name.clone()))
             .mount(&root);
 
         Text::new("Description").mount(&root);
@@ -100,6 +110,7 @@ impl Widget for EditRecord {
                     });
                 }
             })
+            .value(edit_state.with(|state| state.record.description.clone()))
             .mount(&root);
 
         match self.kind {
