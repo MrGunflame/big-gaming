@@ -20,6 +20,7 @@ use game_render::camera::RenderTarget;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
+use game_ui::runtime::reactive::WriteSignal;
 use game_ui::runtime::DocumentId;
 use game_ui::widgets::{Callback, Widget};
 use game_ui::UiState;
@@ -172,6 +173,6 @@ pub enum SpawnWindow {
     EditWorld,
     Error(String),
     EditRecord(RecordKind, Option<RecordReference>),
-    EditPrefab(Arc<Mutex<EditState>>),
+    EditPrefab(WriteSignal<EditState>),
     Explorer(Callback<Vec<Entry>>),
 }

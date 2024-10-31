@@ -531,9 +531,8 @@ fn render_fields<'a>(
 
                 let children_ctx = Arc::new(Mutex::new(None));
 
-                Selection {
-                    options,
-                    on_change: Callback::from({
+                Selection::new(options)
+                    .on_change({
                         let children_ctx = children_ctx.clone();
                         let descriptor = descriptor.clone();
                         let writer = writer.clone();
@@ -594,9 +593,8 @@ fn render_fields<'a>(
 
                             render_fields(id, &descriptor, queue, &writer, &component);
                         }
-                    }),
-                }
-                .mount(&root);
+                    })
+                    .mount(&root);
 
                 let children = Container::new().mount(&root);
                 *children_ctx.lock() = Some(children.clone());
@@ -689,7 +687,7 @@ fn mount_new_component_selector(
         writer.send(Event::UpdateComponent(*id, component)).unwrap();
     });
 
-    Selection { options, on_change }.mount(cx);
+    Selection::new(options).on_change(on_change).mount(cx);
 }
 
 #[derive(Clone, Debug)]

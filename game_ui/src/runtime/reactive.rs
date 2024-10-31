@@ -359,6 +359,15 @@ where
         self.wake();
     }
 
+    pub fn with<F, U>(&self, f: F) -> U
+    where
+        F: Fn(&T) -> U,
+    {
+        let mut value = self.inner.value.lock();
+        let res = f(&mut value);
+        res
+    }
+
     fn wake(&self) {
         let inner = &mut *self.inner.ctx.inner.lock();
         if let Some(effects) = inner.signal_effects.get_mut(&self.inner.id) {

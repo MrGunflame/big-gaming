@@ -7,19 +7,50 @@ use crate::runtime::Context;
 use super::{Button, Callback, Container, Input, Text, Widget};
 
 pub struct Selection {
-    pub options: Vec<String>,
-    pub on_change: Callback<usize>,
+    options: Vec<String>,
+    on_change: Callback<usize>,
+    value: Option<usize>,
+}
+
+impl Selection {
+    pub fn new(options: Vec<String>) -> Self {
+        Self {
+            options,
+            on_change: Callback::default(),
+            value: None,
+        }
+    }
+
+    pub fn on_change<T>(mut self, on_change: T) -> Self
+    where
+        T: Into<Callback<usize>>,
+    {
+        self.on_change = on_change.into();
+        self
+    }
+
+    pub fn value(mut self, value: usize) -> Self {
+        debug_assert!(value < self.options.len());
+
+        self.value = Some(value);
+        self
+    }
 }
 
 impl Widget for Selection {
     fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Selection::mount").entered();
 
+        let default_value = match self.value {
+            Some(index) => self.options.get(index).cloned().unwrap_or_default(),
+            None => String::new(),
+        };
+
         let root = Container::new().mount(parent);
 
         let (filter, set_filter) = root.runtime().reactive().create_signal(String::new());
         let (active, set_active) = root.runtime().reactive().create_signal(false);
-        let (input_value, set_input_value) = root.runtime().reactive().create_signal(String::new());
+        let (input_value, set_input_value) = root.runtime().reactive().create_signal(default_value);
 
         let input_ctx = Container::new().mount(&root);
 
