@@ -5,9 +5,10 @@ use game_common::world::World;
 use game_core::modules::Modules;
 use game_prefab::Prefab;
 use game_tracing::trace_span;
+use game_ui::runtime::reactive::WriteSignal;
 use game_ui::runtime::Context;
 use game_ui::style::{Direction, Justify, Style};
-use game_ui::widgets::{Callback, Container, Widget};
+use game_ui::widgets::{Container, Widget};
 use game_window::windows::WindowId;
 use parking_lot::Mutex;
 
@@ -15,17 +16,11 @@ use super::record::EditState;
 use super::world::components::ComponentsPanel;
 use super::world::entity_hierarchy::EntityHierarchy;
 use super::world::properties::Properties;
-use super::world::{Event, OnWorldChangeEvent, SceneState, WorldEvent, WorldWindowState};
+use super::world::{Event, SceneState, WorldEvent, WorldWindowState};
 use super::WindowTrait;
 
-pub fn on_world_change_callback(edit_state: Arc<Mutex<EditState>>) -> Callback<OnWorldChangeEvent> {
-    Callback::from(move |event: OnWorldChangeEvent| {})
-}
-
-pub fn load_prefab(edit_state: &Arc<Mutex<EditState>>) -> World {
-    let edit_state = edit_state.lock();
-
-    let prefab = match Prefab::from_bytes(&edit_state.record.data) {
+pub fn load_prefab(state: &EditState) -> World {
+    let prefab = match Prefab::from_bytes(&state.record.data) {
         Ok(prefab) => prefab,
         Err(err) => {
             tracing::warn!("invalid prefab data: {:?}", err);
@@ -42,12 +37,12 @@ pub struct EditPrefabWindow {
     state: WorldWindowState,
     rx: mpsc::Receiver<Event>,
     ui_state: Arc<Mutex<SceneState>>,
-    edit_state: Arc<Mutex<EditState>>,
+    edit_state: WriteSignal<EditState>,
 }
 
 impl EditPrefabWindow {
-    pub fn new(ctx: &Context, edit_state: Arc<Mutex<EditState>>, modules: Modules) -> Self {
-        let world = load_prefab(&edit_state);
+    pub fn new(ctx: &Context, edit_state: WriteSignal<EditState>, modules: Modules) -> Self {
+        let world = edit_state.with(|state| load_prefab(state));
 
         let mut state = WorldWindowState::new();
         for entity in world.entities() {
@@ -87,7 +82,10 @@ impl EditPrefabWindow {
         }
 
         let bytes = prefab.to_bytes();
-        self.edit_state.lock().record.data = bytes;
+
+        self.edit_state.update(|state| {
+            state.record.data = bytes;
+        });
     }
 }
 

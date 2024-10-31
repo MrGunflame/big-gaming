@@ -1,13 +1,11 @@
-use std::sync::Arc;
-
 use game_common::module::Module;
 use game_common::reflection::RecordDescriptor;
 use game_data::record::{Record, RecordKind};
+use game_ui::runtime::reactive::WriteSignal;
 use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Callback, Container, Input, Selection, Text, Widget};
 use game_wasm::record::{ModuleId, RecordId};
 use game_wasm::world::RecordReference;
-use parking_lot::Mutex;
 
 use crate::state::EditorState;
 use crate::widgets::explorer::Entry;
@@ -25,64 +23,81 @@ impl Widget for EditRecord {
     fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
-        let record = if let Some(id) = self.id {
-            self.state.records.get(id.module, id.record).unwrap()
-        } else {
-            Record {
+        let record = match self.id {
+            Some(id) => match self.state.records.get(id.module, id.record) {
+                Some(record) => record,
+                // If the `id` does not refer to a valid record we likely
+                // got outraced by a delete operation of the record.
+                None => {
+                    // TODO: Figure out how to handle this case.
+                    // Should we create an entirely new record or recreate
+                    // a "new" record with the same id as the old one?
+                    todo!()
+                }
+            },
+            None => Record {
                 id: RecordId(0),
                 kind: self.kind,
                 name: String::new(),
                 description: String::new(),
                 data: Vec::new(),
-            }
+            },
         };
 
-        let edit_state = Arc::new(Mutex::new(EditState {
+        let (edit_state, set_edit_state) = root.runtime().reactive().create_signal(EditState {
             id: self.id,
             record,
             module: None,
-        }));
+        });
 
-        {
-            let modules: Vec<_> = self
-                .state
-                .modules
-                .iter()
-                .filter(|module| module.capabilities.write())
-                .map(|module| module.module)
-                .collect();
+        Text::new("Module").mount(&root);
 
-            let options = modules.iter().map(|module| module.name.clone()).collect();
+        let modules: Vec<_> = self
+            .state
+            .modules
+            .iter()
+            .filter(|module| module.capabilities.write())
+            .map(|module| module.module)
+            .collect();
 
-            Selection {
-                options,
-                on_change: Callback::from({
-                    let edit_state = edit_state.clone();
-                    move |index| {
-                        let module: &Module = &modules[index];
-                        let mut edit_state = edit_state.try_lock().unwrap();
-                        edit_state.module = Some(module.id);
-                    }
-                }),
-            }
-            .mount(&root);
-        }
+        let options = modules.iter().map(|module| module.name.clone()).collect();
 
-        Input::new()
+        Selection::new(options)
             .on_change({
-                let edit_state = edit_state.clone();
-                move |value| {
-                    let mut edit_state = edit_state.try_lock().unwrap();
-                    edit_state.record.name = value;
+                let set_edit_state = set_edit_state.clone();
+
+                move |index| {
+                    let module: &Module = &modules[index];
+
+                    set_edit_state.update(|state| {
+                        state.module = Some(module.id);
+                    });
                 }
             })
             .mount(&root);
+
+        Text::new("Name").mount(&root);
         Input::new()
             .on_change({
-                let edit_state = edit_state.clone();
+                let set_edit_state = set_edit_state.clone();
+
                 move |value| {
-                    let mut edit_state = edit_state.lock();
-                    edit_state.record.description = value;
+                    set_edit_state.update(|state| {
+                        state.record.name = value;
+                    });
+                }
+            })
+            .mount(&root);
+
+        Text::new("Description").mount(&root);
+        Input::new()
+            .on_change({
+                let set_edit_state = set_edit_state.clone();
+
+                move |value| {
+                    set_edit_state.update(|state| {
+                        state.record.description = value;
+                    });
                 }
             })
             .mount(&root);
@@ -92,31 +107,28 @@ impl Widget for EditRecord {
                 EditComponentRecord {}.mount(&root);
             }
             RecordKind::RECORD => {
-                let state = self.state.clone();
-                let edit_state = edit_state.clone();
-
-                EditRecordRecord { state, edit_state }.mount(&root);
+                EditRecordRecord {
+                    state: self.state.clone(),
+                    edit_state: set_edit_state,
+                }
+                .mount(&root);
             }
             RecordKind::PREFAB => {
-                let state = self.state.clone();
-                let edit_state = edit_state.clone();
-
                 EditPrefabRecord {
-                    edit_state: edit_state,
-                    state,
+                    state: self.state.clone(),
+                    edit_state: set_edit_state,
                 }
                 .mount(&root);
             }
             RecordKind::SCRIPT => {
-                let edit_state = edit_state.clone();
-
-                EditScript { edit_state }.mount(&root);
+                EditScript {
+                    edit_state: set_edit_state,
+                }
+                .mount(&root);
             }
             RecordKind::RESOURCE => {
-                let edit_state = edit_state.clone();
-
                 EditResource {
-                    edit_state,
+                    edit_state: set_edit_state,
                     state: self.state.clone(),
                 }
                 .mount(&root);
@@ -126,25 +138,27 @@ impl Widget for EditRecord {
 
         let button = Button::new()
             .on_click(move |()| {
-                let mut edit_state = edit_state.lock();
+                let mut state = edit_state.get();
 
-                let Some(module) = edit_state.module else {
+                let Some(module) = state.module else {
                     return;
                 };
 
                 // We should avoid records with an empty name.
-                if edit_state.record.name.is_empty() {
+                if state.record.name.is_empty() {
                     return;
                 }
 
-                edit_state.record.id = if let Some(id) = edit_state.id {
+                // If we are editing an existing record we already have
+                // and ID, otherwise we must create a new one.
+                state.record.id = if let Some(id) = state.id {
                     id.record
                 } else {
                     self.state.records.take_id(module)
                 };
 
-                tracing::debug!("create record with id {}", edit_state.record.id);
-                self.state.records.insert(module, edit_state.record.clone());
+                tracing::debug!("create record with id {}", state.record.id);
+                self.state.records.insert(module, state.record);
             })
             .mount(&root);
         Text::new("OK").mount(&button);
@@ -167,7 +181,7 @@ impl Widget for EditComponentRecord {
 #[derive(Debug)]
 struct EditRecordRecord {
     state: EditorState,
-    edit_state: Arc<Mutex<EditState>>,
+    edit_state: WriteSignal<EditState>,
 }
 
 impl Widget for EditRecordRecord {
@@ -186,9 +200,8 @@ impl Widget for EditRecordRecord {
             .map(|(_, record)| record.name.clone())
             .collect();
 
-        Selection {
-            options,
-            on_change: Callback::from(move |index| {
+        Selection::new(options)
+            .on_change(move |index| {
                 let (module, record): &(ModuleId, Record) = &components[index];
 
                 let descriptor = RecordDescriptor {
@@ -200,11 +213,11 @@ impl Widget for EditRecordRecord {
                     keys: Vec::new(),
                 };
 
-                let mut edit_state = self.edit_state.lock();
-                edit_state.record.data = descriptor.to_bytes();
-            }),
-        }
-        .mount(&root);
+                self.edit_state.update(|state| {
+                    state.record.data = descriptor.to_bytes();
+                });
+            })
+            .mount(&root);
 
         root
     }
@@ -220,7 +233,7 @@ pub(super) struct EditState {
 #[derive(Clone, Debug)]
 struct EditPrefabRecord {
     state: EditorState,
-    edit_state: Arc<Mutex<EditState>>,
+    edit_state: WriteSignal<EditState>,
 }
 
 impl Widget for EditPrefabRecord {
@@ -244,7 +257,7 @@ impl Widget for EditPrefabRecord {
 
 #[derive(Clone, Debug)]
 struct EditScript {
-    edit_state: Arc<Mutex<EditState>>,
+    edit_state: WriteSignal<EditState>,
 }
 
 impl Widget for EditScript {
@@ -253,7 +266,9 @@ impl Widget for EditScript {
 
         Input::new()
             .on_change(move |path: String| {
-                self.edit_state.lock().record.data = path.into();
+                self.edit_state.update(|state| {
+                    state.record.data = path.into();
+                });
             })
             .mount(&root);
 
@@ -262,8 +277,8 @@ impl Widget for EditScript {
 }
 
 struct EditResource {
-    edit_state: Arc<Mutex<EditState>>,
     state: EditorState,
+    edit_state: WriteSignal<EditState>,
 }
 
 impl Widget for EditResource {
@@ -280,7 +295,9 @@ impl Widget for EditResource {
 
                     match std::fs::read(&entry.path) {
                         Ok(data) => {
-                            edit_state.lock().record.data = data;
+                            edit_state.update(|state| {
+                                state.record.data = data;
+                            });
                         }
                         Err(err) => {
                             tracing::error!("failed to load record from file: {}", err);
