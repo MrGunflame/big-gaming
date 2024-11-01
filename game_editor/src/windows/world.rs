@@ -350,6 +350,11 @@ impl WorldWindowState {
         id
     }
 
+    pub fn despawn(&mut self, entity: EntityId) {
+        self.state.world.despawn(entity);
+        self.state.entities.retain(|e| e.id != entity);
+    }
+
     pub fn spawn_world(&mut self, world: World) -> EntityId {
         let id = self.state.world.append(world);
         self.state.world.insert_typed(id, Transform::default());
@@ -392,6 +397,7 @@ pub enum Event {
     UpdateComponent(RecordReference, RawComponent),
     DeleteComponent(RecordReference),
     SetShadingMode(ShadingMode),
+    DespawnEntity(EntityId),
 }
 
 #[derive(Clone, Debug, Default)]
