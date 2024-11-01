@@ -1,3 +1,5 @@
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+
 use game_common::world::control_frame::ControlFrame;
 use game_net::conn::channel::ChannelStream;
 use game_net::conn::{Connection, ConnectionHandle, Listen};
@@ -81,7 +83,13 @@ fn create_listen_connection() -> (
     let (tx1, rx1) = mpsc::channel(4096);
     let stream = ChannelStream::new(tx0, rx1);
 
-    let (conn, handle) = Connection::<_, Listen>::new(stream, ControlFrame(0), ControlFrame(0));
+    let (conn, handle) = Connection::<_, Listen>::new(
+        stream,
+        ControlFrame(0),
+        ControlFrame(0),
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
+        SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
+    );
     tokio::task::spawn(async move {
         conn.await.unwrap();
     });

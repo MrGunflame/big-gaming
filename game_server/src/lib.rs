@@ -157,7 +157,7 @@ fn process_commands(state: &mut ServerState) {
                     .state
                     .conns
                     .iter()
-                    .map(|conn| conn.key().addr.to_string())
+                    .map(|conn| conn.key().remote_addr.to_string())
                     .collect::<Vec<String>>();
 
                 let resp = if clients.is_empty() {
