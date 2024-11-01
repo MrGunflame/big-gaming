@@ -3,7 +3,11 @@ use std::sync::{mpsc, Arc, LazyLock};
 use game_ui::runtime::reactive::NodeContext;
 use game_ui::runtime::Context;
 use game_ui::style::{Background, Color, Direction, Style};
-use game_ui::widgets::{Button, Callback, Container, Svg, SvgData, SvgStyle, Text, Widget};
+use game_ui::widgets::{
+    Button, Callback, Container, ContextMenuState, ContextPanel, Svg, SvgData, SvgStyle, Text,
+    Widget,
+};
+use game_wasm::entity::EntityId;
 use image::Rgba;
 use parking_lot::Mutex;
 
@@ -41,6 +45,18 @@ impl Widget for EntityHierarchy {
 
                     root.clear_children();
 
+                    Text::new("Entities").mount(&root);
+
+                    let spawn = Button::new()
+                        .on_click({
+                            let writer = self.writer.clone();
+                            move |()| {
+                                writer.send(Event::Spawn).unwrap();
+                            }
+                        })
+                        .mount(&root);
+                    Text::new("Spawn").mount(&spawn);
+
                     let state = self.state.lock();
                     for entity in &state.entities {
                         let style = Style {
@@ -59,20 +75,58 @@ impl Widget for EntityHierarchy {
                             writer.send(Event::SelectEntity(id)).unwrap();
                         };
 
-                        let button = Button::new().style(style).on_click(on_click).mount(&root);
+                        let button = Button::new().on_click(on_click).mount(&root);
+                        let content = ContextPanel::new()
+                            .spawn_menu(spawn_menu(id, self.writer.clone()))
+                            .style(style)
+                            .mount(&button);
 
                         Svg::new(ICON_CUBE.clone(), 24, 24)
                             .style(SvgStyle {
                                 color: Some(Color::WHITE),
                             })
-                            .mount(&button);
+                            .mount(&content);
 
-                        Text::new(&entity.name).mount(&button);
+                        Text::new(&entity.name).mount(&content);
                     }
                 },
             );
         }
 
         root
+    }
+}
+
+fn spawn_menu(id: EntityId, writer: mpsc::Sender<Event>) -> impl Into<Callback<ContextMenuState>> {
+    move |state: ContextMenuState| {
+        for (name, callback) in [
+            (
+                "New",
+                Callback::from({
+                    let writer = writer.clone();
+                    let closer = state.closer.clone();
+
+                    move |()| {
+                        writer.send(Event::Spawn).unwrap();
+                        closer.close();
+                    }
+                }),
+            ),
+            (
+                "Delete",
+                Callback::from({
+                    let writer = writer.clone();
+                    let closer = state.closer.clone();
+
+                    move |()| {
+                        writer.send(Event::DespawnEntity(id)).unwrap();
+                        closer.close();
+                    }
+                }),
+            ),
+        ] {
+            let button = Button::new().on_click(callback).mount(&state.ctx);
+            Text::new(name).mount(&button);
+        }
     }
 }

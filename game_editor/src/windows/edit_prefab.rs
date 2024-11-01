@@ -7,7 +7,7 @@ use game_prefab::Prefab;
 use game_tracing::trace_span;
 use game_ui::runtime::reactive::WriteSignal;
 use game_ui::runtime::Context;
-use game_ui::style::{Direction, Justify, Style};
+use game_ui::style::{Direction, Style};
 use game_ui::widgets::{Container, Widget};
 use game_window::windows::WindowId;
 use parking_lot::Mutex;
@@ -20,16 +20,20 @@ use super::world::{Event, SceneState, WorldEvent, WorldWindowState};
 use super::WindowTrait;
 
 pub fn load_prefab(state: &EditState) -> World {
-    let prefab = match Prefab::from_bytes(&state.record.data) {
-        Ok(prefab) => prefab,
-        Err(err) => {
-            tracing::warn!("invalid prefab data: {:?}", err);
-            return World::default();
-        }
-    };
-
     let mut world = World::new();
-    prefab.instantiate(&mut world);
+
+    if !state.record.data.is_empty() {
+        let prefab = match Prefab::from_bytes(&state.record.data) {
+            Ok(prefab) => prefab,
+            Err(err) => {
+                tracing::warn!("invalid prefab data: {:?}", err);
+                return World::default();
+            }
+        };
+
+        prefab.instantiate(&mut world);
+    }
+
     world
 }
 
@@ -55,7 +59,10 @@ impl EditPrefabWindow {
 
         let (tx, rx) = mpsc::channel();
 
-        let ui_state: Arc<Mutex<SceneState>> = Arc::default();
+        let ui_state: Arc<Mutex<SceneState>> = Arc::new(Mutex::new(SceneState {
+            entities: state.entities(),
+            ..Default::default()
+        }));
 
         PrefabEditor {
             writer: tx,
@@ -130,6 +137,12 @@ impl WindowTrait for EditPrefabWindow {
                     self.state.set_shading_mode(mode);
                     update_entities = true;
                 }
+                Event::DespawnEntity(entity) => {
+                    self.state.despawn(entity);
+                    update_components_panel = true;
+                    update_entities = true;
+                    update_entities_panel = true;
+                }
             }
         }
 
@@ -197,13 +210,18 @@ pub struct PrefabEditor {
 
 impl Widget for PrefabEditor {
     fn mount(self, parent: &Context) -> Context {
-        let style = Style {
-            direction: Direction::Column,
-            justify: Justify::SpaceBetween,
-            ..Default::default()
-        };
+        // let style = Style {
+        //     direction: Direction::Column,
+        //     justify: Justify::SpaceBetween,
+        //     ..Default::default()
+        // };
 
-        let root = Container::new().style(style).mount(parent);
+        let root = Container::new()
+            .style(Style {
+                direction: Direction::Row,
+                ..Default::default()
+            })
+            .mount(parent);
 
         Properties {
             writer: self.writer.clone(),

@@ -189,6 +189,7 @@ impl WindowTrait for EditWorldWindow {
                 Event::SetShadingMode(mode) => {
                     self.state.set_shading_mode(mode);
                 }
+                Event::DespawnEntity(id) => {}
             }
         }
 

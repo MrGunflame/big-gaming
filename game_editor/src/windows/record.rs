@@ -211,6 +211,7 @@ impl Widget for EditRecordRecord {
             .map(|(_, record)| record.name.clone())
             .collect();
 
+        Text::new("Descriptor").mount(&root);
         Selection::new(options)
             .on_change(move |index| {
                 let (module, record): &(ModuleId, Record) = &components[index];
@@ -275,6 +276,7 @@ impl Widget for EditScript {
     fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
+        Text::new("Path").mount(&root);
         Input::new()
             .on_change(move |path: String| {
                 self.edit_state.update(|state| {
