@@ -76,6 +76,8 @@ impl Worker {
         let handle = tokio::task::spawn(async move {
             tracing::info!("spawned worker thread {}", id);
 
+            let local_addr = state.socket.local_addr().unwrap();
+
             loop {
                 let mut buf = BytesMut::zeroed(1500);
                 let (len, addr) = state.socket.recv_from(&mut buf).await.unwrap();
@@ -91,7 +93,7 @@ impl Worker {
                     }
                 };
 
-                handle_packet(addr, &state, packet).await;
+                handle_packet(local_addr, addr, &state, packet).await;
             }
         });
 
@@ -107,13 +109,21 @@ impl Future for Worker {
     }
 }
 
-async fn handle_packet(addr: SocketAddr, state: &ServerState, packet: Packet) {
-    let key = ConnectionKey { addr };
+async fn handle_packet(
+    local_addr: SocketAddr,
+    remote_addr: SocketAddr,
+    state: &ServerState,
+    packet: Packet,
+) {
+    let key = ConnectionKey {
+        local_addr,
+        remote_addr,
+    };
 
     // Clone the sender and don't borrow it over the
     // await point.
     let tx = {
-        if let Some(tx) = state.conns.read().get(&addr) {
+        if let Some(tx) = state.conns.read().get(&remote_addr) {
             Some(tx.clone())
         } else {
             None
@@ -132,11 +142,11 @@ async fn handle_packet(addr: SocketAddr, state: &ServerState, packet: Packet) {
     // }
 
     let (tx, rx) = mpsc::channel(4096);
-    let stream = UdpSocketStream::new(rx, state.socket.clone(), addr);
+    let stream = UdpSocketStream::new(rx, state.socket.clone(), remote_addr);
     state.pool.spawn(key, stream);
 
     tx.send(packet).await.unwrap();
-    state.conns.write().insert(addr, tx);
+    state.conns.write().insert(remote_addr, tx);
 }
 
 #[derive(Debug)]
@@ -154,8 +164,13 @@ impl ConnectionPool {
         S: ConnectionStream + Send + 'static,
         S::Error: std::error::Error,
     {
-        let (conn, handle) =
-            Connection::<_, Listen>::new(stream, self.state.control_frame.get(), ControlFrame(0));
+        let (conn, handle) = Connection::<_, Listen>::new(
+            stream,
+            self.state.control_frame.get(),
+            ControlFrame(0),
+            key.local_addr,
+            key.remote_addr,
+        );
 
         let state = self.state.clone();
         tokio::task::spawn(async move {

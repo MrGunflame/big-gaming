@@ -4,8 +4,9 @@ pub mod socket;
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::marker::PhantomData;
+use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::task::{ready, Context, Poll};
 use std::time::{Duration, Instant};
 
@@ -14,6 +15,9 @@ use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use game_tracing::trace_span;
 use parking_lot::Mutex;
+use rand::rngs::OsRng;
+use rand::Rng;
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
@@ -98,6 +102,9 @@ where
     messages_in: HashMap<MessageId, Sequence>,
     next_id: u32,
     is_writing: bool,
+
+    local_addr: SocketAddr,
+    remote_addr: SocketAddr,
 }
 
 impl<S, M> Connection<S, M>
@@ -110,6 +117,8 @@ where
         stream: S,
         control_frame: ControlFrame,
         const_delay: ControlFrame,
+        local_addr: SocketAddr,
+        remote_addr: SocketAddr,
     ) -> (Self, ConnectionHandle) {
         let (out_tx, out_rx) = mpsc::channel(4096);
         let (writer, reader) = mpsc::channel(4096);
@@ -150,6 +159,8 @@ where
             messages_in: HashMap::new(),
             next_id: 0,
             is_writing: false,
+            local_addr,
+            remote_addr,
         };
 
         if M::IS_CONNECT {
@@ -451,7 +462,7 @@ where
                     return Poll::Ready(Ok(()));
                 }
 
-                let initial_sequence = create_initial_sequence();
+                let initial_sequence = create_initial_sequence(self.local_addr, self.remote_addr);
                 self.next_local_sequence = initial_sequence;
 
                 // Send HELLO
@@ -642,7 +653,7 @@ where
     }
 
     fn prepare_connect(&mut self) {
-        let initial_sequence = create_initial_sequence();
+        let initial_sequence = create_initial_sequence(self.local_addr, self.remote_addr);
         self.next_local_sequence = initial_sequence;
 
         let packet = Packet {
@@ -1060,8 +1071,58 @@ impl LossList {
     }
 }
 
-fn create_initial_sequence() -> Sequence {
-    let bits = rand::random::<u32>() & ((1 << 31) - 1);
+/// Generates a new initial [`Sequence`] for the given tuple.
+fn create_initial_sequence(local_addr: SocketAddr, remote_addr: SocketAddr) -> Sequence {
+    // The initial sequence number (ISN) should be imposible to predict from the outside
+    // and the same socket tuple should be guaranteed to have a unique sequence that does
+    // not collide with previous connections with the same tuple.
+    // See Transmission Control Protocol (TCP) and Defending against Sequence Number Attacks:
+    // https://datatracker.ietf.org/doc/html/rfc9293#name-initial-sequence-number-sel
+    // https://datatracker.ietf.org/doc/html/rfc6528#section-3
+
+    // We use the following formula:
+    // `ISN = M + SHA256(localip, localport, remoteip, remoteport, secretkey)`
+    // `secretkey` is newly generated whenever the application is restarted.
+    // This is sufficient as mentioned by RFC 6528.
+
+    static CLOCK: LazyLock<Instant> = LazyLock::new(Instant::now);
+    static SECRET: LazyLock<[u8; 16]> = LazyLock::new(|| OsRng.gen());
+
+    // RFC 6528 recommends using a 4 microsecond clock.
+    // Take the least signigicant bits from the clock, effectively making
+    // the clock wrap at `u32::MAX`.
+    let timestamp = ((CLOCK.elapsed().as_micros() / 4) & u32::MAX as u128) as u32;
+
+    let mut hasher = Sha256::new();
+    match local_addr.ip() {
+        IpAddr::V4(addr) => {
+            hasher.update(addr.octets());
+        }
+        IpAddr::V6(addr) => {
+            hasher.update(addr.octets());
+        }
+    }
+    hasher.update(local_addr.port().to_ne_bytes());
+
+    match remote_addr.ip() {
+        IpAddr::V4(addr) => {
+            hasher.update(addr.octets());
+        }
+        IpAddr::V6(addr) => {
+            hasher.update(addr.octets());
+        }
+    }
+    hasher.update(remote_addr.port().to_ne_bytes());
+
+    hasher.update(&*SECRET);
+
+    let hash = hasher.finalize();
+    let hash: &[u8; 32] = hash.as_ref();
+    let hash = u32::from_ne_bytes(hash[0..4].try_into().unwrap());
+
+    // Only retain 31 bits since that is the length of our sequence
+    // in the header.
+    let bits = (timestamp + hash) & ((1 << 31) - 1);
     Sequence::new(bits)
 }
 

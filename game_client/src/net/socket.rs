@@ -35,10 +35,17 @@ where
                 }
             };
 
+            let local_addr = socket.local_addr().unwrap();
+
             let (stream_tx, stream_rx) = tokio::sync::mpsc::channel(4096);
             let stream = UdpSocketStream::new(stream_rx, socket.clone(), addr);
-            let (mut conn, handle) =
-                Connection::<_, Connect>::new(stream, ControlFrame(0), ControlFrame(0));
+            let (mut conn, handle) = Connection::<_, Connect>::new(
+                stream,
+                ControlFrame(0),
+                ControlFrame(0),
+                local_addr,
+                addr,
+            );
 
             tracing::info!("connecting to {:?}", addr);
 
