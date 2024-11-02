@@ -7,7 +7,8 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = ["gltf"]
-gltf = ["dep:game_gltf"]
+# TODO: Move GLTF to optional feature.
+gltf = []
 
 [lints]
 workspace = true
@@ -20,7 +21,7 @@ game_core = { version = "0.1.0", path = "../game_core" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 
-game_gltf = { version = "0.1.0", path = "../game_gltf", optional = true }
+game_gltf = { version = "0.1.0", path = "../game_gltf" }
 tracing = "0.1.40"
 glam = "0.28.0"
 serde = { version = "1.0.204", features = ["derive"] }
