@@ -56,6 +56,7 @@ where
         }
 
         // Start the profiler before the application starts.
+        #[cfg(feature = "tracy")]
         game_tracing::Client::start();
 
         let termination = main();
@@ -63,6 +64,7 @@ where
     }
 
     // The profiler should not run on the parent process.
+    #[cfg(feature = "tracy")]
     debug_assert!(!game_tracing::Client::is_running());
 
     match fork_main(args) {

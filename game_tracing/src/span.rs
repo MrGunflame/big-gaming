@@ -4,11 +4,29 @@ pub use tracing;
 /// Creates a new [`Span`] with the given `name` at the current callsite.
 #[macro_export]
 macro_rules! trace_span {
+    ($name:expr) => {
+        $crate::__trace_span_impl!($name)
+    };
+}
+
+#[cfg(feature = "tracy")]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __trace_span_impl {
     ($name:expr) => {{
         $crate::span::Span {
             inner: $crate::span::tracing::span!($crate::span::tracing::Level::TRACE, $name),
             _priv: (),
         }
+    }};
+}
+
+#[cfg(not(feature = "tracy"))]
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __trace_span_impl {
+    ($name:expr) => {{
+        $crate::span::Span { _priv: () }
     }};
 }
 
