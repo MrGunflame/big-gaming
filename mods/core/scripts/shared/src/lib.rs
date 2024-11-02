@@ -1,4 +1,9 @@
-#![no_std]
+// TODO: Move this crate back to `no_std`.
+// This is currently disabled because the
+// build is broken because of
+// `error: unwinding panics are not supported without std`
+// when building on non-wasm targets.
+// #![no_std]
 
 extern crate alloc;
 
