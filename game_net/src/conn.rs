@@ -1122,7 +1122,7 @@ fn create_initial_sequence(local_addr: SocketAddr, remote_addr: SocketAddr) -> S
 
     // Only retain 31 bits since that is the length of our sequence
     // in the header.
-    let bits = (timestamp + hash) & ((1 << 31) - 1);
+    let bits = timestamp.wrapping_add(hash) & ((1 << 31) - 1);
     Sequence::new(bits)
 }
 
