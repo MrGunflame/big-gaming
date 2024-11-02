@@ -5,36 +5,35 @@ use game_common::world::World;
 use game_core::modules::Modules;
 use game_prefab::Prefab;
 use game_tracing::trace_span;
-use game_ui::reactive::Context;
-use game_ui::style::{Direction, Justify, Style};
-use game_ui::widgets::{Callback, Container, Widget};
+use game_ui::runtime::reactive::WriteSignal;
+use game_ui::runtime::Context;
+use game_ui::style::{Direction, Style};
+use game_ui::widgets::{Container, Widget};
 use game_window::windows::WindowId;
 use parking_lot::Mutex;
 
 use super::record::EditState;
 use super::world::components::ComponentsPanel;
-use super::world::panel::Panel;
+use super::world::entity_hierarchy::EntityHierarchy;
 use super::world::properties::Properties;
-use super::world::{Event, OnWorldChangeEvent, SceneState, WorldEvent, WorldWindowState};
+use super::world::{Event, SceneState, WorldEvent, WorldWindowState};
 use super::WindowTrait;
 
-pub fn on_world_change_callback(edit_state: Arc<Mutex<EditState>>) -> Callback<OnWorldChangeEvent> {
-    Callback::from(move |event: OnWorldChangeEvent| {})
-}
-
-pub fn load_prefab(edit_state: &Arc<Mutex<EditState>>) -> World {
-    let edit_state = edit_state.lock();
-
-    let prefab = match Prefab::from_bytes(&edit_state.record.data) {
-        Ok(prefab) => prefab,
-        Err(err) => {
-            tracing::warn!("invalid prefab data: {:?}", err);
-            return World::default();
-        }
-    };
-
+pub fn load_prefab(state: &EditState) -> World {
     let mut world = World::new();
-    prefab.instantiate(&mut world);
+
+    if !state.record.data.is_empty() {
+        let prefab = match Prefab::from_bytes(&state.record.data) {
+            Ok(prefab) => prefab,
+            Err(err) => {
+                tracing::warn!("invalid prefab data: {:?}", err);
+                return World::default();
+            }
+        };
+
+        prefab.instantiate(&mut world);
+    }
+
     world
 }
 
@@ -42,12 +41,12 @@ pub struct EditPrefabWindow {
     state: WorldWindowState,
     rx: mpsc::Receiver<Event>,
     ui_state: Arc<Mutex<SceneState>>,
-    edit_state: Arc<Mutex<EditState>>,
+    edit_state: WriteSignal<EditState>,
 }
 
 impl EditPrefabWindow {
-    pub fn new(ctx: &Context<()>, edit_state: Arc<Mutex<EditState>>, modules: Modules) -> Self {
-        let world = load_prefab(&edit_state);
+    pub fn new(ctx: &Context, edit_state: WriteSignal<EditState>, modules: Modules) -> Self {
+        let world = edit_state.with(|state| load_prefab(state));
 
         let mut state = WorldWindowState::new();
         for entity in world.entities() {
@@ -60,7 +59,10 @@ impl EditPrefabWindow {
 
         let (tx, rx) = mpsc::channel();
 
-        let ui_state: Arc<Mutex<SceneState>> = Arc::default();
+        let ui_state: Arc<Mutex<SceneState>> = Arc::new(Mutex::new(SceneState {
+            entities: state.entities(),
+            ..Default::default()
+        }));
 
         PrefabEditor {
             writer: tx,
@@ -87,7 +89,10 @@ impl EditPrefabWindow {
         }
 
         let bytes = prefab.to_bytes();
-        self.edit_state.lock().record.data = bytes;
+
+        self.edit_state.update(|state| {
+            state.record.data = bytes;
+        });
     }
 }
 
@@ -101,12 +106,7 @@ impl WindowTrait for EditPrefabWindow {
         self.state.handle_event(event, window_id, renderer);
     }
 
-    fn update(
-        &mut self,
-        world: &mut World,
-        renderer: &mut game_render::Renderer,
-        options: &mut game_render::options::MainPassOptions,
-    ) {
+    fn update(&mut self, world: &mut World, options: &mut game_render::options::MainPassOptions) {
         let mut update_entities_panel = false;
         let mut update_components_panel = false;
         let mut update_entities = false;
@@ -136,6 +136,12 @@ impl WindowTrait for EditPrefabWindow {
                 Event::SetShadingMode(mode) => {
                     self.state.set_shading_mode(mode);
                     update_entities = true;
+                }
+                Event::DespawnEntity(entity) => {
+                    self.state.despawn(entity);
+                    update_components_panel = true;
+                    update_entities = true;
+                    update_entities_panel = true;
                 }
             }
         }
@@ -203,20 +209,25 @@ pub struct PrefabEditor {
 }
 
 impl Widget for PrefabEditor {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let style = Style {
-            direction: Direction::Column,
-            justify: Justify::SpaceBetween,
-            ..Default::default()
-        };
+    fn mount(self, parent: &Context) -> Context {
+        // let style = Style {
+        //     direction: Direction::Column,
+        //     justify: Justify::SpaceBetween,
+        //     ..Default::default()
+        // };
 
-        let root = Container::new().style(style).mount(parent);
+        let root = Container::new()
+            .style(Style {
+                direction: Direction::Row,
+                ..Default::default()
+            })
+            .mount(parent);
 
         Properties {
             writer: self.writer.clone(),
         }
         .mount(&root);
-        Panel {
+        EntityHierarchy {
             writer: self.writer.clone(),
             state: self.state.clone(),
         }

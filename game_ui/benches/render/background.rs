@@ -76,7 +76,8 @@ fn run_bench(c: &mut Criterion) {
 
 fn exec_bench(c: &mut Criterion, name: &str, style: Style) {
     let viewport = UVec2::splat(1000);
-    let style = ComputedStyle::new(style, viewport);
+    let scale_factor = 1.0;
+    let style = ComputedStyle::new(style, viewport, scale_factor);
 
     let mut group = c.benchmark_group(name);
 

@@ -4,84 +4,34 @@ use std::sync::Arc;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, Color, Device, Extent3d,
-    LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureDimension,
-    TextureFormat, TextureUsages, TextureViewDescriptor,
+    BindGroupDescriptor, BindGroupEntry, Color, Device, Extent3d, LoadOp, Operations,
+    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    ShaderStages, StoreOp, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
+    TextureViewDescriptor,
 };
 
-use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{Camera, CameraUniform, RenderTarget};
 use crate::depth_stencil::DepthData;
-use crate::entities::{CameraId, ObjectId};
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext};
-use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
-use crate::options::{MainPassOptions, MainPassOptionsEncoded};
+use crate::options::MainPassOptionsEncoded;
 use crate::post_process::PostProcessPipeline;
 use crate::state::RenderState;
 
-pub struct GpuObject {
-    pub indices: IndexBuffer,
-    pub mesh_bind_group: BindGroup,
-    pub material_bind_group: BindGroup,
-    pub transform: Buffer,
-}
-
-pub struct GpuState {
-    pub cameras: HashMap<CameraId, Camera>,
-    pub objects: HashMap<ObjectId, GpuObject>,
-    pub directional_lights: Buffer,
-    pub point_lights: Buffer,
-    pub spot_lights: Buffer,
-}
-
-impl GpuState {
-    pub fn new(device: &Device) -> Self {
-        let buffer = DynamicBuffer::<DirectionalLightUniform>::new();
-        let directional_lights = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: buffer.as_bytes(),
-            usage: BufferUsages::STORAGE,
-        });
-
-        let buffer = DynamicBuffer::<PointLightUniform>::new();
-        let point_lights = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: buffer.as_bytes(),
-            usage: BufferUsages::STORAGE,
-        });
-
-        let buffer = DynamicBuffer::<SpotLightUniform>::new();
-        let spot_lights = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: buffer.as_bytes(),
-            usage: BufferUsages::STORAGE,
-        });
-
-        Self {
-            directional_lights,
-            point_lights,
-            spot_lights,
-            objects: HashMap::new(),
-            cameras: HashMap::new(),
-        }
-    }
-}
-
 pub(crate) struct RenderPass {
-    pub state: Arc<Mutex<RenderState>>,
+    pub state: Arc<Mutex<HashMap<RenderTarget, RenderState>>>,
     pub forward: Arc<ForwardPipeline>,
     pub post_process: PostProcessPipeline,
     pub depth_stencils: Mutex<HashMap<RenderTarget, DepthData>>,
-    pub options: Arc<Mutex<MainPassOptions>>,
 }
 
 impl Node for RenderPass {
     fn render(&self, ctx: &mut RenderContext<'_>) {
         let mut state = self.state.lock();
+        let Some(state) = state.get_mut(&ctx.render_target) else {
+            return;
+        };
 
         state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
 
@@ -125,7 +75,6 @@ impl RenderPass {
         let device = ctx.device;
         let pipeline = &self.forward;
         let depth_stencils = self.depth_stencils.lock();
-        let options = self.options.lock();
 
         let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("light_bind_group"),
@@ -192,8 +141,9 @@ impl RenderPass {
             camera.transform,
             camera.projection,
         )));
-        push_constants[80..84]
-            .copy_from_slice(bytemuck::bytes_of(&MainPassOptionsEncoded::new(&options)));
+        push_constants[80..84].copy_from_slice(bytemuck::bytes_of(&MainPassOptionsEncoded::new(
+            &state.options,
+        )));
 
         render_pass.set_pipeline(&pipeline.pipeline);
         render_pass.set_push_constants(

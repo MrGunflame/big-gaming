@@ -13,14 +13,14 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{mpsc, Arc};
 
+use ahash::HashMap;
 use clap::Parser;
 use config::{Config, ConfigError};
 use game_common::sync::spsc;
 use game_common::world::World;
-use game_core::counter::{Interval, UpdateCounter};
+use game_core::counter::UpdateCounter;
 use game_core::modules::{load_scripts, Modules};
 use game_core::time::Time;
 use game_crash_handler::main;
@@ -30,15 +30,14 @@ use game_render::{FpsLimit, Renderer};
 use game_script::Executor;
 use game_tasks::TaskPool;
 use game_tracing::trace_span;
-use game_ui::reactive::DocumentId;
-use game_ui::UiState;
+use game_ui::{UiState, WindowProperties};
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
-use game_window::windows::{WindowBuilder, WindowId};
+use game_window::windows::{WindowBuilder, WindowId, WindowState};
 use game_window::{WindowManager, WindowManagerContext};
 use glam::UVec2;
 use input::Inputs;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use scene::SceneEntities;
 use state::{GameState, UpdateError};
 
@@ -104,29 +103,12 @@ fn main() -> ExitCode {
         },
     };
 
-    let modules = game_core::modules::load_modules(&args.mods).unwrap();
-
-    let mut executor = Executor::new();
-    load_scripts(&mut executor, &modules);
-
     let mut wm = WindowManager::new();
     let window_id = wm.windows_mut().spawn(WindowBuilder::new());
 
     let cursor = wm.cursor().clone();
 
-    let inputs = Inputs::from_file("inputs");
-
-    let mut state = GameState::new(
-        config.clone(),
-        modules.clone(),
-        inputs,
-        executor,
-        cursor.clone(),
-    );
-
-    if let Some(addr) = args.connect {
-        state.connect(addr);
-    }
+    let state = GameState::new(config.clone(), cursor.clone());
 
     let mut renderer = match Renderer::new() {
         Ok(renderer) => renderer,
@@ -150,6 +132,11 @@ fn main() -> ExitCode {
     let fps_counter = Mutex::new(UpdateCounter::new());
     let shutdown = AtomicBool::new(false);
 
+    let (init_tx, init_rx) = mpsc::channel();
+    let modules = RwLock::new(None);
+
+    let windows = RwLock::new(HashMap::default());
+
     let game_state = GameAppState {
         state,
         world: &world,
@@ -158,11 +145,12 @@ fn main() -> ExitCode {
         cursor: cursor.clone(),
         fps_counter: &fps_counter,
         shutdown: &shutdown,
-        interval: Interval::new(Duration::from_secs(1) / 60),
         ui_state,
         pool: &pool,
         gizmos: &gizmos,
-        document_id: None,
+        init_rx,
+        modules: &modules,
+        windows: &windows,
     };
 
     let renderer_state = RendererAppState {
@@ -176,9 +164,27 @@ fn main() -> ExitCode {
         shutdown: &shutdown,
         gizmos: &gizmos,
         modules: &modules,
+        windows: &windows,
     };
 
     std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let modules = game_core::modules::load_modules(&args.mods).unwrap();
+
+            let mut executor = Executor::new();
+            load_scripts(&mut executor, &modules);
+
+            let inputs = Inputs::from_file("inputs");
+
+            init_tx
+                .send(InitEvent::Init(modules, inputs, executor))
+                .unwrap();
+
+            if let Some(addr) = &args.connect {
+                init_tx.send(InitEvent::Connect(addr.clone())).unwrap();
+            }
+        });
+
         scope.spawn(|| {
             game_state.run();
         });
@@ -197,11 +203,12 @@ pub struct GameAppState<'a> {
     cursor: Arc<Cursor>,
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
-    interval: Interval,
     ui_state: UiState,
     gizmos: &'a Gizmos,
     pool: &'a TaskPool,
-    document_id: Option<DocumentId>,
+    init_rx: mpsc::Receiver<InitEvent>,
+    modules: &'a RwLock<Option<Modules>>,
+    windows: &'a RwLock<HashMap<WindowId, WindowState>>,
 }
 
 impl<'a> GameAppState<'a> {
@@ -227,50 +234,62 @@ impl<'a> GameAppState<'a> {
             // Handle window events for the UI.
             match event {
                 WindowEvent::WindowCreated(event) => {
-                    self.ui_state
-                        .create(RenderTarget::Window(event.window), UVec2::ZERO);
-                    self.document_id = self
-                        .ui_state
-                        .runtime()
-                        .create_document(RenderTarget::Window(event.window));
+                    let windows = self.windows.read();
+                    let window = windows.get(&event.window).unwrap();
 
-                    continue;
+                    self.ui_state.create(
+                        RenderTarget::Window(event.window),
+                        WindowProperties {
+                            size: UVec2::ZERO,
+                            scale_factor: 1.0,
+                            state: window.clone(),
+                        },
+                    );
                 }
                 WindowEvent::WindowResized(event) => {
                     self.ui_state
                         .resize(RenderTarget::Window(event.window), event.size());
-                    continue;
                 }
                 WindowEvent::WindowDestroyed(event) => {
                     self.ui_state.destroy(RenderTarget::Window(event.window));
-                    continue;
+                }
+                WindowEvent::WindowScaleFactorChanged(event) => {
+                    self.ui_state.update_scale_factor(
+                        RenderTarget::Window(event.window),
+                        event.scale_factor,
+                    );
                 }
                 _ => (),
             }
 
             self.ui_state.send_event(&self.cursor, event.clone());
 
-            if let Some(doc) = self.document_id {
-                self.state
-                    .handle_event(event, &self.cursor, &self.ui_state.runtime(), doc);
-            }
+            self.state
+                .handle_event(event, &self.cursor, &self.ui_state.runtime());
         }
 
         let fps_counter = { self.fps_counter.lock().clone() };
 
-        if let Some(doc) = self.document_id {
-            match self.pool.block_on(self.state.update(
-                &mut world,
-                &self.ui_state.runtime(),
-                doc,
-                fps_counter,
-                &mut self.time,
-            )) {
-                Ok(()) => (),
-                Err(UpdateError::Exit) => {
-                    self.shutdown.store(true, Ordering::Release);
-                    return;
+        while let Ok(event) = self.init_rx.try_recv() {
+            match event {
+                InitEvent::Init(modules, inputs, executor) => {
+                    *self.modules.write() = Some(modules.clone());
+                    self.state.init(modules, inputs, executor);
                 }
+                InitEvent::Connect(addr) => {
+                    self.state.connect(addr);
+                }
+            }
+        }
+
+        match self
+            .pool
+            .block_on(self.state.update(&mut world, fps_counter, &mut self.time))
+        {
+            Ok(()) => (),
+            Err(UpdateError::Exit) => {
+                self.shutdown.store(true, Ordering::Release);
+                return;
             }
         }
 
@@ -291,7 +310,8 @@ pub struct RendererAppState<'a> {
     fps_counter: &'a Mutex<UpdateCounter>,
     shutdown: &'a AtomicBool,
     gizmos: &'a Gizmos,
-    modules: &'a Modules,
+    modules: &'a RwLock<Option<Modules>>,
+    windows: &'a RwLock<HashMap<WindowId, WindowState>>,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -308,19 +328,22 @@ impl<'a> game_window::App for RendererAppState<'a> {
         // when using multiple buffers.
         self.renderer.wait_until_ready();
 
-        let world = { self.world.lock().clone() };
+        if let Some(modules) = &*self.modules.read() {
+            let world = { self.world.lock().clone() };
 
-        self.entities.update(
-            &self.modules,
-            &world,
-            &self.pool,
-            &mut self.renderer,
-            self.window_id,
-            &self.gizmos,
-        );
+            if let Some(mut scene) = self.renderer.scene_mut(self.window_id.into()) {
+                self.entities.update(
+                    modules,
+                    &world,
+                    &self.pool,
+                    &mut scene,
+                    self.window_id,
+                    &self.gizmos,
+                );
+            }
+        }
 
         self.renderer.render(&self.pool);
-
         self.fps_counter.lock().update();
     }
 
@@ -331,6 +354,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
 
                 let window = ctx.windows.state(event.window).unwrap();
 
+                self.windows.write().insert(event.window, window.clone());
                 self.renderer.create(event.window, window);
             }
             WindowEvent::WindowResized(event) => {
@@ -347,6 +371,7 @@ impl<'a> game_window::App for RendererAppState<'a> {
                 self.renderer.destroy(event.window);
 
                 self.shutdown.store(true, Ordering::Release);
+                self.windows.write().remove(&event.window);
                 ctx.exit();
             }
             WindowEvent::WindowCloseRequested(event) => {
@@ -360,4 +385,10 @@ impl<'a> game_window::App for RendererAppState<'a> {
             tracing::error!("cannot send input event, queue is full");
         }
     }
+}
+
+#[derive(Debug)]
+enum InitEvent {
+    Init(Modules, Inputs, Executor),
+    Connect(String),
 }

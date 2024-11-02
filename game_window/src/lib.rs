@@ -4,10 +4,12 @@ pub mod windows;
 
 mod backend;
 
+pub use backend::Backend;
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::{mpsc, Arc};
 
-use backend::{Backend, DEFAULT_BACKEND};
+use backend::DEFAULT_BACKEND;
 use cursor::{Cursor, CursorGrabMode, WindowCompat};
 use events::{
     convert_key_code, CursorEntered, CursorLeft, CursorMoved, WindowCloseRequested, WindowCreated,
@@ -335,6 +337,23 @@ where
                                     exit: &mut exit,
                                 },
                                 events::WindowEvent::MouseButtonInput(event),
+                            );
+                        }
+                        WindowEvent::ScaleFactorChanged {
+                            scale_factor,
+                            inner_size_writer: _,
+                        } => {
+                            app.handle_event(
+                                WindowManagerContext {
+                                    windows: &mut windows,
+                                    exit: &mut exit,
+                                },
+                                events::WindowEvent::WindowScaleFactorChanged(
+                                    events::WindowScaleFactorChanged {
+                                        window,
+                                        scale_factor,
+                                    },
+                                ),
                             );
                         }
                         WindowEvent::RedrawRequested => {}

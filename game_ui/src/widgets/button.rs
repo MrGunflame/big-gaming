@@ -1,7 +1,7 @@
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
 
-use crate::reactive::Context;
+use crate::runtime::Context;
 use crate::style::Style;
 
 use super::{Callback, Container, Widget};
@@ -34,20 +34,23 @@ impl Button {
 }
 
 impl Widget for Button {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Button::mount").entered();
 
         let wrapper = Container::new().style(self.style).mount(parent);
 
+        let ctx = wrapper.clone();
         parent.document().register_with_parent(
-            wrapper.node.unwrap(),
-            move |ctx: Context<MouseButtonInput>| {
-                if !ctx.event.button.is_left() || !ctx.event.state.is_pressed() {
+            wrapper.node().unwrap(),
+            move |event: MouseButtonInput| {
+                if !event.button.is_left() || !event.state.is_pressed() {
                     return;
                 }
 
-                if let Some(layout) = ctx.layout(wrapper.node.unwrap()) {
-                    if layout.contains(ctx.cursor().as_uvec2()) {
+                if let (Some(layout), Some(cursor)) =
+                    (ctx.layout(ctx.node().unwrap()), ctx.cursor().position())
+                {
+                    if layout.contains(cursor) {
                         self.on_click.call(());
                     }
                 }

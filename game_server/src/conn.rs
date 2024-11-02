@@ -12,7 +12,8 @@ use crate::net::state::ConnectionState;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ConnectionKey {
-    pub addr: SocketAddr,
+    pub local_addr: SocketAddr,
+    pub remote_addr: SocketAddr,
 }
 
 /// List of connections

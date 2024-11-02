@@ -23,13 +23,13 @@ game_wasm = { version = "0.1.0", path = "../game_wasm" }
 game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
 game_prefab = { version = "0.1.0", path = "../game_prefab" }
 game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
+game_crash_handler = { version = "0.1.0", path = "../game_crash_handler" }
 
 parking_lot = "0.12.3"
 tokio = { version = "1.38.0", features = ["full"] }
 tracing = "0.1.40"
 image = "0.25.1"
 glam = "0.28.0"
-pretty_env_logger = "0.5.0"
 chrono = "0.4.38"
 bitflags = "2.6.0"
 ahash = "0.8.11"

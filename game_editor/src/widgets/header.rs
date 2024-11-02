@@ -1,4 +1,4 @@
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::style::{Direction, Padding, Size, Style};
 use game_ui::widgets::{Button, Callback, Container, Text, Widget};
 
@@ -7,7 +7,7 @@ pub struct Header {
 }
 
 impl Widget for Header {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new()
             .style(Style {
                 direction: Direction::Column,

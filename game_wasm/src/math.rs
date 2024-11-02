@@ -30,6 +30,9 @@ pub trait Real: private::Sealed {
 
     fn sqrt(self) -> Self;
     fn cbrt(self) -> Self;
+
+    fn copysign(self, sign: Self) -> Self;
+    fn signum(self) -> Self;
 }
 
 impl Real for f32 {
@@ -121,6 +124,20 @@ impl Real for f32 {
     fn tanh(self) -> Self {
         libm::tanhf(self)
     }
+
+    #[inline]
+    fn copysign(self, sign: Self) -> Self {
+        libm::copysignf(self, sign)
+    }
+
+    #[inline]
+    fn signum(self) -> Self {
+        if self.is_nan() {
+            Self::NAN
+        } else {
+            1.0.copysign(self)
+        }
+    }
 }
 
 impl Real for f64 {
@@ -211,6 +228,20 @@ impl Real for f64 {
     #[inline]
     fn tanh(self) -> Self {
         libm::tanh(self)
+    }
+
+    #[inline]
+    fn copysign(self, sign: Self) -> Self {
+        libm::copysign(self, sign)
+    }
+
+    #[inline]
+    fn signum(self) -> Self {
+        if self.is_nan() {
+            Self::NAN
+        } else {
+            1.0.copysign(self)
+        }
     }
 }
 

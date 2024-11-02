@@ -5,9 +5,9 @@ use std::sync::Arc;
 use game_render::camera::RenderTarget;
 use game_render::Renderer;
 use game_tasks::TaskPool;
-use game_ui::reactive::DocumentId;
+use game_ui::runtime::DocumentId;
 use game_ui::widgets::{Text, Widget};
-use game_ui::UiState;
+use game_ui::{UiState, WindowProperties};
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 use game_window::windows::{WindowBuilder, WindowId};
@@ -57,8 +57,14 @@ impl game_window::App for App {
         match event {
             WindowEvent::WindowCreated(event) => {
                 let window = ctx.windows.state(event.window).unwrap();
-                self.ui_state
-                    .create(RenderTarget::Window(event.window), window.inner_size());
+                self.ui_state.create(
+                    RenderTarget::Window(event.window),
+                    WindowProperties {
+                        size: window.inner_size(),
+                        scale_factor: window.scale_factor(),
+                        state: window.clone(),
+                    },
+                );
                 self.renderer.create(event.window, window);
 
                 let doc = self
@@ -72,10 +78,10 @@ impl game_window::App for App {
                 let ctx = rt.root_context(doc);
 
                 // hello_world(ctx.clone());
-                // selection(ctx);
-                // svg(ctx);
-                // input(ctx);
-                table(ctx);
+                selection(ctx);
+                //svg(ctx);
+                //input(ctx);
+                //table(ctx);
             }
             WindowEvent::WindowDestroyed(event) => {
                 todo!()
@@ -84,6 +90,10 @@ impl game_window::App for App {
                 self.ui_state
                     .resize(RenderTarget::Window(event.window), event.size());
                 self.renderer.resize(event.window, event.size());
+            }
+            WindowEvent::WindowScaleFactorChanged(event) => {
+                self.ui_state
+                    .update_scale_factor(event.window.into(), event.scale_factor);
             }
             _ => (),
         }

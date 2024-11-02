@@ -1,15 +1,51 @@
-#!/bin/python3
+#!/usr/bin/python3
 
 import os
 import sys
 import subprocess
+import random
 
 from pathlib import Path
 
 PATH_BINARY = Path("target/release/builder")
 PATH_SOURCE = Path("tools/builder")
 
+def remove_image():
+    if subprocess.Popen(["docker", "rm", tag]).wait() != 0:
+        print("failed to remove container image " + tag)
+
+
+def build_docker():
+    tag = str(random.getrandbits(128))
+
+    if subprocess.Popen(["docker", "build", ".", "-f", "Dockerfile", "-t", tag]).wait() != 0:
+        exit(1)
+
+    print("creating container with image " + tag)
+    handle = subprocess.Popen(["docker", "create", "--pull=never", tag], stdout=subprocess.PIPE)
+    [stdout, _] = handle.communicate()
+    if handle.wait() != 0:
+        remove_image()
+        exit(1)
+
+    container_id = str(stdout, encoding="utf-8").replace("\n", "")
+
+    if subprocess.Popen(["docker", "cp", container_id + ":/game/build", "docker-build"]).wait() != 0:
+        print("failed to copy build artifacts")
+
+    if subprocess.Popen(["docker", "rm", container_id]).wait() != 0:
+        print("failed to remove container " + container_id)
+        exit(1)
+
+    print("destroyed container " + container_id)
+
+    remove_image()
+
 def main():
+    if "--docker" in sys.argv:
+        build_docker()
+        return
+
     root = Path(__file__).parent.resolve()
 
     binary_path = root.joinpath(PATH_BINARY)

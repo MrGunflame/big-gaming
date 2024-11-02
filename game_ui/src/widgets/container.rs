@@ -1,5 +1,5 @@
 use crate::primitive::Primitive;
-use crate::reactive::{Context, Node};
+use crate::runtime::Context;
 use crate::style::Style;
 
 use super::Widget;
@@ -21,11 +21,11 @@ impl Container {
 }
 
 impl Widget for Container {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        parent.append(Node::new(Primitive {
+    fn mount(self, parent: &Context) -> Context {
+        parent.append(Primitive {
             style: self.style,
             image: None,
             text: None,
-        }))
+        })
     }
 }

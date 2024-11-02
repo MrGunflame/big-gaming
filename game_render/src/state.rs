@@ -15,6 +15,7 @@ use crate::light::pipeline::{
 use crate::light::{DirectionalLight, PointLight, SpotLight};
 use crate::mesh::Mesh;
 use crate::mipmap::MipMapGenerator;
+use crate::options::MainPassOptions;
 use crate::pbr::material::{update_material_bind_group, MaterialId, Materials};
 use crate::pbr::mesh::{update_mesh_bind_group, update_transform_buffer, MeshId, Meshes};
 use crate::pbr::PbrMaterial;
@@ -41,6 +42,7 @@ pub(crate) struct RenderState {
     pub meshes_queued: HashMap<MeshId, Mesh>,
     pub materials_queued: HashMap<MaterialId, PbrMaterial>,
     pub images: HashMap<ImageId, Image>,
+    pub options: MainPassOptions,
 }
 
 impl RenderState {
@@ -92,6 +94,7 @@ impl RenderState {
             directional_lights: HashMap::new(),
             point_lights: HashMap::new(),
             spot_lights: HashMap::new(),
+            options: MainPassOptions::default(),
         }
     }
 
@@ -104,7 +107,7 @@ impl RenderState {
     ) {
         let _span = trace_span!("RenderState::update").entered();
 
-        self.events.push(event);
+        self.events.push(event.clone());
 
         match event {
             Event::CreateCamera(id, camera) => {
@@ -166,6 +169,9 @@ impl RenderState {
             }
             Event::DestroySpotLight(id) => {
                 self.spot_lights.remove(&id);
+            }
+            Event::UpdateMainPassOptions(opts) => {
+                self.options = opts;
             }
         }
     }
@@ -233,6 +239,7 @@ impl RenderState {
                 Event::CreateSpotLight(_, _) | Event::DestroySpotLight(_) => {
                     rebuild_spot_lights = true;
                 }
+                Event::UpdateMainPassOptions(_) => (),
             }
         }
 
@@ -253,7 +260,7 @@ impl RenderState {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Event {
     CreateCamera(CameraId, Camera),
     DestroyCamera(CameraId),
@@ -265,4 +272,5 @@ pub enum Event {
     DestroyPointLight(PointLightId),
     CreateSpotLight(SpotLightId, SpotLight),
     DestroySpotLight(SpotLightId),
+    UpdateMainPassOptions(MainPassOptions),
 }

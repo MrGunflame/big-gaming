@@ -23,17 +23,13 @@ use crate::world::script::run_scripts;
 use super::state::WorldState;
 use super::RemoteError;
 
-// The maximum number of update cycles allowed per frame. This prevents situations
-// where the update takes longer than the frame and therefore causes the game loop
-// to fall even further behind and never return.
-const MAX_UPDATES_PER_FRAME: u32 = 10;
-
 const DRIFT_RESYNC_DURATION: Duration = Duration::from_secs(1);
 
+/// The client-side simulation state of the game world.
 #[derive(Debug)]
 pub struct GameWorld {
     conn: ServerConnection,
-    pub(crate) game_tick: GameTick,
+    game_tick: GameTick,
     next_frame_counter: NextFrameCounter,
     /// Server to local entity mapping.
     server_entities: Entities,
@@ -47,16 +43,18 @@ pub struct GameWorld {
 
     interval: Interval,
     server_tick_rate: ServerTickRate,
+
+    statistics: Statistics,
 }
 
 impl GameWorld {
+    /// Creates a new `GameWorld` that is connected to the given [`ServerConnection`].
     pub fn new(conn: ServerConnection, config: &Config) -> Self {
         let render_delay = ControlFrame(config.network.interpolation_frames);
 
         Self {
             conn,
             game_tick: GameTick {
-                counter: UpdateCounter::new(),
                 current_control_frame: ControlFrame(0),
             },
             newest_state: WorldState::new(),
@@ -67,13 +65,14 @@ impl GameWorld {
             predicted_state: WorldState::new(),
             interval: Interval::new(Duration::from_secs(1) / config.timestep),
             server_tick_rate: ServerTickRate::new(config.timestep),
+            statistics: Statistics::default(),
         }
     }
 
-    pub fn rtt(&self) -> Duration {
-        self.conn.rtt()
-    }
-
+    /// Steps the simulation forward one update.
+    ///
+    /// This future will resolve when the `GameWorld` is able to make progress. It is safe to
+    /// interrupt and cancel.
     pub async fn update(
         &mut self,
         modules: &Modules,
@@ -96,8 +95,9 @@ impl GameWorld {
         // control frame. Since the server only sends periodic ACKs we need to account for RTT
         // when computing the server's control frame.
         // Drift is positive if we are ahead of the server and negative if we are behind.
-        let server_cf = self.server_tick_rate.predict_frame(now, self.rtt());
+        let server_cf = self.server_tick_rate.predict_frame(now, self.conn.rtt());
         let drift = i32::from(self.game_tick.current_control_frame.0) - i32::from(server_cf.0);
+        self.statistics.drift = drift;
 
         // To keep the client in sync with the server we need to dynamically adjust
         // our timestep to slow down/speed up as the server does.
@@ -115,12 +115,12 @@ impl GameWorld {
         }
 
         self.game_tick.current_control_frame += 1;
-        self.game_tick.counter.update();
+        self.statistics.ups.update();
 
         tracing::debug!(
             "Stepping control frame to {:?} (UPS = {})",
             self.game_tick.current_control_frame,
-            self.game_tick.counter.ups(),
+            self.statistics.ups.ups(),
         );
 
         if let Some(render_cf) = self.next_frame_counter.render_frame {
@@ -135,16 +135,22 @@ impl GameWorld {
             );
 
             update_global_transform(&mut self.predicted_state.world);
+
+            self.physics_pipeline
+                .step(&mut self.predicted_state.world, &mut self.event_queue);
         }
 
         self.next_frame_counter.update();
         self.conn.set_cf(self.game_tick.current_control_frame);
 
+        self.statistics.rtt = self.conn.rtt();
+        self.statistics.input_buffer_len = self.conn.input_buffer.len();
+
         Ok(())
     }
 
-    pub fn ups(&self) -> UpdateCounter {
-        self.game_tick.counter.clone()
+    pub fn statistics(&self) -> &Statistics {
+        &self.statistics
     }
 
     fn process_frame(&mut self, cf: ControlFrame, cmd_buffer: &mut CommandBuffer) {
@@ -320,16 +326,11 @@ impl GameWorld {
             }),
         );
     }
-
-    pub fn input_buffer_len(&self) -> usize {
-        self.conn.input_buffer.len()
-    }
 }
 
 #[derive(Debug)]
 pub struct GameTick {
     current_control_frame: ControlFrame,
-    counter: UpdateCounter,
 }
 
 #[derive(Clone, Debug)]
@@ -426,6 +427,14 @@ fn compute_compensation(server_tick_rate: &ServerTickRate, drift: i32) -> Durati
     let ups =
         (DRIFT_RESYNC_DURATION.as_secs_f64() / server_tick_rate.frame_time.as_secs_f64()) as u32;
     catchup_time.checked_div(ups).unwrap_or_default()
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Statistics {
+    pub ups: UpdateCounter,
+    pub input_buffer_len: usize,
+    pub rtt: Duration,
+    pub drift: i32,
 }
 
 #[cfg(test)]

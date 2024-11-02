@@ -4,16 +4,18 @@ use game_common::world::World;
 use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
 use game_core::time::Time;
+use game_render::camera::RenderTarget;
 use game_script::Executor;
 use game_tracing::trace_span;
-use game_ui::reactive::{Context, DocumentId, Runtime};
-use game_ui::widgets::Widget;
+use game_ui::runtime::Runtime;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
 use crate::config::Config;
 use crate::input::Inputs;
-use crate::ui::title_menu::{MenuEvent, MultiPlayerMenu, TitleMenu};
+use crate::ui::startup::Startup;
+use crate::ui::title_menu::{MenuEvent, TitleMenu};
+use crate::ui::UiRootContext;
 use crate::world::{GameWorldState, RemoteError};
 
 use self::main_menu::MainMenuState;
@@ -25,140 +27,151 @@ pub struct GameState {
     inner: GameStateInner,
     tx: mpsc::Sender<MenuEvent>,
     rx: mpsc::Receiver<MenuEvent>,
-    root_ctx: Option<Context<()>>,
+
+    ui_ctx: Option<UiRootContext>,
 
     config: Config,
-    modules: Modules,
-    inputs: Inputs,
-    executor: Executor,
     cursor: Arc<Cursor>,
 }
 
 impl GameState {
-    pub fn new(
-        config: Config,
-        modules: Modules,
-        inputs: Inputs,
-        executor: Executor,
-        cursor: Arc<Cursor>,
-    ) -> Self {
+    pub fn new(config: Config, cursor: Arc<Cursor>) -> Self {
         let (tx, rx) = mpsc::channel();
 
         Self {
             inner: GameStateInner::Startup,
             tx,
             rx,
-            root_ctx: None,
             config,
-            modules,
-            inputs,
-            executor,
             cursor,
+            ui_ctx: None,
         }
     }
 
+    pub fn init(&mut self, modules: Modules, inputs: Inputs, executor: Executor) {
+        if let Some(ui_ctx) = &mut self.ui_ctx {
+            ui_ctx.clear();
+        }
+
+        self.inner = GameStateInner::Init(InitState {
+            modules,
+            inputs,
+            executor,
+            inner: InitStateInner::Startup,
+        });
+    }
+
     pub fn connect(&mut self, addr: String) {
-        self.inner = GameStateInner::GameWorld(GameWorldState::new(
-            &self.config,
-            addr,
-            self.modules.clone(),
-            &self.cursor,
-            self.inputs.clone(),
-        ));
+        if let GameStateInner::Init(state) = &mut self.inner {
+            let world = GameWorldState::new(
+                &self.config,
+                addr,
+                state.modules.clone(),
+                &self.cursor,
+                state.inputs.clone(),
+            );
+
+            match world {
+                Ok(world) => state.inner = InitStateInner::GameWorld(world),
+                Err(RemoteError::Error(err)) => {
+                    tracing::error!("connection error: {}", err);
+                    state.inner = InitStateInner::ConnectionFailure(err.to_string())
+                }
+                Err(RemoteError::Disconnected) => {
+                    unreachable!()
+                }
+            }
+        }
     }
 
     pub async fn update(
         &mut self,
         world: &mut World,
-        ui_rt: &Runtime,
-        doc: DocumentId,
         fps_counter: UpdateCounter,
         time: &mut Time,
     ) -> Result<(), UpdateError> {
         let _span = trace_span!("GameState::update").entered();
 
+        let Some(ui_ctx) = &mut self.ui_ctx else {
+            return Ok(());
+        };
+
         while let Ok(event) = self.rx.try_recv() {
             match event {
                 MenuEvent::Connect(addr) => {
-                    if let Some(ctx) = self.root_ctx.take() {
-                        ctx.remove_self();
-                    }
-
+                    ui_ctx.clear();
                     self.connect(addr);
+                    return Ok(());
                 }
                 MenuEvent::Exit => return Err(UpdateError::Exit),
-                MenuEvent::SpawnMainMenu => {
-                    if let Some(ctx) = self.root_ctx.take() {
-                        ctx.remove_self();
-                    }
-
-                    let ctx = ui_rt.root_context(doc);
-                    self.root_ctx = Some(
-                        TitleMenu {
-                            events: self.tx.clone(),
-                        }
-                        .mount(&ctx),
-                    );
-                }
-                MenuEvent::SpawnMultiPlayerMenu => {
-                    if let Some(ctx) = self.root_ctx.take() {
-                        ctx.remove_self();
-                    }
-
-                    let ctx = ui_rt.root_context(doc);
-                    self.root_ctx = Some(
-                        MultiPlayerMenu {
-                            events: self.tx.clone(),
-                        }
-                        .mount(&ctx),
-                    );
-                }
             }
         }
 
         match &mut self.inner {
-            GameStateInner::Startup => {
-                self.inner = GameStateInner::MainMenu(MainMenuState::new(world));
+            GameStateInner::Startup => {}
+            GameStateInner::Init(init_state) => match &mut init_state.inner {
+                InitStateInner::Startup => {
+                    init_state.inner = InitStateInner::MainMenu(MainMenuState::new(world));
 
-                let ctx = ui_rt.root_context(doc);
-                self.root_ctx = Some(
-                    TitleMenu {
+                    ui_ctx.append(TitleMenu {
                         events: self.tx.clone(),
-                    }
-                    .mount(&ctx),
-                );
-            }
-            GameStateInner::GameWorld(state) => {
-                match state
-                    .update(world, ui_rt, doc, fps_counter, &mut self.executor)
-                    .await
-                {
-                    Ok(()) => {}
-                    Err(RemoteError::Disconnected) => {
-                        self.inner = GameStateInner::Startup;
+                    });
+                }
+                InitStateInner::GameWorld(state) => {
+                    match state
+                        .update(world, ui_ctx, fps_counter, &mut init_state.executor)
+                        .await
+                    {
+                        Ok(()) => {}
+                        Err(RemoteError::Disconnected) => {
+                            init_state.inner = InitStateInner::Startup;
+                        }
+                        Err(RemoteError::Error(err)) => {
+                            tracing::error!("connection error: {}", err);
+                        }
                     }
                 }
-            }
-            GameStateInner::MainMenu(state) => {
-                state.update(time, world);
-            }
-            _ => (),
+                InitStateInner::MainMenu(state) => {
+                    state.update(time, world);
+                }
+                InitStateInner::ConnectionFailure(err) => {
+                    init_state.inner = InitStateInner::Startup;
+                }
+                _ => (),
+            },
         }
 
         Ok(())
     }
 
-    pub fn handle_event(
-        &mut self,
-        event: WindowEvent,
-        cursor: &Cursor,
-        ui_rt: &Runtime,
-        doc: DocumentId,
-    ) {
-        match &mut self.inner {
-            GameStateInner::GameWorld(state) => {
-                state.handle_event(event, cursor, ui_rt, doc);
+    pub fn handle_event(&mut self, event: WindowEvent, cursor: &Cursor, ui_rt: &Runtime) {
+        match event {
+            WindowEvent::WindowCreated(event) => {
+                let document = ui_rt
+                    .create_document(RenderTarget::Window(event.window))
+                    .unwrap();
+                let mut ui_ctx = UiRootContext::new(document, ui_rt.clone());
+
+                if let GameStateInner::Startup = self.inner {
+                    ui_ctx.append(Startup {});
+                }
+
+                self.ui_ctx = Some(ui_ctx);
             }
+            _ => (),
+        }
+
+        match &mut self.inner {
+            GameStateInner::Init(state) => match &mut state.inner {
+                InitStateInner::GameWorld(state) => {
+                    let Some(ui_ctx) = &mut self.ui_ctx else {
+                        return;
+                    };
+
+                    state.handle_event(event, cursor, ui_ctx);
+                }
+                _ => (),
+            },
             _ => (),
         }
     }
@@ -169,11 +182,25 @@ enum GameStateInner {
     /// Initial game startup phase.
     #[default]
     Startup,
+    Init(InitState),
+}
+
+#[derive(Debug)]
+struct InitState {
+    modules: Modules,
+    inputs: Inputs,
+    executor: Executor,
+    inner: InitStateInner,
+}
+
+#[derive(Debug)]
+enum InitStateInner {
+    Startup,
     MainMenu(MainMenuState),
     /// Connecting to server
     Connecting,
     /// Connection failed
-    ConnectionFailure,
+    ConnectionFailure(String),
     /// Connected to game world.
     GameWorld(GameWorldState),
 }

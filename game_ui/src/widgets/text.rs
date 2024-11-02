@@ -1,17 +1,18 @@
+use std::borrow::Cow;
 use std::ops::Range;
 
 use game_tracing::trace_span;
 
 use crate::primitive::Primitive;
-use crate::reactive::{Context, Node};
+use crate::runtime::Context;
 use crate::style::{Color, Style};
 
 use super::Widget;
 
 #[derive(Clone, Debug)]
 pub struct Text {
-    pub text: String,
-    pub size: f32,
+    text: String,
+    size: f32,
     caret: Option<u32>,
     selection_range: Option<Range<usize>>,
     selection_color: Color,
@@ -53,19 +54,19 @@ impl Text {
 }
 
 impl Widget for Text {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Text::mount").entered();
 
-        parent.append(Node::new(Primitive {
+        parent.append(Primitive {
             style: Style::default(),
             image: None,
             text: Some(crate::render::Text {
-                text: self.text,
+                text: Cow::Owned(self.text),
                 size: self.size,
                 caret: self.caret,
                 selection_range: self.selection_range,
                 selection_color: self.selection_color,
             }),
-        }))
+        })
     }
 }

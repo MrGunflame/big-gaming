@@ -1,14 +1,14 @@
 use std::sync::{mpsc, Arc};
 
 use ahash::HashMap;
-use game_common::components::{GlobalTransform, Transform};
+use game_common::components::Transform;
 use game_common::world::World;
 use game_data::record::{Record, RecordKind};
 use game_prefab::Prefab;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Container, Text, Widget};
 use game_wasm::entity::EntityId;
 use game_wasm::record::RecordId;
@@ -21,7 +21,7 @@ use parking_lot::Mutex;
 use crate::state::EditorState;
 use crate::windows::world::WorldWindowState;
 
-use super::world::panel::Panel;
+use super::world::entity_hierarchy::EntityHierarchy;
 use super::world::properties::Properties;
 use super::world::{Event, SceneState, WorldEvent};
 use super::WindowTrait;
@@ -37,7 +37,7 @@ pub struct EditWorldWindow {
 }
 
 impl EditWorldWindow {
-    pub fn new(ctx: &Context<()>, editor_state: EditorState) -> Self {
+    pub fn new(ctx: &Context, editor_state: EditorState) -> Self {
         let mut state = WorldWindowState::new();
         let mut prefabs = HashMap::default();
         let mut update_entities_panel = false;
@@ -174,12 +174,7 @@ impl WindowTrait for EditWorldWindow {
         self.state.handle_event(event, window_id, renderer);
     }
 
-    fn update(
-        &mut self,
-        world: &mut World,
-        renderer: &mut Renderer,
-        options: &mut MainPassOptions,
-    ) {
+    fn update(&mut self, world: &mut World, options: &mut MainPassOptions) {
         let mut do_sync = false;
 
         while let Ok(event) = self.rx.try_recv() {
@@ -194,6 +189,7 @@ impl WindowTrait for EditWorldWindow {
                 Event::SetShadingMode(mode) => {
                     self.state.set_shading_mode(mode);
                 }
+                Event::DespawnEntity(id) => {}
             }
         }
 
@@ -256,7 +252,7 @@ struct EditWorld {
 }
 
 impl Widget for EditWorld {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
         Properties {
             writer: self.writer.clone(),
@@ -267,7 +263,7 @@ impl Widget for EditWorld {
             writer: self.new_prefab_writer,
         }
         .mount(&root);
-        Panel {
+        EntityHierarchy {
             state: self.state,
             writer: self.writer,
         }
@@ -284,7 +280,7 @@ struct PrefabList {
 }
 
 impl Widget for PrefabList {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         for (module_id, record) in self.editor_state.records.iter() {

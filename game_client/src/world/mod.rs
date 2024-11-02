@@ -7,51 +7,46 @@ pub mod state;
 
 use std::net::ToSocketAddrs;
 use std::sync::mpsc;
-use std::time::Duration;
 
 use game_common::components::actions::ActionId;
-use game_common::components::{GlobalTransform, PrimaryCamera, Transform};
+use game_common::components::{GlobalTransform, PrimaryCamera, RigidBody, Transform};
 use game_common::entity::EntityId;
 use game_common::world::World;
-use game_core::counter::{Interval, UpdateCounter};
+use game_core::counter::UpdateCounter;
 use game_core::modules::Modules;
-use game_core::time::Time;
 use game_input::hotkeys::{HotkeyCode, Key};
 use game_input::keyboard::{KeyCode, KeyboardInput};
 use game_input::mouse::MouseMotion;
 use game_script::Executor;
-use game_ui::reactive::{Document, DocumentId, NodeId, Runtime};
-use game_ui::widgets::Widget;
+use game_ui::runtime::NodeId;
 use game_wasm::encoding::BinaryWriter;
 use game_window::cursor::Cursor;
 use game_window::events::WindowEvent;
 
-use crate::components::base::{Camera, Health};
+use crate::components::base::{Camera, Health, ACTION_ROTATE};
 use crate::config::Config;
-// use crate::entities::actor::SpawnActor;
-// use crate::entities::object::SpawnObject;
-// use crate::entities::terrain::spawn_terrain;
 use crate::input::{InputKey, Inputs};
 use crate::net::world::{Command, CommandBuffer};
-use crate::net::{connect_udp, ServerConnection};
-use crate::ui::debug::Statistics;
+use crate::net::{connect_udp, ConnectionError, ServerConnection};
+use crate::ui::debug::{PlayerInfo, Statistics};
 use crate::ui::inventory::InventoryProxy;
 use crate::ui::main_menu::MainMenu;
-use crate::ui::{UiElements, UiEvent};
+use crate::ui::{UiElements, UiEvent, UiRootContext};
 
 use self::actions::ActiveActions;
 use self::camera::{CameraController, CameraMode, DetachedState};
 use self::game_world::{Action, GameWorld};
 use self::movement::update_rotation;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum RemoteError {
     Disconnected,
+    Error(ConnectionError),
 }
 
 #[derive(Debug)]
 pub struct GameWorldState {
-    pub world: GameWorld,
+    world: GameWorld,
     camera_controller: CameraController,
     primary_camera: Option<EntityId>,
     modules: Modules,
@@ -62,7 +57,6 @@ pub struct GameWorldState {
     cursor_pinned: CursorPinState,
     host: EntityId,
     ui_elements: UiElements,
-    interval: Interval,
     ui_events_rx: mpsc::Receiver<UiEvent>,
     // Keep the sender around so we can clone
     // and send it to the UI elements for callbacks.
@@ -76,18 +70,16 @@ impl GameWorldState {
         modules: Modules,
         cursor: &Cursor,
         inputs: Inputs,
-    ) -> Self {
+    ) -> Result<Self, RemoteError> {
+        let handle = connect_udp(addr).map_err(RemoteError::Error)?;
+        let conn = ServerConnection::new(handle);
+
+        let (ui_events_tx, ui_events_rx) = mpsc::channel();
+
         let mut cursor_pinned = CursorPinState::new();
         if cursor.window().is_some() {
             cursor_pinned.pin(cursor);
         }
-
-        let handle = connect_udp(addr).unwrap();
-        let conn = ServerConnection::new(handle);
-
-        let interval = Interval::new(Duration::from_secs(1) / config.timestep);
-
-        let (ui_events_tx, ui_events_rx) = mpsc::channel();
 
         let mut this = Self {
             world: GameWorld::new(conn, config),
@@ -101,19 +93,17 @@ impl GameWorldState {
             main_menu: None,
             cursor_pinned,
             ui_elements: UiElements::default(),
-            interval,
             ui_events_rx,
             ui_events_tx,
         };
         this.register_actions();
-        this
+        Ok(this)
     }
 
     pub async fn update(
         &mut self,
         world: &mut World,
-        ui_rt: &Runtime,
-        ui_doc: DocumentId,
+        ui_ctx: &mut UiRootContext,
         fps_counter: UpdateCounter,
         executor: &mut Executor,
     ) -> Result<(), RemoteError> {
@@ -134,30 +124,38 @@ impl GameWorldState {
             }
         }
 
-        let ctx = ui_rt.root_context(ui_doc);
+        let mut player_info = PlayerInfo::default();
+        if let Ok(camera) = world.get_typed::<Camera>(self.host) {
+            // Health
+            if let Ok(health) = world.get_typed::<Health>(camera.parent) {
+                self.ui_elements
+                    .update_health(ui_ctx, Some(health), &self.ui_events_tx);
+            } else {
+                self.ui_elements
+                    .update_health(ui_ctx, None, &self.ui_events_tx);
+            }
+
+            if let Ok(transform) = world.get_typed::<Transform>(camera.parent) {
+                player_info.transform = Some(transform);
+            }
+
+            if let Ok(rigid_body) = world.get_typed::<RigidBody>(camera.parent) {
+                player_info.rigid_body = Some(rigid_body);
+            }
+        }
 
         // Debug stats
         self.ui_elements.update_debug_state(
-            &ctx,
+            ui_ctx,
             Some(Statistics {
-                ups: self.world.ups(),
+                ups: self.world.statistics().ups.clone(),
                 fps: fps_counter,
                 entities: world.len() as u64,
-                net_input_buffer_len: self.world.input_buffer_len() as u64,
-                rtt: self.world.rtt(),
+                net_input_buffer_len: self.world.statistics().input_buffer_len,
+                rtt: self.world.statistics().rtt,
+                player_info,
             }),
         );
-
-        // Health
-        if let Ok(camera) = world.get_typed::<Camera>(self.host) {
-            if let Ok(health) = world.get_typed::<Health>(camera.parent.into()) {
-                self.ui_elements
-                    .update_health(&ctx, Some(health), &self.ui_events_tx);
-            } else {
-                self.ui_elements
-                    .update_health(&ctx, None, &self.ui_events_tx);
-            }
-        }
 
         self.dispatch_actions();
 
@@ -183,15 +181,14 @@ impl GameWorldState {
         &mut self,
         event: WindowEvent,
         cursor: &Cursor,
-        ui_rt: &Runtime,
-        ui_doc: DocumentId,
+        ui_ctx: &mut UiRootContext,
     ) {
         match event {
             WindowEvent::MouseMotion(event) => {
                 self.handle_mouse_motion(event);
             }
             WindowEvent::KeyboardInput(event) => {
-                self.handle_keyboard_input(event, cursor, ui_rt, ui_doc);
+                self.handle_keyboard_input(event, cursor, ui_ctx);
             }
             WindowEvent::MouseButtonInput(event) => {
                 self.actions.send_mouse_event(event);
@@ -201,8 +198,7 @@ impl GameWorldState {
                     return;
                 }
 
-                let ctx = ui_rt.root_context(ui_doc);
-                self.main_menu = Some(MainMenu {}.mount(&ctx).node().unwrap());
+                self.main_menu = Some(ui_ctx.append(MainMenu {}).node().unwrap());
                 self.cursor_pinned.unpin(cursor);
             }
             _ => (),
@@ -224,16 +220,10 @@ impl GameWorldState {
             return;
         }
 
-        if !self.world.state().world.contains(self.host) {
+        let Ok(mut transform) = self.world.state().world.get_typed::<Transform>(self.host) else {
             return;
-        }
+        };
 
-        let mut transform = self
-            .world
-            .state()
-            .world
-            .get_typed::<Transform>(self.host)
-            .unwrap();
         transform = update_rotation(transform, event);
         // We must update the rotation, otherwise following mouse motion events
         // will get overwritten by previous events in the same frame.
@@ -247,7 +237,7 @@ impl GameWorldState {
 
         self.world.send(Action {
             entity: self.host,
-            action: ActionId("c626b9b0ab1940aba6932ea7726d0175:23".parse().unwrap()),
+            action: ActionId(ACTION_ROTATE),
             data,
         });
     }
@@ -256,20 +246,18 @@ impl GameWorldState {
         &mut self,
         event: KeyboardInput,
         cursor: &Cursor,
-        ui_rt: &Runtime,
-        ui_doc: DocumentId,
+        ui_ctx: &mut UiRootContext,
     ) {
         match event.key_code {
             Some(KeyCode::Escape) if event.state.is_pressed() => {
                 match self.main_menu {
                     Some(id) => {
-                        ui_rt.remove(id);
+                        ui_ctx.remove(id);
                         self.main_menu = None;
                         self.cursor_pinned.pin(cursor);
                     }
                     None => {
-                        let ctx = ui_rt.root_context(ui_doc);
-                        self.main_menu = Some(MainMenu {}.mount(&ctx).node().unwrap());
+                        self.main_menu = Some(ui_ctx.append(MainMenu {}).node().unwrap());
                         self.cursor_pinned.unpin(cursor);
                     }
                 }
@@ -321,7 +309,7 @@ impl GameWorldState {
             }
             Some(KeyCode::I) if event.state.is_pressed() => match &mut self.inventory_proxy {
                 Some(pxy) => {
-                    ui_rt.remove(pxy.id);
+                    ui_ctx.remove(pxy.id);
                     self.inventory_proxy = None;
                     self.cursor_pinned.pin(cursor);
                 }
@@ -343,8 +331,7 @@ impl GameWorldState {
                     self.inventory_proxy = Some(InventoryProxy::new(
                         &inventory,
                         self.modules.clone(),
-                        ui_rt,
-                        ui_doc,
+                        ui_ctx,
                         self.ui_events_tx.clone(),
                     ));
                     self.cursor_pinned.unpin(cursor);

@@ -8,6 +8,7 @@ use slotmap::{new_key_type, Key, SlotMap};
 
 use crate::camera::Camera;
 use crate::light::{DirectionalLight, PointLight, SpotLight};
+use crate::options::MainPassOptions;
 use crate::pbr::material::MaterialId;
 use crate::pbr::mesh::MeshId;
 use crate::state::Event;

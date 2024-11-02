@@ -1,9 +1,8 @@
 use std::collections::{HashMap, VecDeque};
-use std::io::Read;
 
 use game_common::collections::arena::{self, Arena};
 use game_common::components::Transform;
-use game_render::Renderer;
+use game_render::scene::RendererScene;
 use game_tasks::{Task, TaskPool};
 use game_tracing::trace_span;
 
@@ -73,7 +72,7 @@ impl SceneSpawner {
         self.instances.get(instance.0).unwrap().scene
     }
 
-    pub fn update(&mut self, pool: &TaskPool, renderer: &mut Renderer) {
+    pub fn update(&mut self, pool: &TaskPool, renderer: &mut RendererScene<'_>) {
         let _span = trace_span!("SceneSpaner::update").entered();
 
         while let Some(event) = self.events.pop_front() {
@@ -100,9 +99,21 @@ impl SceneSpawner {
                 Event::SpawnInstance(instance, scene) => {
                     match self.scenes.get(scene.0).unwrap() {
                         SceneData::Loaded(scene, resources) => {
-                            let state = scene.instantiate(resources, renderer);
-                            self.instances.get_mut(instance.0).unwrap().state =
-                                InstanceState::Spawned(state);
+                            let instance = self.instances.get_mut(instance.0).unwrap();
+
+                            let mut state = scene.instantiate(resources, renderer);
+                            state.set_transform(instance.transform);
+                            state.compute_transform();
+
+                            for (key, id) in &state.entities {
+                                let global_transform = *state.global_transform.get(key).unwrap();
+
+                                let mut object =
+                                    renderer.scene.entities.objects.get_mut(*id).unwrap();
+                                object.transform = global_transform;
+                            }
+
+                            instance.state = InstanceState::Spawned(state);
                         }
                         SceneData::Queued => {
                             // Defer instace creation until the scene is loaded.
@@ -149,7 +160,10 @@ impl SceneSpawner {
                     instance.transform = transform;
                     match &mut instance.state {
                         InstanceState::Loading => {
-                            // What to do if scene is not yet loaded?
+                            // If the scene is not yet loaded the transform update
+                            // needs to be performed once the scene is spawned.
+                            // The instance will use the `instance.transform` value
+                            // that we have just written.
                         }
                         InstanceState::Spawned(state) => {
                             state.set_transform(transform);
@@ -158,7 +172,8 @@ impl SceneSpawner {
                             for (key, id) in &state.entities {
                                 let global_transform = *state.global_transform.get(key).unwrap();
 
-                                let mut object = renderer.entities.objects.get_mut(*id).unwrap();
+                                let mut object =
+                                    renderer.scene.entities.objects.get_mut(*id).unwrap();
                                 object.transform = global_transform;
                             }
                         }

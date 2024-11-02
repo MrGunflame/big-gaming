@@ -57,13 +57,17 @@ impl InstancePool {
         runnable.init()?;
         let state = match runnable.store.data_mut() {
             State::Init(state) => state.clone(),
-            State::Run(_) => unreachable!(),
+            State::Run(_) | State::None => unreachable!(),
         };
 
         debug_assert!(!self.instances.contains_key(&handle));
         self.instances.insert(handle, runnable);
 
         Ok(state)
+    }
+
+    pub(crate) fn remove(&mut self, handle: Handle) {
+        self.instances.remove(&handle);
     }
 
     pub fn get(&mut self, state: State, handle: Handle) -> &mut Runnable {
@@ -95,6 +99,7 @@ impl Runnable {
     /// Calls the guest function with the given pointer.
     pub(crate) fn call(&mut self, ptr: Pointer, entity: Option<EntityId>) -> wasmtime::Result<()> {
         let _span = trace_span!("Runnable::call").entered();
+        tracing::trace!("Runnable::call(0x{:?})", ptr);
 
         let func: WasmFnTrampoline = self
             .instance
@@ -106,19 +111,11 @@ impl Runnable {
     }
 
     pub fn into_state(&mut self) -> RunState {
-        let state = core::mem::replace(
-            self.store.data_mut(),
-            State::Init(InitState {
-                script: Handle(0),
-                systems: vec![],
-                actions: HashMap::new(),
-                event_handlers: HashMap::new(),
-            }),
-        );
+        let state = core::mem::replace(self.store.data_mut(), State::None);
 
         match state {
-            State::Init(_) => unreachable!(),
             State::Run(state) => state,
+            State::Init(_) | State::None => unreachable!(),
         }
     }
 }
@@ -126,27 +123,28 @@ impl Runnable {
 pub enum State {
     Init(InitState),
     Run(RunState),
+    None,
 }
 
 impl State {
     pub fn as_init(&mut self) -> wasmtime::Result<&mut InitState> {
         match self {
             Self::Init(state) => Ok(state),
-            Self::Run(_) => Err(wasmtime::Error::msg("not in init state")),
+            Self::Run(_) | Self::None => Err(wasmtime::Error::msg("not in init state")),
         }
     }
 
     pub fn as_run(&self) -> wasmtime::Result<&RunState> {
         match self {
-            Self::Init(_) => Err(wasmtime::Error::msg("not in run state")),
             Self::Run(s) => Ok(s),
+            Self::Init(_) | Self::None => Err(wasmtime::Error::msg("not in run state")),
         }
     }
 
     pub fn as_run_mut(&mut self) -> wasmtime::Result<&mut RunState> {
         match self {
-            Self::Init(_) => Err(wasmtime::Error::msg("not in run state")),
             Self::Run(s) => Ok(s),
+            Self::Init(_) | Self::None => Err(wasmtime::Error::msg("not in run state")),
         }
     }
 }

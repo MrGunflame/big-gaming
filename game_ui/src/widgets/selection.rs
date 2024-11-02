@@ -1,180 +1,189 @@
-use std::sync::Arc;
-
 use game_input::mouse::MouseButtonInput;
 use game_tracing::trace_span;
-use glam::UVec2;
-use parking_lot::Mutex;
 
-use crate::reactive::Context;
-use crate::style::{Position, Style};
+use crate::runtime::reactive::NodeContext;
+use crate::runtime::Context;
 
 use super::{Button, Callback, Container, Input, Text, Widget};
 
 pub struct Selection {
-    pub options: Vec<String>,
-    pub on_change: Callback<usize>,
+    options: Vec<String>,
+    on_change: Callback<usize>,
+    value: Option<usize>,
+}
+
+impl Selection {
+    pub fn new(options: Vec<String>) -> Self {
+        Self {
+            options,
+            on_change: Callback::default(),
+            value: None,
+        }
+    }
+
+    pub fn on_change<T>(mut self, on_change: T) -> Self
+    where
+        T: Into<Callback<usize>>,
+    {
+        self.on_change = on_change.into();
+        self
+    }
+
+    pub fn value(mut self, value: usize) -> Self {
+        debug_assert!(value < self.options.len());
+
+        self.value = Some(value);
+        self
+    }
 }
 
 impl Widget for Selection {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let _span = trace_span!("Selection::mount").entered();
 
-        let wrapper = Container::new().mount(parent);
-
-        // I heared you like mutexes.
-
-        let options_wrapper = Container::new().mount(&wrapper);
-        let options_wrapper = Arc::new(Mutex::new(options_wrapper));
-
-        let filter = Arc::new(Mutex::new(String::new()));
-
-        let input_wrapper = Container::new().mount(&wrapper);
-        let input_wrapper = Arc::new(Mutex::new(input_wrapper));
-
-        let input = Arc::new(Mutex::new(None));
-        let wrapper_mux = Arc::new(Mutex::new(wrapper.clone()));
-
-        let options = Arc::new(self.options);
-        let on_change = self.on_change.clone();
-
-        {
-            let input_ctx = Input::new()
-                .on_change({
-                    let options = options.clone();
-                    let on_change = on_change.clone();
-                    let filter = filter.clone();
-                    let options_wrapper = options_wrapper.clone();
-                    let wrapper_mux = wrapper_mux.clone();
-                    let input = input.clone();
-                    let input_wrapper = input_wrapper.clone();
-
-                    move |value| {
-                        *filter.try_lock().unwrap() = value;
-
-                        mount_selector(
-                            &options_wrapper,
-                            &input_wrapper,
-                            &wrapper_mux,
-                            &input,
-                            &filter,
-                            &options,
-                            &on_change,
-                            false,
-                        );
-                    }
-                })
-                .mount(&input_wrapper.try_lock().unwrap());
-
-            *input.try_lock().unwrap() = Some(input_ctx);
-        }
-
-        {
-            let wrapper_mux = wrapper_mux.clone();
-            parent.document().register_with_parent(
-                wrapper.node().unwrap(),
-                move |_ctx: Context<MouseButtonInput>| {
-                    mount_selector(
-                        &options_wrapper,
-                        &input_wrapper,
-                        &wrapper_mux,
-                        &input,
-                        &filter,
-                        &options,
-                        &on_change,
-                        true,
-                    )
-                },
-            );
-        }
-
-        wrapper
-    }
-}
-
-fn mount_selector(
-    options_wrapper_mux: &Arc<Mutex<Context<()>>>,
-    input_wrapper: &Arc<Mutex<Context<()>>>,
-    wrapper_mux: &Arc<Mutex<Context<()>>>,
-    input: &Arc<Mutex<Option<Context<()>>>>,
-    filter: &Arc<Mutex<String>>,
-    options: &Arc<Vec<String>>,
-    on_change: &Callback<usize>,
-    check_position: bool,
-) {
-    let mut options_wrapper = options_wrapper_mux.try_lock().unwrap();
-    let wrapper = wrapper_mux.try_lock().unwrap();
-
-    let input_id = {
-        let Some(input_ctx) = &*input.try_lock().unwrap() else {
-            return;
+        let default_value = match self.value {
+            Some(index) => self.options.get(index).cloned().unwrap_or_default(),
+            None => String::new(),
         };
-        input_ctx.node().unwrap()
-    };
 
-    let layout = wrapper.layout(input_id).unwrap();
+        let root = Container::new().mount(parent);
 
-    options_wrapper.remove(options_wrapper.node.unwrap());
-    if check_position && !layout.contains(wrapper.cursor().as_uvec2()) {
-        return;
-    }
+        let (filter, set_filter) = root.runtime().reactive().create_signal(String::new());
+        let (active, set_active) = root.runtime().reactive().create_signal(false);
+        let (input_value, set_input_value) = root.runtime().reactive().create_signal(default_value);
 
-    let style = Style {
-        position: Position::Absolute(UVec2::new(layout.min.x, layout.max.y)),
-        ..Default::default()
-    };
-    *options_wrapper = Container::new().style(style).mount(&wrapper);
-    let filter_string = filter.try_lock().unwrap().to_lowercase();
-    for (index, option) in options.iter().enumerate() {
-        if !option.to_lowercase().contains(&filter_string) {
-            continue;
+        let input_ctx = Container::new().mount(&root);
+
+        {
+            let set_filter = set_filter.clone();
+            let set_active = set_active.clone();
+
+            let mut input: Option<Context> = None;
+            root.runtime()
+                .reactive()
+                .register_and_schedule_effect(move |ctx: &mut NodeContext| {
+                    ctx.subscribe(input_value.id());
+
+                    if let Some(ctx) = input.take() {
+                        ctx.remove_self();
+                    }
+
+                    let ctx = Input::new()
+                        .value(input_value.get())
+                        .on_change({
+                            let set_filter = set_filter.clone();
+                            let set_active = set_active.clone();
+
+                            move |value| {
+                                set_filter.set(value);
+                                set_active.set(true);
+                            }
+                        })
+                        .mount(&input_ctx);
+
+                    // Open the dropdown menu when the client clicks
+                    // inside the input field.
+                    let input_ctx = ctx.clone();
+                    let set_active = set_active.clone();
+                    ctx.document().register_with_parent(
+                        ctx.node().unwrap(),
+                        move |event: MouseButtonInput| {
+                            if !event.button.is_left() || !event.state.is_pressed() {
+                                return;
+                            }
+
+                            let Some(cursor) = input_ctx.cursor().position() else {
+                                return;
+                            };
+
+                            let Some(layout) = input_ctx.layout(input_ctx.node().unwrap()) else {
+                                return;
+                            };
+
+                            if layout.contains(cursor) {
+                                set_active.set(true);
+                            }
+                        },
+                    );
+
+                    input = Some(ctx);
+                });
         }
 
-        let input_wrapper = input_wrapper.clone();
-        let filter = filter.clone();
-        let input = input.clone();
-        let on_change = on_change.clone();
-        let option2 = option.to_owned();
-        let wrapper_mux = wrapper_mux.clone();
-        let options_wrapper_mux = options_wrapper_mux.clone();
-        let options = options.clone();
-        let button = Button::new()
-            .on_click(move |()| {
-                input_wrapper.try_lock().unwrap().clear_children();
-                let filter = filter.clone();
-                on_change.call(index);
-                let option2 = option2.clone();
+        {
+            let set_active = set_active.clone();
+            let mut buttons: Vec<Context> = Vec::new();
+            let root_ctx = root.clone();
+            root.runtime()
+                .reactive()
+                .register_and_schedule_effect(move |ctx: &mut NodeContext| {
+                    ctx.subscribe(filter.id());
+                    ctx.subscribe(active.id());
 
-                let c = Input::new()
-                    .value(option2)
-                    .on_change({
-                        let input_wrapper = input_wrapper.clone();
-                        let filter = filter.clone();
-                        let input = input.clone();
-                        let on_change = on_change.clone();
-                        let wrapper_mux = wrapper_mux.clone();
-                        let options_wrapper_mux = options_wrapper_mux.clone();
-                        let options = options.clone();
+                    let filter = filter.get();
+                    let active = active.get();
 
-                        move |value| {
-                            *filter.try_lock().unwrap() = value;
+                    for ctx in buttons.drain(..) {
+                        ctx.remove_self();
+                    }
 
-                            mount_selector(
-                                &options_wrapper_mux,
-                                &input_wrapper,
-                                &wrapper_mux,
-                                &input,
-                                &filter,
-                                &options,
-                                &on_change,
-                                false,
-                            )
+                    if !active {
+                        return;
+                    }
+
+                    for (index, option) in self.options.iter().enumerate() {
+                        if !option.contains(&filter) {
+                            continue;
                         }
-                    })
-                    .mount(&input_wrapper.try_lock().unwrap());
-                *input.try_lock().unwrap() = Some(c);
-            })
-            .mount(&options_wrapper);
 
-        Text::new(option).mount(&button);
+                        let button = Button::new()
+                            .on_click({
+                                let on_change = self.on_change.clone();
+                                let set_filter = set_filter.clone();
+                                let set_active = set_active.clone();
+                                let set_input_value = set_input_value.clone();
+                                let option = option.clone();
+
+                                move |()| {
+                                    on_change.call(index);
+                                    set_filter.set(option.clone());
+                                    set_active.set(false);
+                                    set_input_value.set(option.clone());
+                                }
+                            })
+                            .mount(&root_ctx);
+                        Text::new(option).mount(&button);
+
+                        buttons.push(button);
+                    }
+                });
+        }
+
+        // Close the options dropdown menu when the client clicks
+        // outside of the input or options box.
+        let ctx = root.clone();
+        root.document().register_with_parent(
+            root.node().unwrap(),
+            move |event: MouseButtonInput| {
+                if !event.button.is_left() || !event.state.is_pressed() {
+                    return;
+                }
+
+                let Some(cursor) = ctx.cursor().position() else {
+                    return;
+                };
+
+                let Some(layout) = ctx.layout(ctx.node().unwrap()) else {
+                    return;
+                };
+
+                if !layout.contains(cursor) {
+                    set_active.set(false);
+                    return;
+                }
+            },
+        );
+
+        root
     }
 }

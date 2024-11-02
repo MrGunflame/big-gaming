@@ -20,7 +20,8 @@ use game_render::camera::RenderTarget;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
-use game_ui::reactive::DocumentId;
+use game_ui::runtime::reactive::WriteSignal;
+use game_ui::runtime::DocumentId;
 use game_ui::widgets::{Callback, Widget};
 use game_ui::UiState;
 use game_wasm::record::ModuleId;
@@ -32,6 +33,7 @@ use parking_lot::Mutex;
 use record::{EditRecord, EditState};
 use records::Records;
 
+use crate::scene::SceneEntities;
 use crate::state::EditorState;
 use crate::widgets::explorer::{Entry, Explorer};
 use crate::windows::create_module::CreateModule;
@@ -43,10 +45,12 @@ use self::open_module::OpenModule;
 trait WindowTrait {
     fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window_id: WindowId);
 
-    fn update(&mut self, world: &mut World, renderer: &mut Renderer, options: &mut MainPassOptions);
+    fn update(&mut self, world: &mut World, options: &mut MainPassOptions);
 }
 
 pub struct Window {
+    pub world: World,
+    pub scene: SceneEntities,
     document: DocumentId,
     inner: Option<Box<dyn WindowTrait>>,
 }
@@ -65,13 +69,11 @@ impl Window {
         }
     }
 
-    pub fn update(&mut self, world: &mut World, renderer: &mut Renderer) {
+    pub fn update(&mut self, options: &mut MainPassOptions) {
         let _span = trace_span!("Window::update").entered();
 
         if let Some(inner) = &mut self.inner {
-            let mut options = MainPassOptions::default();
-            inner.update(world, renderer, &mut options);
-            renderer.set_options(options);
+            inner.update(&mut self.world, options);
         }
     }
 }
@@ -128,6 +130,8 @@ pub fn spawn_window(
             let inner = EditWorldWindow::new(&ctx, state);
 
             return Window {
+                world: World::new(),
+                scene: SceneEntities::default(),
                 document,
                 inner: Some(Box::new(inner)),
             };
@@ -141,6 +145,8 @@ pub fn spawn_window(
             return Window {
                 document,
                 inner: Some(Box::new(inner)),
+                world: World::new(),
+                scene: SceneEntities::default(),
             };
         }
         SpawnWindow::Explorer(on_open) => {
@@ -151,6 +157,8 @@ pub fn spawn_window(
     Window {
         document,
         inner: None,
+        world: World::new(),
+        scene: SceneEntities::default(),
     }
 }
 
@@ -165,6 +173,6 @@ pub enum SpawnWindow {
     EditWorld,
     Error(String),
     EditRecord(RecordKind, Option<RecordReference>),
-    EditPrefab(Arc<Mutex<EditState>>),
+    EditPrefab(WriteSignal<EditState>),
     Explorer(Callback<Vec<Entry>>),
 }

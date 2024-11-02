@@ -48,7 +48,7 @@ where
     /// For the duration of the borrow, no other mutable references may exist.
     #[inline]
     #[track_caller]
-    pub unsafe fn get(&self) -> Ref<'_, T> {
+    pub unsafe fn borrow(&self) -> Ref<'_, T> {
         #[cfg(debug_assertions)]
         let Some(guard) = self.state.try_read() else {
             panic!("UnsafeRefCell is already borrowed");
@@ -71,7 +71,7 @@ where
     /// For the duration of the borrow, no other references (mutable or immutable) may exist.
     #[inline]
     #[track_caller]
-    pub unsafe fn get_mut(&self) -> RefMut<'_, T> {
+    pub unsafe fn borrow_mut(&self) -> RefMut<'_, T> {
         #[cfg(debug_assertions)]
         let Some(guard) = self.state.try_write() else {
             panic!("UnsafeRefCell is already borrowed");
@@ -85,6 +85,12 @@ where
             #[cfg(debug_assertions)]
             _guard: guard,
         }
+    }
+
+    /// Returns a mutable reference to the value.
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut T {
+        self.cell.get_mut()
     }
 }
 

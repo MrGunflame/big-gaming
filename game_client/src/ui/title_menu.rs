@@ -1,16 +1,59 @@
 use std::sync::{mpsc, Arc};
 
-use game_ui::reactive::Context;
+use game_ui::runtime::Context;
 use game_ui::widgets::{Button, Callback, Container, Input, Text, Widget};
 use parking_lot::Mutex;
 
-#[derive(Clone, Debug)]
 pub struct TitleMenu {
     pub events: mpsc::Sender<MenuEvent>,
 }
 
 impl Widget for TitleMenu {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
+        let root = Container::new().mount(parent);
+
+        let ctx = root.clone();
+        let on_state_change = on_state_change(self.events, ctx);
+
+        on_state_change.call(State::Main);
+        root
+    }
+}
+
+fn on_state_change(events: mpsc::Sender<MenuEvent>, ctx: Context) -> Callback<State> {
+    Callback::from(move |state| {
+        let events = events.clone();
+        ctx.clear_children();
+
+        match state {
+            State::Main => MainTitleMenu {
+                state_change: on_state_change(events.clone(), ctx.clone()),
+                events,
+            }
+            .mount(&ctx),
+            State::Connect => MultiPlayerMenu {
+                on_state_change: on_state_change(events.clone(), ctx.clone()),
+                events,
+            }
+            .mount(&ctx),
+        };
+    })
+}
+
+#[derive(Copy, Clone, Debug)]
+enum State {
+    Main,
+    Connect,
+}
+
+#[derive(Clone, Debug)]
+struct MainTitleMenu {
+    events: mpsc::Sender<MenuEvent>,
+    state_change: Callback<State>,
+}
+
+impl Widget for MainTitleMenu {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         for option in [
@@ -29,9 +72,8 @@ impl Widget for TitleMenu {
             MenuOption {
                 name: "Multiplayer".to_owned(),
                 on_click: {
-                    let events = self.events.clone();
                     Callback::from(move |()| {
-                        events.send(MenuEvent::SpawnMultiPlayerMenu).unwrap();
+                        self.state_change.call(State::Connect);
                     })
                 },
             },
@@ -64,12 +106,13 @@ struct MenuOption {
 }
 
 #[derive(Clone, Debug)]
-pub struct MultiPlayerMenu {
-    pub events: mpsc::Sender<MenuEvent>,
+struct MultiPlayerMenu {
+    events: mpsc::Sender<MenuEvent>,
+    on_state_change: Callback<State>,
 }
 
 impl Widget for MultiPlayerMenu {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
+    fn mount(self, parent: &Context) -> Context {
         let root = Container::new().mount(parent);
 
         let value = Arc::new(Mutex::new(String::new()));
@@ -86,9 +129,8 @@ impl Widget for MultiPlayerMenu {
         {
             let button = Button::new()
                 .on_click({
-                    let events = self.events.clone();
                     move |()| {
-                        events.send(MenuEvent::SpawnMainMenu).unwrap();
+                        self.on_state_change.call(State::Main);
                     }
                 })
                 .mount(&root);
@@ -112,8 +154,6 @@ impl Widget for MultiPlayerMenu {
 
 #[derive(Clone, Debug)]
 pub enum MenuEvent {
-    SpawnMainMenu,
-    SpawnMultiPlayerMenu,
     Connect(String),
     Exit,
 }

@@ -219,6 +219,13 @@ impl<T> Arena<T> {
         Keys { iter: self.iter() }
     }
 
+    /// Returns a consuming `Iterator` over all keys in the `Arena`.
+    pub fn into_keys(self) -> IntoKeys<T> {
+        IntoKeys {
+            iter: self.into_iter(),
+        }
+    }
+
     /// Returns an `Iterator` visiting all values in unspecified order.
     pub fn values(&self) -> Values<'_, T> {
         Values { iter: self.iter() }
@@ -228,6 +235,91 @@ impl<T> Arena<T> {
     pub fn values_mut(&mut self) -> ValuesMut<'_, T> {
         ValuesMut {
             iter: self.iter_mut(),
+        }
+    }
+
+    /// Returns a consuming `Iterator` returning all values in the `Arena` in unspecified order.
+    pub fn into_values(self) -> IntoValues<T> {
+        IntoValues {
+            iter: self.into_iter(),
+        }
+    }
+
+    /// Allocate a new slot in the `Arena` before writing the actual value into the `Arena`.
+    ///
+    /// This can be used to create a cyclic references. It it valid to call `allocate` without
+    /// writing the final value with [`write`], in which case the generated [`Key`] becomes
+    /// invalid and its use in this `Arena` will result in unspecified effects.
+    ///
+    /// [`write`]: AllocateEntry::write
+    pub fn allocate(&mut self) -> AllocateEntry<'_, T> {
+        let key = if let Some(index) = self.free_head {
+            let slot = self.entries.get(index).unwrap();
+
+            let entry = match slot {
+                Entry::Occupied(_) => unreachable!(),
+                Entry::Vacant(entry) => entry,
+            };
+
+            let generation = entry.generation.next();
+
+            Key {
+                index: index as u32,
+                generation,
+            }
+        } else {
+            let generation = Generation::new();
+            let index: u32 = self.entries.len().try_into().unwrap();
+
+            Key { index, generation }
+        };
+
+        AllocateEntry { arena: self, key }
+    }
+}
+
+/// A reference to a slot in an [`Arena`] that has not yet been written to.
+///
+/// Returned by [`allocate`].
+///
+/// [`allocate`]: Arena::allocate
+#[derive(Debug)]
+pub struct AllocateEntry<'a, T> {
+    arena: &'a mut Arena<T>,
+    key: Key,
+}
+
+impl<'a, T> AllocateEntry<'a, T> {
+    /// Returns the [`Key`] of this entry.
+    ///
+    /// Note: The key becomes valid as soon as [`write`] is called. If [`write`] is never called
+    /// the use of this [`Key`] will result in unspecified effects.
+    pub fn key(&self) -> Key {
+        self.key
+    }
+
+    /// Write the value into the slot.
+    pub fn write(self, value: T) {
+        // If index == len we must create a new slot.
+        if self.key.index as usize == self.arena.entries.len() {
+            self.arena.entries.push(Entry::Occupied(OccupiedEntry {
+                value,
+                generation: self.key.generation,
+            }));
+        } else {
+            // Otherwise we will write into the slot at `index`.
+            let slot = self.arena.entries.get_mut(self.key.index as usize).unwrap();
+
+            let entry = match slot {
+                Entry::Occupied(_) => unreachable!(),
+                Entry::Vacant(entry) => entry,
+            };
+
+            self.arena.free_head = entry.next_free;
+            *slot = Entry::Occupied(OccupiedEntry {
+                value,
+                generation: self.key.generation,
+            });
         }
     }
 }
@@ -249,6 +341,20 @@ impl<'a, T> IntoIterator for &'a mut Arena<T> {
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.iter_mut()
+    }
+}
+
+impl<T> IntoIterator for Arena<T> {
+    type Item = <Self::IntoIter as Iterator>::Item;
+    type IntoIter = IntoIter<T>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter {
+            iter: self.entries.into_iter(),
+            index: 0,
+            len: self.len,
+        }
     }
 }
 
@@ -400,6 +506,51 @@ impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
 
 impl<'a, T> FusedIterator for IterMut<'a, T> {}
 
+#[derive(Clone, Debug)]
+pub struct IntoIter<T> {
+    iter: std::vec::IntoIter<Entry<T>>,
+    index: usize,
+    len: usize,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = (Key, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.iter.next() {
+                Some(entry) => match entry {
+                    Entry::Occupied(entry) => {
+                        let key = Key {
+                            index: self.index as u32,
+                            generation: entry.generation,
+                        };
+                        self.index += 1;
+
+                        return Some((key, entry.value));
+                    }
+                    Entry::Vacant(_) => {
+                        self.index += 1;
+                    }
+                },
+                None => return None,
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<T> ExactSizeIterator for IntoIter<T> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl<T> FusedIterator for IntoIter<T> {}
+
 /// An `Iterator` over the keys in a [`Arena`].
 ///
 /// Returned by [`keys`].
@@ -429,6 +580,31 @@ impl<'a, T> ExactSizeIterator for Keys<'a, T> {
 }
 
 impl<'a, T> FusedIterator for Keys<'a, T> {}
+
+#[derive(Clone, Debug)]
+pub struct IntoKeys<T> {
+    iter: IntoIter<T>,
+}
+
+impl<T> Iterator for IntoKeys<T> {
+    type Item = Key;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(k, _)| k)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T> ExactSizeIterator for IntoKeys<T> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<T> FusedIterator for IntoKeys<T> {}
 
 #[derive(Clone, Debug)]
 pub struct Values<'a, T> {
@@ -479,6 +655,31 @@ impl<'a, T> ExactSizeIterator for ValuesMut<'a, T> {
 }
 
 impl<'a, T> FusedIterator for ValuesMut<'a, T> {}
+
+#[derive(Clone, Debug)]
+pub struct IntoValues<T> {
+    iter: IntoIter<T>,
+}
+
+impl<T> Iterator for IntoValues<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<T> ExactSizeIterator for IntoValues<T> {
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<T> FusedIterator for IntoValues<T> {}
 
 #[cfg(test)]
 mod tests {

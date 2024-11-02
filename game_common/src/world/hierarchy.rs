@@ -19,8 +19,14 @@ pub fn update_global_transform(world: &mut World) -> Vec<EntityId> {
     while let Some(entity) = queued.pop_front() {
         match parents.get(&entity) {
             Some(parent) => {
-                let parent_transform = transforms.get(&parent).unwrap();
-                let children_transform = *transforms.get(&entity).unwrap();
+                let Some(parent_transform) = transforms.get(&parent) else {
+                    continue;
+                };
+
+                let Some(children_transform) = transforms.get(&entity).copied() else {
+                    continue;
+                };
+
                 let transform = parent_transform.mul_transform(children_transform);
                 transforms.insert(entity, transform);
             }

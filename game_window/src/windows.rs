@@ -139,12 +139,20 @@ impl WindowState {
         self.id
     }
 
+    pub fn backend(&self) -> Backend {
+        self.backend
+    }
+
     pub fn inner_size(&self) -> UVec2 {
         let size = self.inner.inner_size();
         UVec2 {
             x: size.width,
             y: size.height,
         }
+    }
+
+    pub fn scale_factor(&self) -> f64 {
+        self.inner.scale_factor()
     }
 
     /// Sets the position of the cursor within this `Window`.

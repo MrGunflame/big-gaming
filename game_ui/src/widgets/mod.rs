@@ -11,6 +11,8 @@ mod selection;
 mod table;
 mod text;
 
+use crate::runtime::Context;
+
 pub use self::image::Image;
 pub use button::Button;
 pub use container::Container;
@@ -27,10 +29,8 @@ pub use text::Text;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
-use crate::reactive::Context;
-
 pub trait Widget {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()>;
+    fn mount(self, parent: &Context) -> Context;
 }
 
 pub struct Callback<T>(Option<Arc<Mutex<dyn FnMut(T) + Send + Sync + 'static>>>);

@@ -1,11 +1,11 @@
 use game_common::components::Color;
+use game_tracing::trace_span;
 use glam::UVec2;
 use image::{ImageBuffer, Rgba};
 
 use crate::layout::computed_style::{ComputedBounds, ComputedStyle};
 use crate::render::debug::{debug_border, debug_padding, is_debug_render_enabled};
 use crate::render::image::{apply_background, apply_border, apply_border_radius};
-use crate::render::text::render_to_texture;
 use crate::render::{DrawCommand, Rect, Text};
 use crate::style::Style;
 
@@ -15,7 +15,7 @@ pub type Image = ImageBuffer<Rgba<u8>, Vec<u8>>;
 pub struct Primitive {
     pub style: Style,
     pub image: Option<Image>,
-    pub text: Option<Text>,
+    pub text: Option<Text<'static>>,
 }
 
 impl Primitive {
@@ -31,7 +31,7 @@ impl Primitive {
 }
 
 impl Primitive {
-    pub(crate) fn bounds(&self, style: &ComputedStyle) -> ComputedBounds {
+    pub(crate) fn bounds(&self, style: &ComputedStyle, scale_factor: f64) -> ComputedBounds {
         let mut size = UVec2::new(
             style.padding.left + style.padding.right,
             style.padding.top + style.padding.bottom,
@@ -42,16 +42,10 @@ impl Primitive {
         }
 
         if let Some(text) = &self.text {
-            let img = render_to_texture(
-                &text.text,
-                text.size,
-                UVec2::ZERO,
-                text.caret,
-                text.selection_range.clone(),
-                text.selection_color,
-            );
-
-            size = size.saturating_add(UVec2::new(img.width(), img.height()));
+            let mut text = text.as_ref();
+            text.size *= scale_factor as f32;
+            let bounds = text.bounds(style.bounds.max - style.bounds.min);
+            size = size.saturating_add(bounds);
         }
 
         ComputedBounds {
@@ -65,16 +59,16 @@ impl Primitive {
         style: &ComputedStyle,
         layout: Rect,
         size: UVec2,
+        scale_factor: f64,
     ) -> Option<DrawCommand> {
+        let _span = trace_span!("Primitive::draw").entered();
+
         let mut img = match (&self.text, &self.image) {
-            (Some(text), None) => render_to_texture(
-                &text.text,
-                text.size,
-                UVec2::ZERO,
-                text.caret,
-                text.selection_range.clone(),
-                text.selection_color,
-            ),
+            (Some(text), None) => {
+                let mut text = text.as_ref();
+                text.size *= scale_factor as f32;
+                text.render_to_texture(style.bounds.max - style.bounds.min)
+            }
             (None, Some(image)) => image.clone(),
             (None, None) => {
                 // Truncate the container at the viewport size. This prevents rendering

@@ -1,36 +1,41 @@
-use game_ui::reactive::Context;
-use game_ui::style::{Bounds, Direction, Padding, Size, SizeVec2, Style};
-use game_ui::widgets::{Container, Image, Text, Widget};
+use game_ui::runtime::Context;
+use game_ui::style::{Color, Direction, Justify, Style};
+use game_ui::widgets::{Button, Container, Svg, SvgData, SvgStyle, Text, Widget};
+
+const ICON_ERROR: &[u8] =
+    include_bytes!("../../../assets/fonts/FontAwesome/svgs/solid/circle-exclamation.svg");
 
 pub struct Error {
     pub message: String,
 }
 
 impl Widget for Error {
-    fn mount<T>(self, parent: &Context<T>) -> Context<()> {
-        let style = Style {
-            direction: Direction::Column,
-            padding: Padding::splat(Size::Pixels(10)),
-            ..Default::default()
-        };
+    fn mount(self, parent: &Context) -> Context {
+        let root = Container::new()
+            .style(Style {
+                ..Default::default()
+            })
+            .mount(parent);
 
-        let root = Container::new().style(style).mount(parent);
+        Text::new("Error").size(32.0).mount(&root);
 
-        let img = image::io::Reader::open("/home/robert/Downloads/dialog-error.png")
-            .unwrap()
-            .decode()
-            .unwrap();
+        let row = Container::new()
+            .style(Style {
+                direction: Direction::Column,
+                justify: Justify::Center,
+                ..Default::default()
+            })
+            .mount(&root);
 
-        let style = Style {
-            bounds: Bounds {
-                min: SizeVec2::splat(Size::Pixels(512)),
-                max: SizeVec2::splat(Size::Pixels(512)),
-            },
-            ..Default::default()
-        };
+        Svg::new(SvgData::from_bytes(ICON_ERROR).unwrap(), 128, 128)
+            .style(SvgStyle {
+                color: Some(Color::RED),
+            })
+            .mount(&row);
+        Text::new(self.message).mount(&row);
 
-        Image::new().image(img.to_rgba8()).style(style).mount(&root);
-        Text::new(self.message).mount(&root);
+        let close_button = Button::new().mount(&root);
+        Text::new("Ok").mount(&close_button);
 
         root
     }

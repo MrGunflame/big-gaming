@@ -8,13 +8,13 @@ pub(crate) const DEFAULT_BACKEND: Backend = Backend(
     // multiple surfaces are fixed.
     // https://github.com/MrGunflame/big-gaming/issues/220
     #[cfg(target_family = "unix")]
-    Inner::X11,
+    Inner::Wayland,
     #[cfg(target_family = "windows")]
     Inner::Windows,
 );
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct Backend(Inner);
+pub struct Backend(Inner);
 
 impl Backend {
     pub(crate) const fn supports_locked_cursor(self) -> bool {
@@ -29,7 +29,7 @@ impl Backend {
         }
     }
 
-    pub(crate) fn is_wayland(&self) -> bool {
+    pub fn is_wayland(&self) -> bool {
         #[cfg(target_family = "unix")]
         if self.0 == Inner::Wayland {
             return true;

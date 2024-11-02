@@ -5,6 +5,7 @@ use std::fmt::{self, Debug, Formatter};
 
 use effect::Effects;
 use events::DispatchEvent;
+use game_common::collections::arena::{Arena, Key};
 use game_common::entity::EntityId;
 use game_common::events::{Event, EventQueue};
 use game_common::record::RecordReference;
@@ -16,6 +17,7 @@ use game_wasm::events::{CELL_LOAD, CELL_UNLOAD, PLAYER_CONNECT, PLAYER_DISCONNEC
 use game_wasm::player::PlayerId;
 use instance::{HostBufferPool, InstancePool, RunState, State};
 use script::{Script, ScriptLoadError};
+use thiserror::Error;
 use wasmtime::{Config, Engine, OptLevel, WasmBacktraceDetails};
 
 pub mod effect;
@@ -27,7 +29,7 @@ mod script;
 
 pub struct Executor {
     engine: Engine,
-    scripts: Vec<Script>,
+    scripts: Arena<Script>,
     instances: InstancePool,
     systems: Vec<System>,
     action_handlers: HashMap<RecordReference, Vec<Entry>>,
@@ -50,7 +52,7 @@ impl Executor {
         Self {
             instances: InstancePool::new(&engine),
             engine,
-            scripts: Vec::new(),
+            scripts: Arena::new(),
             systems: vec![],
             action_handlers: HashMap::new(),
             event_handlers: HashMap::new(),
@@ -72,8 +74,8 @@ impl Executor {
 
         let script = Script::new(bytes, &self.engine)?;
 
-        let index = self.scripts.len();
-        let handle = Handle(index);
+        let entry = self.scripts.allocate();
+        let handle = Handle(entry.key());
 
         let state = self
             .instances
@@ -90,8 +92,38 @@ impl Executor {
             self.event_handlers.entry(id).or_default().extend(entries);
         }
 
-        self.scripts.push(script);
+        entry.write(script);
         Ok(handle)
+    }
+
+    /// Unloads the script with the given `handle`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`InvalidHandle`] if the given `handle` is invalid, i.e. was never returned by
+    /// [`load`].
+    ///
+    /// [`load`]: Self::load
+    pub fn unload(&mut self, handle: Handle) -> Result<(), InvalidHandle> {
+        let _span = trace_span!("Executor::unload").entered();
+
+        if self.scripts.remove(handle.0).is_none() {
+            return Err(InvalidHandle);
+        }
+
+        self.instances.remove(handle);
+
+        self.systems.retain(|system| system.script != handle);
+        self.action_handlers.retain(|_, handlers| {
+            handlers.retain(|handler| handler.script != handle);
+            !handlers.is_empty()
+        });
+        self.event_handlers.retain(|_, handlers| {
+            handlers.retain(|handler| handler.script != handle);
+            !handlers.is_empty()
+        });
+
+        Ok(())
     }
 
     pub fn update(&mut self, ctx: Context<'_>) -> Effects {
@@ -274,7 +306,7 @@ struct Invocation {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Handle(usize);
+pub struct Handle(Key);
 
 pub struct Context<'a> {
     pub world: &'a dyn WorldProvider,
@@ -320,3 +352,7 @@ impl Debug for Pointer {
         core::fmt::LowerHex::fmt(&self.0, f)
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
+#[error("no script with the given handle")]
+pub struct InvalidHandle;

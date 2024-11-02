@@ -26,13 +26,16 @@ use rapier3d::prelude::{
     CCDSolver, Collider, ColliderBuilder, ColliderHandle, ColliderSet, CollisionEvent, ContactPair,
     EventHandler, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet,
     NarrowPhase, PhysicsPipeline, QueryFilter, QueryPipeline, Ray, RigidBodyBuilder,
-    RigidBodyHandle, RigidBodySet, RigidBodyType, Vector,
+    RigidBodyHandle, RigidBodySet, RigidBodyType, SharedShape, Vector,
 };
+
+const DT: Real = 1.0 / 60.0;
+const MIN_CCD_DT: Real = DT / 100.0;
+const GRAVITY: Vector<Real> = Vector::new(0.0, -9.81, 0.0);
 
 pub struct Pipeline {
     // Physics engine shit
     pipeline: PhysicsPipeline,
-    gravity: Vector<f32>,
     integration_parameters: IntegrationParameters,
     islands: IslandManager,
     broad_phase: BroadPhaseMultiSap,
@@ -58,14 +61,13 @@ pub struct Pipeline {
 impl Pipeline {
     pub fn new() -> Self {
         let integration_parameters = IntegrationParameters {
-            dt: 1.0 / 60.0,
-            min_ccd_dt: 1.0 / 60.0 / 100.0,
+            dt: DT,
+            min_ccd_dt: MIN_CCD_DT,
             ..Default::default()
         };
 
         Self {
             pipeline: PhysicsPipeline::new(),
-            gravity: Vector::new(0.0, -9.81, 0.0),
             integration_parameters,
             islands: IslandManager::new(),
             broad_phase: BroadPhaseMultiSap::new(),
@@ -92,7 +94,7 @@ impl Pipeline {
         self.update_colliders(world);
 
         self.pipeline.step(
-            &self.gravity,
+            &GRAVITY,
             &self.integration_parameters,
             &mut self.islands,
             &mut self.broad_phase,
@@ -153,7 +155,33 @@ impl Pipeline {
                 body.set_rotation(rotation, true);
             }
 
-            // FIXME: Handle updated rigid body parameters.
+            let linvel = vector(rigid_body.linvel);
+            if *body.linvel() != linvel {
+                body.set_linvel(linvel, true);
+            }
+
+            let angvel = vector(rigid_body.angvel);
+            if *body.angvel() != angvel {
+                body.set_angvel(angvel, true);
+            }
+
+            match rigid_body.kind {
+                RigidBodyKind::Fixed => {
+                    if body.body_type() != RigidBodyType::Fixed {
+                        body.set_body_type(RigidBodyType::Fixed, true);
+                    }
+                }
+                RigidBodyKind::Dynamic => {
+                    if body.body_type() != RigidBodyType::Dynamic {
+                        body.set_body_type(RigidBodyType::Dynamic, true);
+                    }
+                }
+                RigidBodyKind::Kinematic => {
+                    if body.body_type() != RigidBodyType::KinematicVelocityBased {
+                        body.set_body_type(RigidBodyType::KinematicVelocityBased, true);
+                    }
+                }
+            }
 
             // Remove previous children before updating.
             if let Some(children) = self.body_children.remove(&entity) {
@@ -213,33 +241,7 @@ impl Pipeline {
                     continue;
                 };
 
-                let mut builder = match collider.shape {
-                    ColliderShape::Cuboid(cuboid) => {
-                        ColliderBuilder::cuboid(cuboid.hx, cuboid.hy, cuboid.hz)
-                    }
-                    ColliderShape::Ball(ball) => ColliderBuilder::ball(ball.radius),
-                    ColliderShape::Capsule(capsule) => match capsule.axis {
-                        Axis::X => ColliderBuilder::capsule_x(capsule.half_height, capsule.radius),
-                        Axis::Y => ColliderBuilder::capsule_y(capsule.half_height, capsule.radius),
-                        Axis::Z => ColliderBuilder::capsule_z(capsule.half_height, capsule.radius),
-                    },
-                    ColliderShape::TriMesh(mesh) => {
-                        let vertices = mesh
-                            .vertices()
-                            .iter()
-                            .map(|vertex| {
-                                OPoint::<f32, Const<3>>::new(vertex.x, vertex.y, vertex.z)
-                            })
-                            .collect();
-                        let indices = mesh
-                            .indices()
-                            .windows(3)
-                            .map(|indices| indices.try_into().unwrap())
-                            .collect();
-
-                        ColliderBuilder::trimesh(vertices, indices)
-                    }
-                };
+                let mut builder = ColliderBuilder::new(build_shape(&collider.shape));
 
                 builder = builder.position(Isometry {
                     translation: vector(transform.translation).into(),
@@ -568,6 +570,32 @@ pub struct Collision {
 impl Debug for Pipeline {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Pipeline").finish_non_exhaustive()
+    }
+}
+
+fn build_shape(shape: &ColliderShape) -> SharedShape {
+    match shape {
+        ColliderShape::Cuboid(cuboid) => SharedShape::cuboid(cuboid.hx, cuboid.hy, cuboid.hz),
+        ColliderShape::Ball(ball) => SharedShape::ball(ball.radius),
+        ColliderShape::Capsule(capsule) => match capsule.axis {
+            Axis::X => SharedShape::capsule_x(capsule.half_height, capsule.radius),
+            Axis::Y => SharedShape::capsule_y(capsule.half_height, capsule.radius),
+            Axis::Z => SharedShape::capsule_z(capsule.half_height, capsule.radius),
+        },
+        ColliderShape::TriMesh(mesh) => {
+            let vertices = mesh
+                .vertices()
+                .iter()
+                .map(|vertex| OPoint::<f32, Const<3>>::new(vertex.x, vertex.y, vertex.z))
+                .collect();
+            let indices = mesh
+                .indices()
+                .windows(3)
+                .map(|indices| indices.try_into().unwrap())
+                .collect();
+
+            SharedShape::trimesh(vertices, indices)
+        }
     }
 }
 

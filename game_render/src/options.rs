@@ -1,12 +1,12 @@
 use bytemuck::{Pod, Zeroable};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MainPassOptions {
     pub shading: ShadingMode,
 }
 
 /// The shading mode of the main pipeline.
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub enum ShadingMode {
     /// The full shading pipeline.
     ///

@@ -1,13 +1,14 @@
 pub mod components;
 pub mod edit;
+pub mod entity_hierarchy;
 pub mod node;
-pub mod panel;
 pub mod properties;
 
 use std::collections::VecDeque;
 
 use bitflags::bitflags;
 use edit::Axis;
+use game_common::collections::string::SmallStr;
 use game_common::components::components::{Components, RawComponent};
 use game_common::components::Transform;
 use game_common::components::{GlobalTransform, PrimaryCamera};
@@ -27,7 +28,6 @@ use game_window::windows::WindowId;
 use glam::{Quat, Vec2, Vec3};
 
 use self::edit::{EditMode, EditOperation};
-use self::panel::Entity;
 
 const ZOOM_DISTANCE_MIN: f32 = 0.2;
 const ZOOM_DISTANCE_MAX: f32 = 100.0;
@@ -44,11 +44,17 @@ struct WorldState {
     entities: Vec<Entity>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Entity {
+    pub id: EntityId,
+    pub name: SmallStr,
+    pub is_selected: bool,
+}
+
 pub struct WorldWindowState {
     camera_controller: CameraController,
     // TODO: Use `Cursor` instead of adding our own thing.
     cursor: Vec2,
-    // state: Arc<Mutex<SceneState>>,
     edit_op: EditOperation,
     rendering_properties: RenderingProperties,
     state: WorldState,
@@ -68,7 +74,7 @@ impl WorldWindowState {
     }
 
     pub fn handle_event(&mut self, event: WindowEvent, window: WindowId, renderer: &mut Renderer) {
-        let viewport_size = renderer.get_surface_size(window).unwrap();
+        let viewport_size = renderer.get_surface_size(window.into()).unwrap();
 
         let mut camera = Camera {
             transform: self.camera_controller.transform,
@@ -289,107 +295,6 @@ impl WorldWindowState {
             world.insert_typed(camera, PrimaryCamera);
         }
 
-        // let mut entities = self.state.entities.lock();
-
-        // while let Ok(event) = self.events.try_recv() {
-        //     tracing::debug!("event from scene ui: {:?}", event);
-
-        //     if matches!(
-        //         &event,
-        //         Event::Spawn | Event::UpdateComponent(_, _) | Event::DeleteComponent(_)
-        //     ) {
-        //         self.entites_changed = true;
-        //     }
-
-        //     match event {
-        //         Event::Spawn => {
-        //             // Create new entities at the location the camera is looking at.
-        //             let id = world.spawn();
-        //             world.insert_typed(
-        //                 id,
-        //                 Transform::from_translation(self.camera_controller.origin),
-        //             );
-
-        //             {
-        //                 entities.push(Entity {
-        //                     id,
-        //                     name: SmallStr::from_static("<entity>"),
-        //                     is_selected: false,
-        //                 });
-        //             }
-
-        //             // let cb = { self.state.lock().entities_changed.clone() };
-        //             // cb.call(());
-        //         }
-        //         Event::SelectEntity(entity) => {
-        //             {
-        //                 for ent in entities.iter_mut() {
-        //                     if ent.id == entity {
-        //                         ent.is_selected ^= true;
-
-        //                         // If the entity changed we may need to update the
-        //                         // components panel, but we don't need to do this
-        //                         // if the entity has not changed.
-        //                         self.update_components_panel = true;
-
-        //                         break;
-        //                     }
-        //                 }
-        //             }
-
-        //             // let cb = { self.state.lock().entities_changed.clone() };
-        //             // cb.call(());
-        //         }
-        //         // Note that a component update event from the component panel
-        //         // does not update the component panel itself again because
-        //         // the change is already tracked by the component panel.
-        //         Event::UpdateComponent(id, component) => {
-        //             for entity in entities.iter().filter(|e| e.is_selected) {
-        //                 world.insert(entity.id, id, component.clone());
-        //             }
-        //         }
-        //         Event::DeleteComponent(id) => {
-        //             for entity in entities.iter().filter(|e| e.is_selected) {
-        //                 world.remove(entity.id, id);
-        //                 self.update_components_panel = true;
-        //             }
-        //         }
-        //         Event::SetShadingMode(mode) => {
-        //             self.rendering_properties.shading = mode;
-        //         }
-        //     }
-        // }
-
-        // if self.update_components_panel {
-        //     {
-        //         let selected_entities = entities
-        //             .iter()
-        //             .filter(|v| v.is_selected)
-        //             .cloned()
-        //             .collect::<Vec<_>>();
-
-        //         let components = if selected_entities.is_empty() {
-        //             Components::new()
-        //         } else {
-        //             let mut components = world.components(selected_entities[0].id).clone();
-
-        //             for entity in selected_entities.iter().skip(1) {
-        //                 let other = world.components(entity.id);
-        //                 components = components.intersection(other);
-        //             }
-
-        //             components
-        //         };
-
-        //         // self.state.lock().components = components;
-        //     }
-
-        //     // let cb = { self.state.lock().components_changed.clone() };
-        //     // cb.call(());
-
-        //     self.update_components_panel = false;
-        // }
-
         options.shading = self.rendering_properties.shading;
     }
 
@@ -445,6 +350,11 @@ impl WorldWindowState {
         id
     }
 
+    pub fn despawn(&mut self, entity: EntityId) {
+        self.state.world.despawn(entity);
+        self.state.entities.retain(|e| e.id != entity);
+    }
+
     pub fn spawn_world(&mut self, world: World) -> EntityId {
         let id = self.state.world.append(world);
         self.state.world.insert_typed(id, Transform::default());
@@ -478,46 +388,6 @@ pub struct SceneState {
     pub components_changed: Callback<()>,
 }
 
-// fn build_ui(
-//     ctx: &Context<()>,
-//     writer: mpsc::Sender<Event>,
-//     modules: Modules,
-// ) -> Arc<Mutex<SceneState>> {
-// let style = Style {
-//     direction: Direction::Column,
-//     justify: Justify::SpaceBetween,
-//     ..Default::default()
-// };
-
-//     let root = Container::new().style(style).mount(ctx);
-
-//     let state = Arc::new(Mutex::new(SceneState {
-//         entities: Vec::new(),
-//         components: Components::default(),
-//         entities_changed: Callback::default(),
-//         components_changed: Callback::default(),
-//     }));
-
-//     Properties {
-//         writer: writer.clone(),
-//     }
-//     .mount(&root);
-
-//     Panel {
-//         state: state.clone(),
-//         writer: writer.clone(),
-//     }
-//     .mount(&root);
-//     ComponentsPanel {
-//         state: state.clone(),
-//         writer,
-//         modules,
-//     }
-//     .mount(&root);
-
-//     state
-// }
-
 #[derive(Clone, Debug)]
 pub enum Event {
     Spawn,
@@ -527,6 +397,7 @@ pub enum Event {
     UpdateComponent(RecordReference, RawComponent),
     DeleteComponent(RecordReference),
     SetShadingMode(ShadingMode),
+    DespawnEntity(EntityId),
 }
 
 #[derive(Clone, Debug, Default)]

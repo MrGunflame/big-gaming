@@ -11,6 +11,7 @@ mod controller;
 mod health;
 mod inventory;
 mod movement;
+mod physics;
 mod player;
 mod projectile;
 mod weapon;
@@ -19,8 +20,8 @@ mod world;
 
 use core::f32::consts::PI;
 
-use alloc::borrow::ToOwned;
 use alloc::vec;
+use alloc::vec::Vec;
 use bytemuck::Pod;
 use bytemuck::Zeroable;
 use components::AMMO;
@@ -38,6 +39,7 @@ use game_wasm::components::builtin::Transform;
 use game_wasm::components::Component;
 use game_wasm::encoding::{Decode, Encode};
 use game_wasm::events::on_init;
+use game_wasm::hierarchy::Children;
 use game_wasm::math::Real;
 pub use game_wasm::math::Vec3;
 
@@ -78,6 +80,7 @@ pub fn on_init() {
     register_action_handler(movement::move_left);
     register_action_handler(movement::move_right);
     register_action_handler(movement::update_rotation);
+    register_action_handler(movement::jump);
 
     register_action_handler(weapon::weapon_attack);
     register_action_handler(weapon::weapon_reload);
@@ -263,7 +266,6 @@ pub mod components {
 
         EQUIPPED_ITEM => 0x20,
         LOOKING_DIRECTION => 0x21,
-        RESPAWN_POINT => 0x23,
 
         // EVENTS
         EVENT_GUN_EQUIP => 0x01,
@@ -271,6 +273,8 @@ pub mod components {
         TRANSFORM_CHANGED => 0x03,
 
         SKY_LIGHT => 0x24,
+
+        JUMP => 0x25,
 
     }
 }
@@ -354,4 +358,20 @@ impl Component for LookingDirection {
 fn panic_handler(info: &core::panic::PanicInfo) -> ! {
     game_wasm::error!("{}", info);
     core::arch::wasm32::unreachable()
+}
+
+fn collect_children_recursive(entity: EntityId) -> Vec<EntityId> {
+    let mut buf = Vec::new();
+    let mut entities = vec![entity];
+
+    for entity in entities.pop() {
+        let Ok(children) = Entity::new(entity).get::<Children>() else {
+            continue;
+        };
+
+        buf.extend(children.get());
+        entities.extend(children.get());
+    }
+
+    buf
 }

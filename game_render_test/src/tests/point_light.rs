@@ -11,7 +11,7 @@ use crate::Harness;
 
 pub(super) fn point_light() -> Harness {
     Harness::new(stringify!(point_light), |renderer, target| {
-        renderer.entities.cameras.insert(Camera {
+        renderer.scene.entities.cameras.insert(Camera {
             transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
             target,
             projection: Projection {
@@ -26,13 +26,13 @@ pub(super) fn point_light() -> Harness {
         let mesh = renderer.meshes.insert(plane);
         let material = renderer.materials.insert(PbrMaterial::default());
 
-        renderer.entities.objects.insert(Object {
+        renderer.scene.entities.objects.insert(Object {
             transform: Transform::default(),
             mesh,
             material,
         });
 
-        renderer.entities.point_lights.insert(PointLight {
+        renderer.scene.entities.point_lights.insert(PointLight {
             transform: Transform::from_translation(Vec3::new(0.0, 1.0, -5.0)),
             color: Color::WHITE,
             intensity: 50.0,
