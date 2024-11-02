@@ -6,10 +6,7 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [features]
-default = ["serde"]
-
-# Enable serde impls
-serde = ["dep:serde"]
+default = []
 
 [lints]
 workspace = true
@@ -17,10 +14,9 @@ workspace = true
 [dependencies]
 ahash = "0.8.11"
 glam = "0.28.0"
-hex = "0.4.3"
 tracing = "0.1.40"
 
-serde = { version = "1.0.204", features = ["derive"], optional = true }
+serde = { version = "1.0.204", features = ["derive"] }
 thiserror = "1.0.38"
 uuid = { version = "1.9.1", features = ["serde", "fast-rng", "v4"] }
 image = "0.25.1"
