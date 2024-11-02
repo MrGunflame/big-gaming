@@ -8,7 +8,7 @@ license = "GPL-3.0-or-later"
 [features]
 default = ["tracy"]
 serde = []
-tracy = ["game_core/tracy"]
+tracy = ["game_core/tracy", "game_crash_handler/tracy"]
 
 [lints]
 workspace = true
