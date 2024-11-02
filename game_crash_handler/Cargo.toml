@@ -5,9 +5,13 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[features]
+default = []
+tracy = ["game_tracing"]
+
 [dependencies]
 game_macros = { version = "0.1.0", path = "../game_macros" }
-game_tracing = { version = "0.1.0", path = "../game_tracing" }
+game_tracing = { version = "0.1.0", path = "../game_tracing", optional = true }
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.29.0", features = ["signal"] }

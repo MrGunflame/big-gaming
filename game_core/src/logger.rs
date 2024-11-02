@@ -3,7 +3,6 @@ use std::fmt::{self, Debug, Display, Formatter};
 use std::io::IsTerminal;
 
 use chrono::Local;
-use game_tracing::{ProfilerConfig, ProfilingLayer};
 use tracing::field::{Field, Visit};
 use tracing::metadata::LevelFilter;
 use tracing::subscriber::set_global_default;
@@ -13,12 +12,14 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 pub fn init() {
-    set_global_default(
-        tracing_subscriber::registry()
-            .with(ProfilingLayer::new(ProfilerConfig::default()))
-            .with(Logger::new()),
-    )
-    .unwrap();
+    let layer = tracing_subscriber::registry();
+    #[cfg(feature = "tracy")]
+    let layer = layer.with(game_tracing::ProfilingLayer::new(
+        game_tracing::ProfilerConfig::default(),
+    ));
+    let layer = layer.with(Logger::new());
+
+    set_global_default(layer).unwrap();
 }
 
 #[derive(Debug)]
