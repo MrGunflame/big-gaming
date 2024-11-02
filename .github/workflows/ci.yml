@@ -60,3 +60,29 @@ jobs:
     - run: rustup update stable --no-self-update && rustup default stable
     - run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
     - run: cargo doc --no-deps --all-features
+
+  per_feature:
+    strategy:
+      matrix:
+        os:
+        - ubuntu-latest
+        - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+          target/
+        key: ${{ runner.os }}-per_feature
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: cargo-hack
+    - run: rustup update stable --no-self-update && rustup default stable
+    - run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      if: runner.os == 'linux'
+    - run: cargo hack test --workspace --feature-powerset
