@@ -135,14 +135,14 @@ extern "C" fn handler(signal: c_int, info: *mut siginfo_t, _: *mut c_void) {
     // Reset the handler to the default.
     if let Ok(signal) = Signal::try_from(signal) {
         let sig_action = SigAction::new(SigHandler::SigDfl, SaFlags::empty(), SigSet::empty());
-        if let Err(_) = unsafe { sigaction(signal, &sig_action) } {
+        if unsafe { sigaction(signal, &sig_action).is_err() } {
             // If unsetting the handler fails this handler may end
             // up being called in a infinite loop.
             // As a counter-measure we just exit "cleanly". This will not
             // execute the default signal handler again and may mean that
             // no core dump is created, but the process will never hang
             // indefinitely.
-            std::process::exit(1);
+            std::process::abort();
         }
     }
 }

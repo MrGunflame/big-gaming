@@ -25,7 +25,7 @@ pub fn init() {
         game_tracing::ProfilerConfig::default(),
     ));
 
-    let logger = LOGGER.get_or_init(|| Logger::new());
+    let logger = LOGGER.get_or_init(Logger::new);
     let layer = layer.with(logger);
 
     std::panic::set_hook(Box::new(panic_hook));
@@ -297,7 +297,7 @@ impl FileLogger {
         if !self.buf.is_empty() {
             // write is signal-safe.
             // See https://www.man7.org/linux/man-pages/man7/signal-safety.7.html
-            self.file.write(&self.buf)?;
+            self.file.write_all(&self.buf)?;
         }
 
         // fsync is signal-safe.
