@@ -101,6 +101,8 @@ fn fork_main(args: Vec<OsString>) -> Result<Status, io::Error> {
 
     let status = child.wait()?;
 
+    eprintln!("process exited with status {}", status);
+
     match status.code() {
         Some(0) => Ok(Status::Sucess),
         Some(1) => Ok(Status::Failure),
