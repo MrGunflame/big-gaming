@@ -1,7 +1,9 @@
+use std::backtrace::Backtrace;
 use std::fmt::Write;
 use std::fmt::{self, Debug, Display, Formatter};
 use std::fs::File;
 use std::io::{self, IsTerminal, Write as _};
+use std::panic::PanicHookInfo;
 use std::sync::OnceLock;
 
 use chrono::{DateTime, Local};
@@ -25,6 +27,8 @@ pub fn init() {
 
     let logger = LOGGER.get_or_init(|| Logger::new());
     let layer = layer.with(logger);
+
+    std::panic::set_hook(Box::new(panic_hook));
 
     set_global_default(layer).unwrap();
 }
@@ -302,4 +306,32 @@ impl FileLogger {
 
         Ok(())
     }
+}
+
+fn panic_hook(info: &PanicHookInfo<'_>) {
+    let backtrace = Backtrace::force_capture();
+
+    let location = info.location().unwrap();
+    let msg = if let Some(&s) = info.payload().downcast_ref::<&'static str>() {
+        s
+    } else if let Some(s) = info.payload().downcast_ref::<String>() {
+        s
+    } else {
+        "Box<dyn Any>"
+    };
+
+    let mut buf = String::with_capacity(4096);
+    writeln!(buf, "thread panicked at {}:\n{}", location, msg).ok();
+    writeln!(buf, "{}", backtrace).ok();
+
+    let Some(logger) = Logger::get() else {
+        eprintln!("panicked but logger is not installed");
+        return;
+    };
+
+    logger.write(&buf);
+    logger.flush();
+
+    // Program should abort at this point as this
+    // point at we don't unwind.
 }

@@ -92,7 +92,6 @@ fn fork_main(args: Vec<OsString>) -> Result<Status, io::Error> {
     let program = current_exe()?;
     let mut child = Command::new(program)
         .env(FORK_FLAG, "")
-        .env("RUST_BACKTRACE", "full")
         .args(args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
