@@ -92,7 +92,6 @@ fn fork_main(args: Vec<OsString>) -> Result<Status, io::Error> {
     let program = current_exe()?;
     let mut child = Command::new(program)
         .env(FORK_FLAG, "")
-        .env("RUST_BACKTRACE", "full")
         .args(args)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -100,6 +99,8 @@ fn fork_main(args: Vec<OsString>) -> Result<Status, io::Error> {
         .spawn()?;
 
     let status = child.wait()?;
+
+    eprintln!("process exited with status {}", status);
 
     match status.code() {
         Some(0) => Ok(Status::Sucess),
