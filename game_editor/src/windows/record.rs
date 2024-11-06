@@ -47,7 +47,7 @@ impl Widget for EditRecord {
         let (edit_state, set_edit_state) = root.runtime().reactive().create_signal(EditState {
             id: self.id,
             record,
-            module: None,
+            module: self.id.map(|id| id.module),
         });
 
         Text::new("Module").mount(&root);

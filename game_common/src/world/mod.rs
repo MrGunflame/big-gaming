@@ -313,7 +313,9 @@ impl World {
             let children = Children::decode(reader).unwrap();
 
             for id in children.get() {
-                non_root_entities.insert(*id);
+                if self.entities.contains(id) {
+                    non_root_entities.insert(*id);
+                }
             }
         }
 
