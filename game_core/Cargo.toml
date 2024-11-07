@@ -17,7 +17,6 @@ game_common = { version = "0.1.0", path = "../game_common" }
 game_data = { version = "0.1.0", path = "../game_data" }
 game_script = { version = "0.1.0", path = "../game_script" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
-game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 tracing = "0.1.40"

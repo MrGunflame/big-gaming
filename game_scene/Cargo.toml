@@ -20,6 +20,7 @@ game_model = { version = "0.1.0", path = "../game_model" }
 game_core = { version = "0.1.0", path = "../game_core" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
+game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
 
 game_gltf = { version = "0.1.0", path = "../game_gltf" }
 tracing = "0.1.40"
