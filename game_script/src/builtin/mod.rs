@@ -63,6 +63,8 @@ pub fn register_host_fns(store: &mut Linker<State>) {
         resource_get_runtime,
         resource_len_runtime,
         resource_update_runtime,
+        record_list_count,
+        record_list_copy,
     }
 }
 
@@ -149,6 +151,20 @@ trait AsMemory {
         T: Copy + NoUninit,
     {
         self.write_memory(ptr, bytemuck::bytes_of(value))
+    }
+
+    fn write_iter<I, T>(&mut self, mut ptr: u32, iter: I) -> wasmtime::Result<()>
+    where
+        I: Iterator<Item = T>,
+        T: Copy + NoUninit,
+    {
+        let len = Usize::size_of::<T>();
+        for elem in iter {
+            self.write(ptr, &elem)?;
+            ptr = ptr.wrapping_add(len.0);
+        }
+
+        Ok(())
     }
 
     /// Read a slice of `len` `T`s from the given `ptr`.

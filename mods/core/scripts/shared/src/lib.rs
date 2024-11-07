@@ -358,13 +358,6 @@ impl Component for LookingDirection {
     const ID: RecordReference = LOOKING_DIRECTION;
 }
 
-#[cfg(all(not(test), target_family = "wasm"))]
-#[panic_handler]
-fn panic_handler(info: &core::panic::PanicInfo) -> ! {
-    game_wasm::error!("{}", info);
-    core::arch::wasm32::unreachable()
-}
-
 fn collect_children_recursive(entity: EntityId) -> Vec<EntityId> {
     let mut buf = Vec::new();
     let mut entities = vec![entity];

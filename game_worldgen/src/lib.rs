@@ -1,6 +1,6 @@
-use game_common::components::Transform;
-use game_common::record::RecordReference;
-use game_common::world::CellId;
+use game_wasm::cell::CellId;
+use game_wasm::components::builtin::Transform;
+use game_wasm::world::RecordReference;
 use glam::{Quat, Vec3};
 
 #[derive(Clone, Debug)]

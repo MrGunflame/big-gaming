@@ -15,6 +15,7 @@ use game_tracing::trace_span;
 use game_wasm::encoding::{encode_fields, BinaryWriter};
 use game_wasm::events::{CELL_LOAD, CELL_UNLOAD, PLAYER_CONNECT, PLAYER_DISCONNECT};
 use game_wasm::player::PlayerId;
+use game_wasm::record::ModuleId;
 use instance::{HostBufferPool, InstancePool, RunState, State};
 use script::{Script, ScriptLoadError};
 use thiserror::Error;
@@ -322,6 +323,8 @@ pub trait WorldProvider: 'static {
 
 pub trait RecordProvider: 'static {
     fn get(&self, id: RecordReference) -> Option<&Record>;
+
+    fn iter(&self) -> Box<dyn Iterator<Item = (ModuleId, &Record)> + '_>;
 }
 
 #[derive(Clone, Debug)]

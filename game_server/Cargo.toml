@@ -6,11 +6,12 @@ authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
 [features]
-default = ["physics"]
+default = ["physics", "tracy"]
 # Enable game physics.
 # Note that disabling physics is only useful for testing. The game might not function
 # correctly without physics.
 physics = []
+tracy = ["game_core/tracy", "game_crash_handler/tracy"]
 
 [lints]
 workspace = true
@@ -22,7 +23,7 @@ clap = { version = "4.5.8", features = ["derive"] }
 futures = "0.3.30"
 game_common = { version = "0.1.0", path = "../game_common" }
 game_core = { version = "0.1.0", path = "../game_core" }
-game_net = { version = "0.1.0", path = "../game_net" }
+game_net = { version = "0.1.0", path = "../game_net", features = ["log-peer-errors"] }
 parking_lot = "0.12.3"
 thiserror = "1.0.61"
 
@@ -34,7 +35,6 @@ toml = "0.8.14"
 serde = { version = "1.0.160", features = ["derive"] }
 glam = "0.28.0"
 game_data = { version = "0.1.0", path = "../game_data" }
-game_worldgen = { version = "0.1.0", path = "../game_worldgen" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
 game_prefab = { version = "0.1.0", path = "../game_prefab" }

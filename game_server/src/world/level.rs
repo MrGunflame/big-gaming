@@ -4,9 +4,6 @@ use game_common::entity::EntityId;
 use game_common::events::{CellLoad, CellUnload, Event};
 use game_common::world::cell::CubeIter;
 use game_common::world::{CellId, World};
-use game_core::modules::Modules;
-use game_prefab::Prefab;
-use game_worldgen::WorldgenState;
 use tracing::trace_span;
 
 #[derive(Copy, Clone, Debug)]
@@ -14,7 +11,7 @@ pub struct Streamer {
     pub distance: u32,
 }
 
-pub fn update_level_cells(level: &mut Level, world: &mut World, modules: &Modules) -> Vec<Event> {
+pub fn update_level_cells(level: &mut Level, world: &mut World) -> Vec<Event> {
     let mut cells = HashSet::default();
     let mut events = Vec::new();
 
@@ -34,30 +31,6 @@ pub fn update_level_cells(level: &mut Level, world: &mut World, modules: &Module
         // we don't have to do anything.
         if level.loaded.contains(cell) {
             continue;
-        }
-
-        // Otherwise we must create the cell and instantiate all prefab
-        // entities as defined by the cell generator.
-        tracing::info!("generating cell {:?}", cell);
-
-        for entity in level.generator.load(*cell) {
-            let Some(module) = modules.get(entity.prefab.module) else {
-                continue;
-            };
-
-            let Some(record) = module.records.get(entity.prefab.record) else {
-                continue;
-            };
-
-            let prefab = match Prefab::from_bytes(&record.data) {
-                Ok(prefab) => prefab,
-                Err(err) => {
-                    tracing::error!("failed to decode prefab record: {}", err);
-                    continue;
-                }
-            };
-
-            prefab.instantiate(&mut *world);
         }
 
         level.loaded.insert(*cell);
@@ -87,16 +60,14 @@ pub fn update_level_cells(level: &mut Level, world: &mut World, modules: &Module
 pub struct Level {
     loaded: HashSet<CellId>,
     streamers: HashMap<EntityId, Streamer>,
-    generator: WorldgenState,
     unload_in_next_tick: HashSet<CellId>,
 }
 
 impl Level {
-    pub fn new(generator: WorldgenState) -> Self {
+    pub fn new() -> Self {
         Self {
             loaded: HashSet::default(),
             streamers: HashMap::default(),
-            generator,
             unload_in_next_tick: HashSet::new(),
         }
     }
@@ -163,19 +134,16 @@ mod tests {
     use game_common::events::Event;
     use game_common::world::cell::CubeIter;
     use game_common::world::{CellId, World};
-    use game_core::modules::Modules;
-    use game_worldgen::WorldgenState;
     use glam::Vec3;
 
     use super::{update_level_cells, Level, Streamer};
 
     #[test]
     fn test_update_level_cells() {
-        let mut level = Level::new(WorldgenState::new());
+        let mut level = Level::new();
         let mut world = World::new();
-        let modules = Modules::new();
 
-        let events = update_level_cells(&mut level, &mut world, &modules);
+        let events = update_level_cells(&mut level, &mut world);
         assert!(events.is_empty());
         assert!(level.loaded.is_empty());
 
@@ -187,7 +155,7 @@ mod tests {
         let loaded_cells = CubeIter::new(CellId::from(transform.translation), 1)
             .into_iter()
             .collect();
-        let events = update_level_cells(&mut level, &mut world, &modules);
+        let events = update_level_cells(&mut level, &mut world);
         assert_cell_load_events(&events, &loaded_cells);
         assert_cell_unload_events(&events, &HashSet::new());
         assert_eq!(level.loaded, loaded_cells);
@@ -203,7 +171,7 @@ mod tests {
             loaded_cells_2.difference(&loaded_cells).copied().collect();
         let new_unloaded_cells: HashSet<_> =
             loaded_cells.difference(&loaded_cells_2).copied().collect();
-        let events = update_level_cells(&mut level, &mut world, &modules);
+        let events = update_level_cells(&mut level, &mut world);
         assert_cell_load_events(&events, &new_loaded_cells);
         assert_cell_unload_events(&events, &new_unloaded_cells);
         assert_eq!(level.loaded, loaded_cells_2);
@@ -211,7 +179,7 @@ mod tests {
         // Destroy the player, unloading all cells.
         world.despawn(player);
         level.destroy_streamer(player);
-        let events = update_level_cells(&mut level, &mut world, &modules);
+        let events = update_level_cells(&mut level, &mut world);
         assert_cell_load_events(&events, &HashSet::new());
         assert_cell_unload_events(&events, &loaded_cells_2);
         assert!(level.loaded.is_empty());
