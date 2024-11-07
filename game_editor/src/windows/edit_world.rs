@@ -74,7 +74,14 @@ impl EditWorldWindow {
                     continue;
                 };
 
-                let prefab = Prefab::from_bytes(&record.data).unwrap();
+                let prefab = match Prefab::from_bytes(&record.data) {
+                    Ok(prefab) => prefab,
+                    Err(err) => {
+                        tracing::error!("invalid prefab data: {}", err);
+                        continue;
+                    }
+                };
+
                 let mut world = World::new();
                 let root_entity = prefab.instantiate(&mut world);
                 world.insert_typed(root_entity, entity.transform);
@@ -198,7 +205,19 @@ impl WindowTrait for EditWorldWindow {
                 continue;
             };
 
-            let prefab = Prefab::from_bytes(&record.data).unwrap();
+            let prefab = match Prefab::from_bytes(&record.data) {
+                Ok(prefab) => prefab,
+                Err(err) => {
+                    tracing::error!(
+                        "record {} ({}) contains invalid prefab data: {}",
+                        record.name,
+                        record.id,
+                        err
+                    );
+                    continue;
+                }
+            };
+
             let mut world = World::new();
             prefab.instantiate(&mut world);
             let entity = self.state.spawn_world(world);
