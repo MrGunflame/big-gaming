@@ -160,15 +160,15 @@ pub(crate) fn decode(mut buf: &[u8]) -> Result<Prefab, DecodeError> {
 
         let mut components = Vec::new();
 
-        if buf.remaining() < 20 + size_of::<u64>() * 4 {
-            return Err(DecodeError::Eof(EofError {
-                expected_len: 20 + size_of::<u64>() * 4,
-                got_len: buf.remaining(),
-                section: Section::Entities,
-            }));
-        }
-
         for _ in 0..len {
+            if buf.remaining() < 20 + size_of::<u64>() * 4 {
+                return Err(DecodeError::Eof(EofError {
+                    expected_len: 20 + size_of::<u64>() * 4,
+                    got_len: buf.remaining(),
+                    section: Section::Entities,
+                }));
+            }
+
             let mut id = [0; 20];
             buf.copy_to_slice(&mut id);
 
@@ -181,11 +181,11 @@ pub(crate) fn decode(mut buf: &[u8]) -> Result<Prefab, DecodeError> {
                 id: RecordReference::from_bytes(id),
                 data: Range {
                     start: data_start as usize,
-                    end: data_start as usize + data_len as usize,
+                    end: (data_start as usize).saturating_add(data_len as usize),
                 },
                 fields: Range {
                     start: fields_start as usize,
-                    end: fields_start as usize + fields_len as usize,
+                    end: (fields_start as usize).saturating_add(fields_len as usize),
                 },
             });
         }
