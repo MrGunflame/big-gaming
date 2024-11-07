@@ -1,163 +1,174 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+mod format;
+
+use std::collections::HashMap;
+use std::ops::Range;
 
 use game_common::components::components::RawComponent;
-use game_common::components::{BinaryReader, Children, Component, Decode, Transform};
+use game_common::components::{Children, Component};
 use game_common::entity::EntityId;
 use game_common::record::RecordReference;
 use game_common::world::World;
+use game_tracing::trace_span;
 use game_wasm::encoding::{decode_fields, encode_fields, BinaryWriter};
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
+
+pub use format::DecodeError;
 
 #[derive(Clone, Debug, Default)]
 pub struct Prefab {
-    // EntityId => [RecordReference => RawComponent]
-    entities: HashMap<u64, HashMap<String, EncodedComponent>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct EncodedComponent {
-    bytes: Vec<u8>,
-    fields: Vec<u8>,
+    entities: Vec<Vec<ComponentRef>>,
+    children: HashMap<u64, Vec<u64>>,
+    root: Vec<u64>,
+    data: Vec<u8>,
 }
 
 impl Prefab {
+    /// Creates a new, empty `Prefab`.
     pub fn new() -> Self {
         Self {
-            entities: HashMap::new(),
+            entities: Vec::new(),
+            children: HashMap::new(),
+            data: Vec::new(),
+            root: Vec::new(),
         }
     }
 
     pub fn add(&mut self, id: EntityId, world: &World) {
-        let mut components = HashMap::new();
-        for (id, component) in world.components(id).iter() {
-            components.insert(
-                id.to_string(),
-                EncodedComponent {
-                    bytes: component.as_bytes().to_vec(),
-                    fields: encode_fields(component.fields()),
-                },
-            );
+        let _span = trace_span!("Prefab::add").entered();
+
+        let mut entities = Vec::new();
+
+        // Collect all recursive children of `id` in the stack
+        // `entities` "bottom-up". This means popping from
+        // `entities` will always yield entities whose children
+        // have already been yielded.
+        let mut stack = vec![id];
+        while let Some(id) = stack.pop() {
+            entities.push(id);
+
+            if let Ok(children) = world.get_typed::<Children>(id) {
+                stack.extend(children.get());
+            }
         }
 
-        let index = self.entities.len() as u64;
-        self.entities.insert(index, components);
-    }
+        let mut spawned_entities = HashMap::new();
 
-    pub fn instantiate<S>(self, mut world: S) -> EntityId
-    where
-        S: Spawner,
-    {
-        let mut entities = HashMap::new();
+        while let Some(entity) = entities.pop() {
+            let index = self.entities.len();
+            spawned_entities.insert(entity, index as u64);
 
-        let root_entities = self.find_root_entities();
-        let mut spawn_queue = VecDeque::new();
-        spawn_queue.extend(&root_entities);
-
-        let mut entity_keys = HashMap::new();
-
-        while let Some(entity) = spawn_queue.pop_front() {
-            let id = world.spawn();
-            entity_keys.insert(entity, id);
-            spawn_queue.extend(self.children(entity));
-        }
-
-        for (entity, components) in self.entities {
-            let entity_id = *entity_keys.get(&entity).unwrap();
-            entities.insert(entity, entity_id);
-
-            for (id, component) in components {
-                let id: RecordReference = id.parse().unwrap();
-
-                let fields = decode_fields(&component.fields);
-                let component = RawComponent::new(component.bytes, fields);
-
-                if id == Children::ID {
-                    let reader = BinaryReader::new(
-                        component.as_bytes().to_vec(),
-                        component.fields().to_vec().into(),
-                    );
-                    let children = Children::decode(reader).unwrap();
-
-                    let mut new_children = Children::new();
-                    for id in children.get() {
-                        let id = id.into_raw();
-                        let child = *entity_keys.get(&id).unwrap();
-                        new_children.insert(child);
-                    }
-
-                    let (fields, bytes) = BinaryWriter::new().encoded(&new_children);
-                    let component = RawComponent::new(bytes, fields);
-                    world.insert(entity_id, id, component);
+            let mut components = Vec::new();
+            for (component_id, component) in world.components(entity).iter() {
+                // We handle the `Children` component manually.
+                if component_id == Children::ID {
                     continue;
                 }
 
-                world.insert(entity_id, id, component);
+                let data = component.as_bytes().to_vec();
+                let fields = encode_fields(component.fields());
+
+                let data_start = self.data.len();
+                self.data.extend(data);
+                let data_end = self.data.len();
+
+                let fields_start = self.data.len();
+                self.data.extend(fields);
+                let fields_end = self.data.len();
+
+                components.push(ComponentRef {
+                    id: component_id,
+                    data: Range {
+                        start: data_start,
+                        end: data_end,
+                    },
+                    fields: Range {
+                        start: fields_start,
+                        end: fields_end,
+                    },
+                });
+            }
+
+            self.entities.push(components);
+
+            if let Ok(children) = world.get_typed::<Children>(entity) {
+                // `entities` is order so that all entities that are children
+                // of the current entity have already been processed.
+                let children_list = children
+                    .get()
+                    .iter()
+                    .map(|id| *spawned_entities.get(id).unwrap())
+                    .collect();
+
+                self.children.insert(index as u64, children_list);
             }
         }
 
-        let root = world.spawn();
-        let mut children = Children::new();
-        for entity in root_entities {
-            let id = *entity_keys.get(&entity).unwrap();
-            children.insert(id);
-        }
-        let (fields, bytes) = BinaryWriter::new().encoded(&children);
-        let component = RawComponent::new(bytes, fields);
-        world.insert(root, Children::ID, component);
-
-        let (fields, bytes) = BinaryWriter::new().encoded(&Transform::default());
-        world.insert(root, Transform::ID, RawComponent::new(bytes, fields));
-
-        root
+        let root = spawned_entities.get(&id).unwrap();
+        self.root.push(*root);
     }
 
-    fn children(&self, parent: u64) -> Vec<u64> {
-        let components = self.entities.get(&parent).unwrap();
+    /// Instantiate the `Prefab` using the given [`Spawner`] and returns the [`EntityId`] of the
+    /// spawned prefab.
+    pub fn instantiate<S>(self, mut spawner: S) -> EntityId
+    where
+        S: Spawner,
+    {
+        let _span = trace_span!("Prefab::instantiate").entered();
 
-        let Some(component) = components.get(&Children::ID.to_string()) else {
-            return Vec::new();
-        };
+        let mut entities = Vec::new();
 
-        let fields = decode_fields(&component.fields);
-        let reader = BinaryReader::new(component.bytes.clone(), fields.into());
-        let children = Children::decode(reader).unwrap();
+        let mut stack = self.root.clone();
+        while let Some(index) = stack.pop() {
+            entities.push(index);
 
-        children.get().iter().map(|v| v.into_raw()).collect()
-    }
-
-    fn find_root_entities(&self) -> Vec<u64> {
-        // Non-root entities are all entities that have a `Children` component
-        // pointing at them.
-        let mut non_root_entities = HashSet::new();
-
-        for components in self.entities.values() {
-            let Some(component) = components.get(&Children::ID.to_string()) else {
-                continue;
-            };
-
-            let fields = decode_fields(&component.fields);
-            let reader = BinaryReader::new(component.bytes.clone(), fields.into());
-            let children = Children::decode(reader).unwrap();
-
-            for id in children.get() {
-                non_root_entities.insert(id.into_raw());
+            if let Some(children) = self.children.get(&index) {
+                stack.extend(children);
             }
         }
 
-        let mut root = Vec::with_capacity(self.entities.len() - non_root_entities.len());
-        for entity in self.entities.keys() {
-            if !non_root_entities.contains(entity) {
-                root.push(*entity);
+        let mut spawned_entities = HashMap::new();
+
+        while let Some(index) = entities.pop() {
+            let entity = spawner.spawn();
+            spawned_entities.insert(index, entity);
+
+            let component_refs = &self.entities[index as usize];
+            for component_ref in component_refs {
+                let component = component_ref.load(&self.data);
+                spawner.insert(entity, component_ref.id, component);
+            }
+
+            if let Some(children) = self.children.get(&index) {
+                let mut children_component = Children::new();
+
+                for children in children {
+                    let children_entity = spawned_entities.get(children).unwrap();
+                    children_component.insert(*children_entity);
+                }
+
+                if !children_component.is_empty() {
+                    spawner.insert_typed(entity, children_component);
+                }
             }
         }
 
-        root
+        let root_entity = spawner.spawn();
+
+        let mut children_component = Children::new();
+        for index in &self.root {
+            let children_entity = spawned_entities.get(index).unwrap();
+            children_component.insert(*children_entity);
+        }
+
+        if !children_component.is_empty() {
+            spawner.insert_typed(root_entity, children_component);
+        }
+
+        root_entity
     }
 
     /// Serializes the `Prefab` into bytes.
     pub fn to_bytes(&self) -> Vec<u8> {
-        bincode::serialize(&self.entities).unwrap()
+        format::encode(self)
     }
 
     /// Deserializes the `Prefab` from the given `bytes`.
@@ -165,22 +176,36 @@ impl Prefab {
     /// # Errors
     ///
     /// Returns an [`Error`] if `bytes` does not contain a valid `Prefab`.
-    pub fn from_bytes(bytes: &[u8]) -> Result<Self, Error> {
-        let entities = bincode::deserialize(bytes).map_err(Error::Decode)?;
-        Ok(Self { entities })
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, DecodeError> {
+        format::decode(bytes)
     }
 }
 
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error(transparent)]
-    Decode(bincode::Error),
+#[derive(Clone, Debug)]
+struct ComponentRef {
+    id: RecordReference,
+    data: Range<usize>,
+    fields: Range<usize>,
+}
+
+impl ComponentRef {
+    fn load(&self, buf: &[u8]) -> RawComponent {
+        let data = &buf[self.data.clone()];
+        let fields = &buf[self.fields.clone()];
+        let fields = decode_fields(fields);
+        RawComponent::new(data, fields)
+    }
 }
 
 pub trait Spawner {
     fn spawn(&mut self) -> EntityId;
 
     fn insert(&mut self, entity: EntityId, component_id: RecordReference, component: RawComponent);
+
+    fn insert_typed<T: Component>(&mut self, entity: EntityId, component: T) {
+        let (fields, data) = BinaryWriter::new().encoded(&component);
+        self.insert(entity, T::ID, RawComponent::new(data, fields));
+    }
 }
 
 impl<S> Spawner for &mut S
@@ -208,17 +233,12 @@ impl Spawner for World {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use game_common::world::World;
-    use game_wasm::components::Component;
-    use game_wasm::encoding::{encode_fields, BinaryWriter};
-    use game_wasm::entity::EntityId;
     use game_wasm::hierarchy::Children;
     use game_wasm::record::{ModuleId, RecordId};
     use game_wasm::world::RecordReference;
 
-    use crate::{EncodedComponent, Prefab};
+    use crate::{ComponentRef, Prefab};
 
     #[test]
     fn prefab_instantiate_with_children() {
@@ -237,73 +257,31 @@ mod tests {
             },
         ];
 
-        let mut entities = HashMap::new();
-
-        // Top level parent
-        {
-            let mut components = HashMap::new();
-            components.insert(
-                MARKER_COMPONENTS[0].to_string(),
-                EncodedComponent {
-                    bytes: Vec::new(),
-                    fields: Vec::new(),
-                },
-            );
-
-            let mut children = Children::new();
-            children.insert(EntityId::from_raw(1));
-            let (fields, bytes) = BinaryWriter::new().encoded(&children);
-            components.insert(
-                Children::ID.to_string(),
-                EncodedComponent {
-                    bytes,
-                    fields: encode_fields(&fields),
-                },
-            );
-
-            entities.insert(0, components);
-        }
-
-        // First Children
-        {
-            let mut components = HashMap::new();
-            components.insert(
-                MARKER_COMPONENTS[1].to_string(),
-                EncodedComponent {
-                    bytes: Vec::new(),
-                    fields: Vec::new(),
-                },
-            );
-
-            let mut children = Children::new();
-            children.insert(EntityId::from_raw(2));
-            let (fields, bytes) = BinaryWriter::new().encoded(&children);
-            components.insert(
-                Children::ID.to_string(),
-                EncodedComponent {
-                    bytes,
-                    fields: encode_fields(&fields),
-                },
-            );
-
-            entities.insert(1, components);
-        }
-
-        // Second Children
-        {
-            let mut components = HashMap::new();
-            components.insert(
-                MARKER_COMPONENTS[2].to_string(),
-                EncodedComponent {
-                    bytes: Vec::new(),
-                    fields: Vec::new(),
-                },
-            );
-
-            entities.insert(2, components);
-        }
-
-        let prefab = Prefab { entities };
+        let prefab = Prefab {
+            entities: vec![
+                // Top level parent
+                vec![ComponentRef {
+                    id: MARKER_COMPONENTS[0],
+                    data: 0..0,
+                    fields: 0..0,
+                }],
+                // First children
+                vec![ComponentRef {
+                    id: MARKER_COMPONENTS[1],
+                    data: 0..0,
+                    fields: 0..0,
+                }],
+                // Second children
+                vec![ComponentRef {
+                    id: MARKER_COMPONENTS[2],
+                    data: 0..0,
+                    fields: 0..0,
+                }],
+            ],
+            children: [(0, vec![1]), (1, vec![2])].into(),
+            root: vec![0],
+            data: Vec::new(),
+        };
 
         let mut world = World::new();
         let root = prefab.instantiate(&mut world);
