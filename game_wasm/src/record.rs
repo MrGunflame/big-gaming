@@ -1,11 +1,14 @@
 use core::fmt::{self, Debug, Display, Formatter, LowerHex};
+use core::mem::MaybeUninit;
 use core::str::FromStr;
 
 use alloc::vec::Vec;
 use bytemuck::{Pod, Zeroable};
 
 use crate::encoding::{Decode, Encode};
-use crate::raw::record::{record_data_copy, record_data_len};
+use crate::raw::record::{
+    record_data_copy, record_data_len, record_list_copy, record_list_count, RawRecordFilter,
+};
 use crate::raw::{RESULT_NO_RECORD, RESULT_OK};
 use crate::{unreachable_unchecked, Error, ErrorImpl};
 
@@ -403,6 +406,43 @@ fn get_record_data_safe(id: RecordReference) -> Result<Vec<u8>, Error> {
     }
 
     Ok(data)
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordFilter {
+    pub module: Option<ModuleId>,
+    pub kind: Option<RecordReference>,
+}
+
+pub fn get_record_list(filter: &RecordFilter) -> Vec<RecordReference> {
+    let raw_filter = RawRecordFilter {
+        filter_module: filter.module.is_some() as u8,
+        filter_kind: filter.kind.is_some() as u8,
+        module: filter.module.unwrap_or(ModuleId::CORE),
+        kind: filter.kind.unwrap_or(RecordReference::STUB),
+        _pad0: 0,
+    };
+
+    let mut count = MaybeUninit::uninit();
+
+    match unsafe { record_list_count(&raw_filter, count.as_mut_ptr()) } {
+        RESULT_OK => (),
+        _ => todo!(),
+    }
+
+    let count = unsafe { count.assume_init() };
+
+    let mut records = Vec::with_capacity(count);
+    match unsafe { record_list_copy(&raw_filter, records.as_mut_ptr(), count) } {
+        RESULT_OK => (),
+        _ => todo!(),
+    }
+
+    unsafe {
+        records.set_len(count);
+    }
+
+    records
 }
 
 #[cfg(test)]

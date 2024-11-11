@@ -1,10 +1,101 @@
 use game_common::record::RecordReference;
+use game_data::record::RecordKind;
 use game_tracing::trace_span;
+use game_wasm::raw::record::RawRecordFilter;
 use game_wasm::raw::{RESULT_NO_RECORD, RESULT_OK};
+use game_wasm::record::ModuleId;
 use wasmtime::{Caller, Result};
 
 use crate::builtin::{AsMemory, CallerExt};
 use crate::instance::State;
+
+pub fn record_list_count(mut caller: Caller<'_, State>, filter: u32, out: u32) -> Result<u32> {
+    let _span = trace_span!("record_list_count").entered();
+
+    let raw_filter: RawRecordFilter = caller.read(filter)?;
+
+    let mut filter = RecordFilter::default();
+    if raw_filter.filter_module != 0 {
+        filter.module = Some(raw_filter.module);
+    }
+
+    if raw_filter.filter_kind != 0 {
+        filter.kind = Some(RecordKind(raw_filter.kind));
+    }
+
+    let count = caller
+        .data()
+        .as_run()?
+        .records()
+        .iter()
+        .filter(|(module, record)| {
+            if let Some(filtered) = filter.module {
+                if filtered != *module {
+                    return false;
+                }
+            }
+
+            if let Some(filtered) = filter.kind {
+                if filtered != record.kind {
+                    return false;
+                }
+            }
+
+            true
+        })
+        .count() as u32;
+
+    caller.write(out, &count)?;
+    Ok(RESULT_OK)
+}
+
+pub fn record_list_copy(
+    mut caller: Caller<'_, State>,
+    filter: u32,
+    out: u32,
+    len: u32,
+) -> Result<u32> {
+    let _span = trace_span!("record_list_copy").entered();
+
+    let raw_filter: RawRecordFilter = caller.read(filter)?;
+
+    let mut filter = RecordFilter::default();
+    if raw_filter.filter_module != 0 {
+        filter.module = Some(raw_filter.module);
+    }
+
+    if raw_filter.filter_kind != 0 {
+        filter.kind = Some(RecordKind(raw_filter.kind));
+    }
+
+    let (mut memory, data) = caller.split()?;
+
+    let iter = data
+        .as_run()?
+        .records()
+        .iter()
+        .filter_map(|(module, record)| {
+            if let Some(filtered) = filter.module {
+                if filtered != module {
+                    return None;
+                }
+            }
+
+            if let Some(filtered) = filter.kind {
+                if filtered != record.kind {
+                    return None;
+                }
+            }
+
+            Some(RecordReference {
+                module,
+                record: record.id,
+            })
+        });
+
+    memory.write_iter(out, iter.take(len as usize))?;
+    Ok(RESULT_OK)
+}
 
 /// ```no_run
 /// # use game_common::record::RecordReference;
@@ -46,4 +137,10 @@ pub fn record_data_copy(mut caller: Caller<'_, State>, id: u32, dst: u32, len: u
 
     memory.write_memory(dst, &record.data[..count])?;
     Ok(RESULT_OK)
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+struct RecordFilter {
+    module: Option<ModuleId>,
+    kind: Option<RecordKind>,
 }

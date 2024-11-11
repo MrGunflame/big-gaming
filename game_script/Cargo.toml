@@ -21,7 +21,7 @@ game_physics = { version = "0.1.0", path = "../game_physics" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 
 [dependencies.wasmtime]
-version = "22.0.0"
+version = "26.0.1"
 default-features = false
 features = [
     "runtime",

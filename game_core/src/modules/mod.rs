@@ -69,6 +69,15 @@ impl RecordProvider for Modules {
             .map(|module| module.records.get(id.record))
             .flatten()
     }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = (ModuleId, &Record)> + '_> {
+        let iter = self
+            .modules
+            .iter()
+            .map(|(module, data)| data.records.iter().map(|record| (*module, record)))
+            .flatten();
+        Box::new(iter)
+    }
 }
 
 pub fn load_scripts(executor: &mut Executor, modules: &Modules) {

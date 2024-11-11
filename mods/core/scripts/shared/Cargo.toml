@@ -14,3 +14,5 @@ workspace = true
 [dependencies]
 game_wasm = { version = "0.1.0", path = "../../../../game_wasm", features = ["global_alloc"] }
 bytemuck = "1.16.1"
+
+game_worldgen = { version = "0.1.0", path = "../../../../game_worldgen" }

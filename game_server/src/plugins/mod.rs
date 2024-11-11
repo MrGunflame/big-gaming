@@ -34,11 +34,7 @@ pub fn tick(state: &mut ServerState) {
     update_client_heads(state);
     flush_command_queue(state);
 
-    for event in crate::world::level::update_level_cells(
-        &mut state.level,
-        &mut state.world.world,
-        &state.modules,
-    ) {
+    for event in crate::world::level::update_level_cells(&mut state.level, &mut state.world.world) {
         state.event_queue.push(event);
     }
 

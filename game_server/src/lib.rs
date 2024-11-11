@@ -16,10 +16,8 @@ use game_common::events::EventQueue;
 use game_core::command::{GameCommand, ServerCommand};
 use game_core::counter::{Interval, UpdateCounter};
 use game_core::modules::Modules;
-use game_data::record::RecordKind;
 use game_script::Executor;
 use game_tasks::TaskPool;
-use game_worldgen::WorldgenState;
 use server::ConnectionPool;
 use tokio::sync::{mpsc, oneshot};
 use tracing::{span, trace_span, Level};
@@ -95,13 +93,11 @@ impl ServerState {
         config: Config,
         executor: Executor,
     ) -> Self {
-        let generator = load_world_generator(&modules);
-
         Self {
             start: Instant::now(),
             command_queue: command_handler,
             world: WorldState::new(),
-            level: world::level::Level::new(generator),
+            level: world::level::Level::new(),
             pipeline: game_physics::Pipeline::new(),
             event_queue: EventQueue::new(),
             modules,
@@ -206,22 +202,4 @@ fn process_commands(state: &mut ServerState) {
             Command::Empty => {}
         }
     }
-}
-
-fn load_world_generator(modules: &Modules) -> WorldgenState {
-    let _span = trace_span!("load_world_generator").entered();
-
-    let mut state = WorldgenState::new();
-    for module in modules.iter() {
-        for record in module.records.iter() {
-            if record.kind != RecordKind::WORLD_GEN {
-                continue;
-            }
-
-            let record = WorldgenState::from_bytes(&record.data).unwrap();
-            state.extend(record);
-        }
-    }
-
-    state
 }
