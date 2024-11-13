@@ -5,6 +5,7 @@ use crate::channel::Sender;
 use crate::resampler;
 use crate::sound::{Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::{Settings, SoundData};
+use crate::source::AudioSource;
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
@@ -48,13 +49,9 @@ where
         }
     }
 
-    pub fn play(&mut self, mut data: SoundData, settings: Settings) -> SoundId {
-        if data.sample_rate != self.sample_rate {
-            data = resampler::resample(data, self.sample_rate);
-        }
-
+    pub fn play(&mut self, mut source: AudioSource, settings: Settings) -> SoundId {
         let key = self.sounds.insert(PlayingSound {
-            data,
+            source,
             cursor: 0,
             destination: settings.destination,
         });
@@ -118,17 +115,21 @@ where
                         continue;
                     }
 
-                    for index in 0..spare_cap {
-                        let Some(mut frame) = sound.data.frames.get(sound.cursor).copied() else {
-                            drop_sounds.push(id);
-                            break;
-                        };
-
-                        frame = crate::spatial::process(listener, emitter, frame);
-
-                        buf[index] += frame * sound.data.volume;
-                        sound.cursor += 1;
+                    let dst = &mut buf[0..spare_cap];
+                    let frames_written = sound.source.read(dst);
+                    for frame in &mut dst[..frames_written] {
+                        *frame = crate::spatial::process(listener, emitter, *frame);
                     }
+
+                    // for index in 0..spare_cap {
+                    //     let Some(mut frame) = sound.data.frames.get(sound.cursor).copied() else {
+                    //         drop_sounds.push(id);
+                    //         break;
+                    //     };
+
+                    //     buf[index] += frame * sound.data.volume;
+                    //     sound.cursor += 1;
+                    // }
                 }
             }
         }
@@ -152,15 +153,19 @@ where
                         continue;
                     }
 
-                    for index in 0..spare_cap {
-                        let Some(frame) = sound.data.frames.get(sound.cursor) else {
-                            drop_sounds.push(id);
-                            break;
-                        };
+                    let dst = &mut buf[0..spare_cap];
+                    let frames_written = sound.source.read(dst);
+                    for frame in &mut dst[..frames_written] {}
 
-                        buf[index] += *frame * sound.data.volume;
-                        sound.cursor += 1;
-                    }
+                    // for index in 0..spare_cap {
+                    //     let Some(frame) = sound.data.frames.get(sound.cursor) else {
+                    //         drop_sounds.push(id);
+                    //         break;
+                    //     };
+
+                    //     buf[index] += *frame * sound.data.volume;
+                    //     sound.cursor += 1;
+                    // }
                 }
             }
 
