@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::ErrorKind;
@@ -17,8 +18,7 @@ pub struct AudioSource {
     decoder: Box<dyn Decoder>,
     sample_rate: u32,
     format_reader: Box<dyn FormatReader>,
-    buffer: Vec<Frame>,
-    buffer_len: usize,
+    buffer: FrameBuffer,
 }
 
 impl AudioSource {
@@ -51,58 +51,40 @@ impl AudioSource {
             decoder,
             sample_rate,
             format_reader,
-            buffer: Vec::new(),
-            buffer_len: 0,
+            buffer: FrameBuffer::new(),
         }
     }
 
     pub fn read(&mut self, mut buf: &mut [Frame]) -> usize {
         let _span = trace_span!("AudioSource::read").entered();
 
-        let mut bytes_written = 0;
-
         // If we samples from the previous packet we flush
         // them first.
         // If they are enough to fill `buf` we don't need
         // to decode any packets.
-        let count = usize::min(self.buffer_len, buf.len());
-        buf[..count].copy_from_slice(&self.buffer[..count]);
-        self.buffer_len -= count;
-        for _ in 0..count {
-            self.buffer.remove(0);
-        }
-
-        buf = &mut buf[count..];
+        let mut frames_written = self.buffer.move_frames_into(buf);
+        buf = &mut buf[frames_written..];
         if buf.is_empty() {
-            return count;
+            return frames_written;
         }
 
         loop {
             match self.format_reader.next_packet() {
                 Ok(packet) => {
                     let buffer = self.decoder.decode(&packet).unwrap();
-                    if self.buffer.len() < buffer.frames() {
-                        let new_len = self.buffer_len + buffer.frames();
-                        self.buffer.resize(new_len, Frame::EQUILIBRIUM);
-                    }
+                    self.buffer.reserve(buffer.frames());
 
-                    match copy_frames_from_buffer_ref(&buffer, &mut self.buffer[self.buffer_len..])
-                    {
-                        0 => return bytes_written,
+                    match copy_frames_from_buffer_ref(&buffer, self.buffer.spare_capacity_mut()) {
+                        0 => return frames_written,
                         n => {
-                            self.buffer_len += n;
+                            self.buffer.increase_len(n);
 
-                            let count = usize::min(self.buffer_len, buf.len());
-                            buf[..count].copy_from_slice(&self.buffer[..count]);
-                            self.buffer_len -= count;
-                            for _ in 0..count {
-                                self.buffer.remove(0);
-                            }
-                            bytes_written += count;
-
+                            let count = self.buffer.move_frames_into(buf);
                             buf = &mut buf[count..];
+                            frames_written += count;
+
                             if buf.is_empty() {
-                                return bytes_written;
+                                return frames_written;
                             }
                         }
                     }
@@ -111,7 +93,7 @@ impl AudioSource {
                     symphonia::core::errors::Error::IoError(err)
                         if err.kind() == ErrorKind::UnexpectedEof =>
                     {
-                        return bytes_written;
+                        return frames_written;
                     }
                     err => panic!("{}", err),
                 },
@@ -182,4 +164,48 @@ where
 pub enum Error {
     /// [`AudioSource`] has finished.
     Eof,
+}
+
+#[derive(Clone, Debug, Default)]
+struct FrameBuffer {
+    buffer: Vec<Frame>,
+    len: usize,
+}
+
+impl FrameBuffer {
+    pub const fn new() -> Self {
+        Self {
+            buffer: Vec::new(),
+            len: 0,
+        }
+    }
+
+    pub fn reserve(&mut self, free: usize) {
+        let new_len = self.len + free;
+
+        if self.buffer.len() < new_len {
+            self.buffer.resize(new_len, Frame::EQUILIBRIUM);
+        }
+    }
+
+    pub fn move_frames_into(&mut self, dst: &mut [Frame]) -> usize {
+        let count = cmp::min(self.len, dst.len());
+
+        dst[..count].copy_from_slice(&self.buffer[..count]);
+
+        // Remove the first `count` frames from `self.buffer`
+        // by shifting all elements starting at index `count` to the left.
+        self.buffer.copy_within(count.., 0);
+        self.len -= count;
+
+        count
+    }
+
+    pub fn spare_capacity_mut(&mut self) -> &mut [Frame] {
+        &mut self.buffer[self.len..]
+    }
+
+    pub fn increase_len(&mut self, extra: usize) {
+        self.len += extra;
+    }
 }
