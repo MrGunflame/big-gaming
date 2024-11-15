@@ -5,6 +5,7 @@ use game_audio::backend::Backend;
 use game_audio::effects::Volume;
 use game_audio::sound::Frame;
 use game_audio::sound_data::{Settings, SoundData};
+use game_audio::source::AudioSource;
 use game_audio::AudioManager;
 use parking_lot::Mutex;
 
@@ -18,7 +19,7 @@ fn basic_playback() {
     };
     let mut manager = AudioManager::new(backend.clone());
 
-    manager.play(sound, Settings::default());
+    manager.play(AudioSource::from_data(sound), Settings::default());
 
     loop {
         let output = backend.exit.lock().clone();

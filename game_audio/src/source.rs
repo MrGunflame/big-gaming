@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::ErrorKind;
 use std::path::Path;
-use std::sync::Arc;
 
 use game_tracing::trace_span;
 use symphonia::core::audio::{AudioBuffer, AudioBufferRef, Signal};
@@ -12,19 +11,18 @@ use symphonia::core::conv::FromSample;
 use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::sample::Sample;
-use tracing::level_filters;
 
 use crate::buffer::{Buf, BufMut, Sequential, SequentialView, SequentialViewMut};
 use crate::resampler::{self, Resampler};
 use crate::sound::Frame;
+use crate::sound_data::SoundData;
 
 pub struct AudioSource {
-    decoder: Box<dyn Decoder>,
     sample_rate: u32,
-    format_reader: Box<dyn FormatReader>,
     buffer: FrameBuffer,
     resampler: Option<Resampler>,
     decode_buffer: FrameBuffer,
+    source: Source,
 }
 
 impl AudioSource {
@@ -54,17 +52,48 @@ impl AudioSource {
         let decoder = codecs.make(codec_params, &Default::default()).unwrap();
 
         Self {
-            decoder,
             sample_rate,
-            format_reader,
             buffer: FrameBuffer::new(),
             resampler: None,
             decode_buffer: FrameBuffer::new(),
+            source: Source::Io(IoSource {
+                decoder,
+                format_reader,
+            }),
+        }
+    }
+
+    pub fn from_data(data: SoundData) -> Self {
+        let left = data.frames.iter().map(|f| f.left * data.volume.0);
+        let right = data.frames.iter().map(|f| f.right * data.volume.0);
+
+        let mut buf = FrameBuffer::new();
+        buf.reserve(data.frames.len());
+
+        let mut dst = buf.spare_capacity_mut();
+        for (src, dst) in left.zip(dst.channel_mut(0).unwrap()) {
+            *dst = src;
+        }
+
+        for (src, dst) in right.zip(dst.channel_mut(1).unwrap()) {
+            *dst = src;
+        }
+
+        buf.increase_len(data.frames.len());
+
+        Self {
+            source: Source::Empty,
+            decode_buffer: buf,
+            sample_rate: data.sample_rate,
+            buffer: FrameBuffer::new(),
+            resampler: None,
         }
     }
 
     pub fn set_sample_rate(&mut self, sample_rate: u32) {
-        self.resampler = Some(Resampler::new(self.sample_rate, sample_rate));
+        if sample_rate != self.sample_rate {
+            self.resampler = Some(Resampler::new(self.sample_rate, sample_rate));
+        }
     }
 
     pub fn read(&mut self, mut buf: &mut [Frame]) -> usize {
@@ -81,13 +110,11 @@ impl AudioSource {
         }
 
         loop {
-            match self.decode_packet() {
-                Ok(()) => {}
+            match self.prepare_next_frame() {
+                Ok(()) => (),
                 Err(Error::Eof) => return frames_written,
                 Err(err) => todo!(),
             }
-
-            self.resample_buffer();
 
             let count = self.buffer.move_frames_into(buf);
             buf = &mut buf[count..];
@@ -99,29 +126,7 @@ impl AudioSource {
         }
     }
 
-    fn decode_packet(&mut self) -> Result<(), Error> {
-        match self.format_reader.next_packet() {
-            Ok(packet) => {
-                let buffer = self.decoder.decode(&packet).unwrap();
-
-                self.decode_buffer.reserve(buffer.frames());
-                copy_frames_from_buffer_ref(&buffer, &mut self.decode_buffer.spare_capacity_mut());
-                self.decode_buffer.increase_len(buffer.frames());
-
-                Ok(())
-            }
-            Err(err) => match err {
-                symphonia::core::errors::Error::IoError(err)
-                    if err.kind() == ErrorKind::UnexpectedEof =>
-                {
-                    Err(Error::Eof)
-                }
-                err => Err(Error::Decode(err)),
-            },
-        }
-    }
-
-    fn resample_buffer(&mut self) {
+    fn prepare_next_frame(&mut self) -> Result<(), Error> {
         match &mut self.resampler {
             Some(resampler) => loop {
                 let src = self.decode_buffer.initialized();
@@ -133,9 +138,15 @@ impl AudioSource {
                         self.buffer.increase_len(output.frames_written);
                         break;
                     }
-                    Err(resampler::Error::InputTooSmall(_)) => {
+                    Err(resampler::Error::InputTooSmall(len_required)) => {
                         // This means we need to decode another packet.
-                        break;
+                        while self.decode_buffer.len < len_required {
+                            self.source.decode_packet(&mut self.decode_buffer)?;
+                        }
+
+                        // Try again now that we have a big enough
+                        // input buffer.
+                        continue;
                     }
                     Err(resampler::Error::OutputTooSmall(len)) => {
                         // Reserve additional space in the output buffer
@@ -146,6 +157,10 @@ impl AudioSource {
                 }
             },
             None => {
+                if self.decode_buffer.is_empty() {
+                    self.source.decode_packet(&mut self.decode_buffer)?;
+                }
+
                 // If we don't need to resample we only
                 // have to copy all decoded frames into
                 // the "ready-to-output" buffer.
@@ -167,6 +182,8 @@ impl AudioSource {
                 self.decode_buffer.remove_frames(frames_written);
             }
         }
+
+        Ok(())
     }
 }
 
@@ -256,6 +273,14 @@ impl FrameBuffer {
         }
     }
 
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn reserve(&mut self, free: usize) {
         let new_len = self.len + free;
 
@@ -307,4 +332,41 @@ impl FrameBuffer {
 
         self.len -= count;
     }
+}
+
+enum Source {
+    Io(IoSource),
+    Empty,
+}
+
+impl Source {
+    fn decode_packet(&mut self, dst: &mut FrameBuffer) -> Result<(), Error> {
+        match self {
+            Source::Empty => Err(Error::Eof),
+            Source::Io(source) => match source.format_reader.next_packet() {
+                Ok(packet) => {
+                    let buffer = source.decoder.decode(&packet).unwrap();
+
+                    dst.reserve(buffer.frames());
+                    copy_frames_from_buffer_ref(&buffer, &mut dst.spare_capacity_mut());
+                    dst.increase_len(buffer.frames());
+
+                    Ok(())
+                }
+                Err(err) => match err {
+                    symphonia::core::errors::Error::IoError(err)
+                        if err.kind() == ErrorKind::UnexpectedEof =>
+                    {
+                        Err(Error::Eof)
+                    }
+                    err => Err(Error::Decode(err)),
+                },
+            },
+        }
+    }
+}
+
+struct IoSource {
+    decoder: Box<dyn Decoder>,
+    format_reader: Box<dyn FormatReader>,
 }
