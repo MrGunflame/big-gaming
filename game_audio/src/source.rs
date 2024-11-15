@@ -11,6 +11,7 @@ use symphonia::core::conv::FromSample;
 use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::sample::Sample;
+use thiserror::Error;
 
 use crate::buffer::{Buf, BufMut, Sequential, SequentialView, SequentialViewMut};
 use crate::resampler::{self, Resampler};
@@ -99,7 +100,7 @@ impl AudioSource {
     }
 
     /// Reads frames of this source into `buf`. Returns the number of frames written.
-    pub(crate) fn read(&mut self, mut buf: &mut [Frame]) -> usize {
+    pub(crate) fn read(&mut self, mut buf: &mut [Frame]) -> Result<usize, Error> {
         let _span = trace_span!("AudioSource::read").entered();
 
         // If we samples from the previous packet we flush
@@ -109,14 +110,23 @@ impl AudioSource {
         let mut frames_written = self.buffer.move_frames_into(buf);
         buf = &mut buf[frames_written..];
         if buf.is_empty() {
-            return frames_written;
+            return Ok(frames_written);
         }
 
         loop {
             match self.prepare_next_frame() {
                 Ok(()) => (),
-                Err(Error::Eof) => return frames_written,
-                Err(err) => todo!(),
+                Err(Error::Eof) => {
+                    // If we have already written some frames those
+                    // need to be returned first.
+                    // The next call to `read` will then yield EOF.
+                    if frames_written != 0 {
+                        return Ok(frames_written);
+                    }
+
+                    return Err(Error::Eof);
+                }
+                Err(err) => return Err(err),
             }
 
             let count = self.buffer.move_frames_into(buf);
@@ -124,7 +134,7 @@ impl AudioSource {
             frames_written += count;
 
             if buf.is_empty() {
-                return frames_written;
+                return Ok(frames_written);
             }
         }
     }
@@ -253,10 +263,12 @@ where
     0
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub(crate) enum Error {
     /// [`AudioSource`] has finished.
+    #[error("eof")]
     Eof,
+    #[error(transparent)]
     Decode(symphonia::core::errors::Error),
 }
 

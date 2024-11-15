@@ -4,7 +4,7 @@ use crate::backend::Backend;
 use crate::channel::Sender;
 use crate::sound::{Destination, Frame, PlayingSound, SoundId};
 use crate::sound_data::Settings;
-use crate::source::AudioSource;
+use crate::source::{self, AudioSource};
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
 
@@ -53,7 +53,6 @@ where
 
         let key = self.sounds.insert(PlayingSound {
             source,
-            cursor: 0,
             destination: settings.destination,
         });
 
@@ -117,20 +116,19 @@ where
                     }
 
                     let dst = &mut buf[0..spare_cap];
-                    let frames_written = sound.source.read(dst);
-                    for frame in &mut dst[..frames_written] {
-                        *frame = crate::spatial::process(listener, emitter, *frame);
+                    match sound.source.read(dst) {
+                        Ok(frames_written) => {
+                            for frame in &mut dst[..frames_written] {
+                                *frame = crate::spatial::process(listener, emitter, *frame);
+                            }
+                        }
+                        Err(err) => {
+                            drop_sounds.push(id);
+                            if !matches!(err, source::Error::Eof) {
+                                tracing::error!("error reading audio source: {}", err);
+                            }
+                        }
                     }
-
-                    // for index in 0..spare_cap {
-                    //     let Some(mut frame) = sound.data.frames.get(sound.cursor).copied() else {
-                    //         drop_sounds.push(id);
-                    //         break;
-                    //     };
-
-                    //     buf[index] += frame * sound.data.volume;
-                    //     sound.cursor += 1;
-                    // }
                 }
             }
         }
@@ -155,18 +153,15 @@ where
                     }
 
                     let dst = &mut buf[0..spare_cap];
-                    let frames_written = sound.source.read(dst);
-                    for frame in &mut dst[..frames_written] {}
-
-                    // for index in 0..spare_cap {
-                    //     let Some(frame) = sound.data.frames.get(sound.cursor) else {
-                    //         drop_sounds.push(id);
-                    //         break;
-                    //     };
-
-                    //     buf[index] += *frame * sound.data.volume;
-                    //     sound.cursor += 1;
-                    // }
+                    match sound.source.read(dst) {
+                        Ok(_) => (),
+                        Err(err) => {
+                            drop_sounds.push(id);
+                            if !matches!(err, source::Error::Eof) {
+                                tracing::error!("error reading audio source: {}", err);
+                            }
+                        }
+                    }
                 }
             }
 

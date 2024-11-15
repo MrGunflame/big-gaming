@@ -10,6 +10,5 @@ pub mod track;
 mod buffer;
 mod manager;
 mod resampler;
-mod ring_buf;
 
 pub use manager::AudioManager;
