@@ -63,6 +63,10 @@ impl AudioSource {
         }
     }
 
+    pub fn set_sample_rate(&mut self, sample_rate: u32) {
+        self.resampler = Some(Resampler::new(self.sample_rate, sample_rate));
+    }
+
     pub fn read(&mut self, mut buf: &mut [Frame]) -> usize {
         let _span = trace_span!("AudioSource::read").entered();
 
@@ -130,15 +134,21 @@ impl AudioSource {
                         break;
                     }
                     Err(resampler::Error::InputTooSmall(_)) => {
+                        // This means we need to decode another packet.
                         break;
                     }
                     Err(resampler::Error::OutputTooSmall(len)) => {
+                        // Reserve additional space in the output buffer
+                        // and try again.
                         self.buffer.reserve(len);
                         continue;
                     }
                 }
             },
             None => {
+                // If we don't need to resample we only
+                // have to copy all decoded frames into
+                // the "ready-to-output" buffer.
                 let src = self.decode_buffer.initialized();
 
                 self.buffer.reserve(src.num_frames());
@@ -196,15 +206,18 @@ where
         1 => {
             let dst = dst.channel_mut(0).unwrap();
 
+            debug_assert!(dst.len() >= src.chan(0).len());
             for (sample, dst) in src.chan(0).iter().zip(dst) {
                 *dst = f32::from_sample(*sample);
             }
         }
         2 => {
+            debug_assert!(dst.channel_mut(0).unwrap().len() >= src.chan(0).len());
             for (src, dst) in src.chan(0).iter().zip(dst.channel_mut(0).unwrap()) {
                 *dst = f32::from_sample(*src);
             }
 
+            debug_assert!(dst.channel_mut(1).unwrap().len() >= src.chan(1).len());
             for (src, dst) in src.chan(1).iter().zip(dst.channel_mut(1).unwrap()) {
                 *dst = f32::from_sample(*src);
             }
@@ -257,7 +270,7 @@ impl FrameBuffer {
         for channel in [0, 1] {
             let src = self.buffer.channel_mut(channel).unwrap();
 
-            for (src, dst) in src.iter().zip(dst.iter_mut()) {
+            for (src, dst) in src.iter().zip(dst.iter_mut()).take(count) {
                 match channel {
                     // Left
                     0 => dst.left = *src,
@@ -266,8 +279,6 @@ impl FrameBuffer {
                     _ => unreachable!(),
                 }
             }
-
-            src.copy_within(count.., 0);
         }
 
         self.remove_frames(count);

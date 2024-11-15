@@ -99,20 +99,25 @@ where
             return None;
         }
 
-        // range0 comes before range1
         if range0.end >= range1.start {
             let (lhs, rhs) = self.buffer.split_at_mut(range0.end);
 
             let left = &mut lhs[range0.start..];
             debug_assert_eq!(left.len(), range0.len());
 
-            let right = &mut rhs[range1.start - range0.end..range1.start - range0.end + range1.end];
+            let rhs_start = range1.start - range0.end;
+            let rhs_end = range1.start - range0.end + (range1.end - range1.start);
+
+            let right = &mut rhs[rhs_start..rhs_end];
             debug_assert_eq!(right.len(), range1.len());
             Some((left, right))
         } else {
             let (lhs, rhs) = self.buffer.split_at_mut(range1.end);
 
-            let left = &mut lhs[range0.start - range1.end..range0.start - range1.end + range0.end];
+            let lhs_start = range0.start - range1.end;
+            let lhs_end = range0.start - range1.end + (range0.end - range0.start);
+
+            let left = &mut lhs[lhs_start..lhs_end];
             debug_assert_eq!(left.len(), range0.len());
 
             let right = &mut rhs[range1.start..];

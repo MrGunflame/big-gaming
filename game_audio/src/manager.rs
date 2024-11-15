@@ -50,6 +50,8 @@ where
     }
 
     pub fn play(&mut self, mut source: AudioSource, settings: Settings) -> SoundId {
+        source.set_sample_rate(self.sample_rate);
+
         let key = self.sounds.insert(PlayingSound {
             source,
             cursor: 0,

@@ -35,19 +35,19 @@ fn main() {
 
     let source = AudioSource::from_file("./x.ogg");
 
-    manager.play(
-        source,
-        Settings {
-            destination: emitter_id.into(),
-        },
-    );
-
     // manager.play(
     //     source,
     //     Settings {
-    //         destination: track.into(),
+    //         destination: emitter_id.into(),
     //     },
     // );
+
+    manager.play(
+        source,
+        Settings {
+            destination: track.into(),
+        },
+    );
 
     let mut rotation = Quat::IDENTITY;
     let distance = 2.0;
@@ -58,7 +58,7 @@ fn main() {
         manager.update();
 
         let delta = now.elapsed().as_secs_f32();
-        rotation = Quat::from_axis_angle(Vec3::Y, 10.0 * delta) * rotation;
+        // rotation = Quat::from_axis_angle(Vec3::Y, 10.0 * delta) * rotation;
 
         let emitter = manager.get_emitter_mut(emitter_id).unwrap();
         emitter.translation = listener.translation + rotation * Vec3::new(0.0, 0.0, distance);
