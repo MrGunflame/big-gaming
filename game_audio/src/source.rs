@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io::ErrorKind;
 use std::path::Path;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
 use symphonia::core::audio::{AudioBuffer, AudioBufferRef, Signal};
@@ -11,7 +12,10 @@ use symphonia::core::conv::FromSample;
 use symphonia::core::formats::FormatReader;
 use symphonia::core::io::MediaSourceStream;
 use symphonia::core::sample::Sample;
+use tracing::level_filters;
 
+use crate::buffer::{Buf, BufMut, Sequential, SequentialView, SequentialViewMut};
+use crate::resampler::{self, Resampler};
 use crate::sound::Frame;
 
 pub struct AudioSource {
@@ -19,6 +23,8 @@ pub struct AudioSource {
     sample_rate: u32,
     format_reader: Box<dyn FormatReader>,
     buffer: FrameBuffer,
+    resampler: Option<Resampler>,
+    decode_buffer: FrameBuffer,
 }
 
 impl AudioSource {
@@ -52,6 +58,8 @@ impl AudioSource {
             sample_rate,
             format_reader,
             buffer: FrameBuffer::new(),
+            resampler: None,
+            decode_buffer: FrameBuffer::new(),
         }
     }
 
@@ -69,34 +77,84 @@ impl AudioSource {
         }
 
         loop {
-            match self.format_reader.next_packet() {
-                Ok(packet) => {
-                    let buffer = self.decoder.decode(&packet).unwrap();
-                    self.buffer.reserve(buffer.frames());
+            match self.decode_packet() {
+                Ok(()) => {}
+                Err(Error::Eof) => return frames_written,
+                Err(err) => todo!(),
+            }
 
-                    match copy_frames_from_buffer_ref(&buffer, self.buffer.spare_capacity_mut()) {
-                        0 => return frames_written,
-                        n => {
-                            self.buffer.increase_len(n);
+            self.resample_buffer();
 
-                            let count = self.buffer.move_frames_into(buf);
-                            buf = &mut buf[count..];
-                            frames_written += count;
+            let count = self.buffer.move_frames_into(buf);
+            buf = &mut buf[count..];
+            frames_written += count;
 
-                            if buf.is_empty() {
-                                return frames_written;
-                            }
-                        }
+            if buf.is_empty() {
+                return frames_written;
+            }
+        }
+    }
+
+    fn decode_packet(&mut self) -> Result<(), Error> {
+        match self.format_reader.next_packet() {
+            Ok(packet) => {
+                let buffer = self.decoder.decode(&packet).unwrap();
+
+                self.decode_buffer.reserve(buffer.frames());
+                copy_frames_from_buffer_ref(&buffer, &mut self.decode_buffer.spare_capacity_mut());
+                self.decode_buffer.increase_len(buffer.frames());
+
+                Ok(())
+            }
+            Err(err) => match err {
+                symphonia::core::errors::Error::IoError(err)
+                    if err.kind() == ErrorKind::UnexpectedEof =>
+                {
+                    Err(Error::Eof)
+                }
+                err => Err(Error::Decode(err)),
+            },
+        }
+    }
+
+    fn resample_buffer(&mut self) {
+        match &mut self.resampler {
+            Some(resampler) => loop {
+                let src = self.decode_buffer.initialized();
+                let dst = self.buffer.spare_capacity_mut();
+
+                match resampler.resample(src, dst) {
+                    Ok(output) => {
+                        self.decode_buffer.remove_frames(output.frames_read);
+                        self.buffer.increase_len(output.frames_written);
+                        break;
+                    }
+                    Err(resampler::Error::InputTooSmall(_)) => {
+                        break;
+                    }
+                    Err(resampler::Error::OutputTooSmall(len)) => {
+                        self.buffer.reserve(len);
+                        continue;
                     }
                 }
-                Err(err) => match err {
-                    symphonia::core::errors::Error::IoError(err)
-                        if err.kind() == ErrorKind::UnexpectedEof =>
-                    {
-                        return frames_written;
-                    }
-                    err => panic!("{}", err),
-                },
+            },
+            None => {
+                let src = self.decode_buffer.initialized();
+
+                self.buffer.reserve(src.num_frames());
+                let mut dst = self.buffer.spare_capacity_mut();
+
+                for channel_index in 0..src.num_channels() {
+                    let count = src.num_frames();
+
+                    let src = src.channel(channel_index).unwrap();
+                    let dst = dst.channel_mut(channel_index).unwrap();
+                    dst[..count].copy_from_slice(src);
+                }
+
+                let frames_written = src.num_frames();
+                self.buffer.increase_len(frames_written);
+                self.decode_buffer.remove_frames(frames_written);
             }
         }
     }
@@ -110,7 +168,10 @@ impl Debug for AudioSource {
     }
 }
 
-fn copy_frames_from_buffer_ref(src: &AudioBufferRef<'_>, dst: &mut [Frame]) -> usize {
+fn copy_frames_from_buffer_ref<Dst>(src: &AudioBufferRef<'_>, dst: Dst) -> usize
+where
+    Dst: BufMut<Sample = f32>,
+{
     match src {
         AudioBufferRef::U8(buf) => copy_frames_from_buffer(buf, dst),
         AudioBufferRef::U16(buf) => copy_frames_from_buffer(buf, dst),
@@ -125,57 +186,59 @@ fn copy_frames_from_buffer_ref(src: &AudioBufferRef<'_>, dst: &mut [Frame]) -> u
     }
 }
 
-fn copy_frames_from_buffer<T>(src: &AudioBuffer<T>, dst: &mut [Frame]) -> usize
+fn copy_frames_from_buffer<T, Dst>(src: &AudioBuffer<T>, mut dst: Dst) -> usize
 where
     f32: FromSample<T>,
     T: Sample,
+    Dst: BufMut<Sample = f32>,
 {
     match src.spec().channels.count() {
         1 => {
-            for (sample, dst) in src.chan(0).iter().zip(dst.iter_mut()) {
-                *dst = Frame::from_mono(f32::from_sample(*sample));
+            let dst = dst.channel_mut(0).unwrap();
+
+            for (sample, dst) in src.chan(0).iter().zip(dst) {
+                *dst = f32::from_sample(*sample);
             }
         }
         2 => {
-            for ((left, right), dst) in src
-                .chan(0)
-                .iter()
-                .zip(src.chan(1).iter())
-                .zip(dst.iter_mut())
-            {
-                *dst = Frame {
-                    left: f32::from_sample(*left),
-                    right: f32::from_sample(*right),
-                };
+            for (src, dst) in src.chan(0).iter().zip(dst.channel_mut(0).unwrap()) {
+                *dst = f32::from_sample(*src);
+            }
+
+            for (src, dst) in src.chan(1).iter().zip(dst.channel_mut(1).unwrap()) {
+                *dst = f32::from_sample(*src);
             }
         }
         _ => panic!("unsupported channel config"),
     }
 
-    let mut frames_written = dst.len();
-    for index in 0..src.spec().channels.count() {
-        frames_written = frames_written.min(src.chan(index).len());
-    }
+    //let mut frames_written = dst.num_frames();
+    // for index in 0..src.spec().channels.count() {
+    //     frames_written = frames_written.min(src.chan(index).len());
+    // }
 
-    frames_written
+    //frames_written
+    0
 }
 
 #[derive(Debug)]
 pub enum Error {
     /// [`AudioSource`] has finished.
     Eof,
+    Decode(symphonia::core::errors::Error),
 }
 
 #[derive(Clone, Debug, Default)]
-struct FrameBuffer {
-    buffer: Vec<Frame>,
+pub struct FrameBuffer {
+    buffer: Sequential<f32>,
+    /// Number of frames written in the buffer.
     len: usize,
 }
 
 impl FrameBuffer {
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
         Self {
-            buffer: Vec::new(),
+            buffer: Sequential::new(0),
             len: 0,
         }
     }
@@ -183,29 +246,54 @@ impl FrameBuffer {
     pub fn reserve(&mut self, free: usize) {
         let new_len = self.len + free;
 
-        if self.buffer.len() < new_len {
-            self.buffer.resize(new_len, Frame::EQUILIBRIUM);
+        if self.buffer.num_frames() < new_len {
+            self.buffer.resize(new_len);
         }
     }
 
     pub fn move_frames_into(&mut self, dst: &mut [Frame]) -> usize {
         let count = cmp::min(self.len, dst.len());
 
-        dst[..count].copy_from_slice(&self.buffer[..count]);
+        for channel in [0, 1] {
+            let src = self.buffer.channel_mut(channel).unwrap();
 
-        // Remove the first `count` frames from `self.buffer`
-        // by shifting all elements starting at index `count` to the left.
-        self.buffer.copy_within(count.., 0);
-        self.len -= count;
+            for (src, dst) in src.iter().zip(dst.iter_mut()) {
+                match channel {
+                    // Left
+                    0 => dst.left = *src,
+                    // Right
+                    1 => dst.right = *src,
+                    _ => unreachable!(),
+                }
+            }
+
+            src.copy_within(count.., 0);
+        }
+
+        self.remove_frames(count);
 
         count
     }
 
-    pub fn spare_capacity_mut(&mut self) -> &mut [Frame] {
-        &mut self.buffer[self.len..]
+    pub fn initialized(&mut self) -> SequentialView<'_, f32> {
+        self.buffer.frames_range(..self.len)
+    }
+
+    pub fn spare_capacity_mut(&mut self) -> SequentialViewMut<'_, f32> {
+        self.buffer.frames_range_mut(self.len..)
     }
 
     pub fn increase_len(&mut self, extra: usize) {
         self.len += extra;
+    }
+
+    pub fn remove_frames(&mut self, count: usize) {
+        for frames in self.buffer.channels_mut() {
+            // Remove the first `count` frames from `self.buffer`
+            // by shifting all elements starting at index `count` to the left.
+            frames.copy_within(count.., 0);
+        }
+
+        self.len -= count;
     }
 }
