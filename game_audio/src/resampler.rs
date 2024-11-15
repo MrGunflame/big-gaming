@@ -1,16 +1,25 @@
+use std::fmt::{self, Debug, Formatter};
+
 use game_tracing::trace_span;
 use rubato::{
-    FftFixedInOut, Resampler as _, SincFixedIn, SincInterpolationParameters, SincInterpolationType,
-    WindowFunction,
+    Resampler as _, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 
 use crate::buffer::{Buf, BufMut};
-use crate::sound::Frame;
-use crate::sound_data::SoundData;
 
 #[derive(Clone, Debug)]
-pub enum Error {
+pub(crate) enum Error {
+    /// Returned when the input buffer given to [`resample`] is too small.
+    ///
+    /// The value represents the minimum required input buffer size in frames.
+    ///
+    /// [`resample`]: Resampler::resample
     InputTooSmall(usize),
+    /// Returned when the output buffer given to [`resample`] is too small.
+    ///
+    /// The value represents the minimum required output buffer size in frames.
+    ///
+    /// [`resample`]: Resampler::resample
     OutputTooSmall(usize),
 }
 
@@ -28,12 +37,14 @@ pub(crate) struct ResampleOutput {
     pub(crate) frames_written: usize,
 }
 
-pub struct Resampler {
+/// A resampler for the conversation of sample rates.
+pub(crate) struct Resampler {
     inner: SincFixedIn<f32>,
 }
 
 impl Resampler {
-    pub fn new(src_sample_rate: u32, dst_sample_rate: u32) -> Self {
+    /// Creates a new `Resampler` that resamples from `src_sample_rate` to `dst_sample_rate`.
+    pub(crate) fn new(src_sample_rate: u32, dst_sample_rate: u32) -> Self {
         let ratio = dst_sample_rate as f64 / src_sample_rate as f64;
 
         Self {
@@ -54,11 +65,24 @@ impl Resampler {
         }
     }
 
-    pub fn resample<Src, Dst>(&mut self, src: Src, mut dst: Dst) -> Result<ResampleOutput, Error>
+    /// Reads and resamples frames from `src` and writes them into `dst`. Returns the number of
+    /// frames read and written on success.
+    ///
+    /// # Errors
+    ///
+    /// Returns an appropriate [`Error`] if either the `src` or `dst` buffers are too small to
+    /// complete the resample operation.
+    pub(crate) fn resample<Src, Dst>(
+        &mut self,
+        src: Src,
+        mut dst: Dst,
+    ) -> Result<ResampleOutput, Error>
     where
         Src: Buf<Sample = f32>,
         Dst: BufMut<Sample = f32>,
     {
+        let _span = trace_span!("Resampler::resample").entered();
+
         if src.num_frames() < self.inner.input_frames_next() {
             return Err(Error::InputTooSmall(self.inner.input_frames_next()));
         }
@@ -83,62 +107,8 @@ impl Resampler {
     }
 }
 
-pub fn resample(data: SoundData, sample_rate: u32) -> SoundData {
-    let _span = trace_span!("resample").entered();
-
-    let mut resampler =
-        FftFixedInOut::<f32>::new(data.sample_rate as usize, sample_rate as usize, 1, 2).unwrap();
-
-    let mut output_frames = Vec::new();
-
-    let mut index = 0;
-    while index < data.frames.len() {
-        let input_len = resampler.input_frames_next();
-        let output_len = resampler.output_frames_next();
-
-        let left: Vec<f32> = data
-            .frames
-            .iter()
-            .skip(index)
-            .take(input_len)
-            .map(|f| f.left)
-            .collect();
-        let right: Vec<f32> = data
-            .frames
-            .iter()
-            .skip(index)
-            .take(input_len)
-            .map(|f| f.right)
-            .collect();
-
-        if left.len() < input_len || right.len() < input_len {
-            break;
-        }
-
-        let mut output_left = vec![0.0; output_len];
-        let mut output_right = vec![0.0; output_len];
-
-        resampler
-            .process_into_buffer(
-                &[left, right],
-                &mut [&mut output_left, &mut output_right],
-                None,
-            )
-            .unwrap();
-
-        output_frames.extend(
-            output_left
-                .into_iter()
-                .zip(output_right.into_iter())
-                .map(|(left, right)| Frame { left, right }),
-        );
-
-        index += input_len;
-    }
-
-    SoundData {
-        frames: output_frames,
-        sample_rate,
-        volume: data.volume,
+impl Debug for Resampler {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Resampler").finish_non_exhaustive()
     }
 }

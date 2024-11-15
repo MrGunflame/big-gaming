@@ -1,5 +1,5 @@
 use std::cmp;
-use std::fmt::Debug;
+use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -17,6 +17,7 @@ use crate::resampler::{self, Resampler};
 use crate::sound::Frame;
 use crate::sound_data::SoundData;
 
+#[derive(Debug)]
 pub struct AudioSource {
     sample_rate: u32,
     buffer: FrameBuffer,
@@ -90,13 +91,15 @@ impl AudioSource {
         }
     }
 
-    pub fn set_sample_rate(&mut self, sample_rate: u32) {
+    /// Sets the sample rate that should be used by this `AudioSource`.
+    pub(crate) fn set_sample_rate(&mut self, sample_rate: u32) {
         if sample_rate != self.sample_rate {
             self.resampler = Some(Resampler::new(self.sample_rate, sample_rate));
         }
     }
 
-    pub fn read(&mut self, mut buf: &mut [Frame]) -> usize {
+    /// Reads frames of this source into `buf`. Returns the number of frames written.
+    pub(crate) fn read(&mut self, mut buf: &mut [Frame]) -> usize {
         let _span = trace_span!("AudioSource::read").entered();
 
         // If we samples from the previous packet we flush
@@ -126,6 +129,13 @@ impl AudioSource {
         }
     }
 
+    /// Load the next frame into the current buffer.
+    ///
+    /// May load more than a single frame at once.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error::Eof`] if the `AudioSource` has no more frames that can be presented.
     fn prepare_next_frame(&mut self) -> Result<(), Error> {
         match &mut self.resampler {
             Some(resampler) => loop {
@@ -187,14 +197,6 @@ impl AudioSource {
     }
 }
 
-impl Debug for AudioSource {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AudioSource")
-            .field("sample_rate", &self.sample_rate)
-            .finish_non_exhaustive()
-    }
-}
-
 fn copy_frames_from_buffer_ref<Dst>(src: &AudioBufferRef<'_>, dst: Dst) -> usize
 where
     Dst: BufMut<Sample = f32>,
@@ -252,36 +254,39 @@ where
 }
 
 #[derive(Debug)]
-pub enum Error {
+pub(crate) enum Error {
     /// [`AudioSource`] has finished.
     Eof,
     Decode(symphonia::core::errors::Error),
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct FrameBuffer {
+struct FrameBuffer {
     buffer: Sequential<f32>,
     /// Number of frames written in the buffer.
     len: usize,
 }
 
 impl FrameBuffer {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             buffer: Sequential::new(0),
             len: 0,
         }
     }
 
+    /// Returns the number of frames stored in the buffer.
     fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns `true` if the buffer stores no frames.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn reserve(&mut self, free: usize) {
+    /// Reserves capacity for at least `free` number of uninitialized frames at the end.
+    fn reserve(&mut self, free: usize) {
         let new_len = self.len + free;
 
         if self.buffer.num_frames() < new_len {
@@ -289,7 +294,8 @@ impl FrameBuffer {
         }
     }
 
-    pub fn move_frames_into(&mut self, dst: &mut [Frame]) -> usize {
+    /// Moves as many frames as possible from the buffer into `dst`.
+    fn move_frames_into(&mut self, dst: &mut [Frame]) -> usize {
         let count = cmp::min(self.len, dst.len());
 
         for channel in [0, 1] {
@@ -311,19 +317,23 @@ impl FrameBuffer {
         count
     }
 
-    pub fn initialized(&mut self) -> SequentialView<'_, f32> {
+    /// Returns the initialized subsection of the buffer.
+    fn initialized(&mut self) -> SequentialView<'_, f32> {
         self.buffer.frames_range(..self.len)
     }
 
-    pub fn spare_capacity_mut(&mut self) -> SequentialViewMut<'_, f32> {
+    /// Returns the uninitialized subsection of the buffer.
+    fn spare_capacity_mut(&mut self) -> SequentialViewMut<'_, f32> {
         self.buffer.frames_range_mut(self.len..)
     }
 
-    pub fn increase_len(&mut self, extra: usize) {
+    /// Increases the len by `extra`, marking the last `extra` elements as initialized.
+    fn increase_len(&mut self, extra: usize) {
         self.len += extra;
     }
 
-    pub fn remove_frames(&mut self, count: usize) {
+    /// Removes the first `count` frames.
+    fn remove_frames(&mut self, count: usize) {
         for frames in self.buffer.channels_mut() {
             // Remove the first `count` frames from `self.buffer`
             // by shifting all elements starting at index `count` to the left.
@@ -334,18 +344,28 @@ impl FrameBuffer {
     }
 }
 
+#[derive(Debug)]
 enum Source {
     Io(IoSource),
+    /// A source that will never yield any frames.
+    ///
+    /// This `Source` only returns [`Error::Eof`].
     Empty,
 }
 
 impl Source {
+    /// Decodes a single packet from this `Source` into the given [`FrameBuffer`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error::Eof`] when the last packet has been decoded and this `Source` will
+    /// never yield another packet.
     fn decode_packet(&mut self, dst: &mut FrameBuffer) -> Result<(), Error> {
         match self {
             Source::Empty => Err(Error::Eof),
             Source::Io(source) => match source.format_reader.next_packet() {
                 Ok(packet) => {
-                    let buffer = source.decoder.decode(&packet).unwrap();
+                    let buffer = source.decoder.decode(&packet).map_err(Error::Decode)?;
 
                     dst.reserve(buffer.frames());
                     copy_frames_from_buffer_ref(&buffer, &mut dst.spare_capacity_mut());
@@ -366,7 +386,14 @@ impl Source {
     }
 }
 
+/// A source backed by some IO object, usually a file or similar.
 struct IoSource {
     decoder: Box<dyn Decoder>,
     format_reader: Box<dyn FormatReader>,
+}
+
+impl Debug for IoSource {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IoSource").finish_non_exhaustive()
+    }
 }

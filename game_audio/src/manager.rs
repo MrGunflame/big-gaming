@@ -2,9 +2,8 @@ use game_common::collections::arena::Arena;
 
 use crate::backend::Backend;
 use crate::channel::Sender;
-use crate::resampler;
 use crate::sound::{Destination, Frame, PlayingSound, SoundId};
-use crate::sound_data::{Settings, SoundData};
+use crate::sound_data::Settings;
 use crate::source::AudioSource;
 use crate::spatial::{Emitter, EmitterId, Listener, ListenerId};
 use crate::track::{ActiveTrack, Track, TrackGraph, TrackId};
