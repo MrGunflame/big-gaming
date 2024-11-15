@@ -3,7 +3,7 @@ use std::ops::{Add, AddAssign, Mul, MulAssign};
 use game_common::collections::arena::Key;
 
 use crate::effects::Volume;
-use crate::sound_data::SoundData;
+use crate::source::AudioSource;
 use crate::spatial::EmitterId;
 use crate::track::TrackId;
 
@@ -70,8 +70,7 @@ pub struct SoundId(pub(crate) Key);
 
 #[derive(Debug)]
 pub(crate) struct PlayingSound {
-    pub data: SoundData,
-    pub cursor: usize,
+    pub source: AudioSource,
     pub destination: Destination,
 }
 

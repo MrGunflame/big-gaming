@@ -22,6 +22,7 @@ symphonia = "0.5.4"
 parking_lot = "0.12.3"
 thiserror = "1.0.61"
 rubato = "0.15.0"
+bytemuck = "1.19.0"
 
 [[test]]
 name = "latency"

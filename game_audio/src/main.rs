@@ -3,6 +3,7 @@ use std::time::Instant;
 use game_audio::backend::DefaultBackend;
 use game_audio::effects::Volume;
 use game_audio::sound_data::{Settings, SoundData};
+use game_audio::source::AudioSource;
 use game_audio::spatial::{Emitter, Listener};
 use game_audio::track::{Track, TrackId};
 use game_audio::AudioManager;
@@ -11,8 +12,8 @@ use glam::{Quat, Vec3};
 fn main() {
     let mut manager = AudioManager::new(DefaultBackend::new());
 
-    let mut data = SoundData::from_file("./x.ogg");
-    data.volume = Volume(1.0);
+    // let mut data = SoundData::from_file("./x.ogg");
+    // data.volume = Volume(1.0);
 
     let track = manager.add_track(Track {
         target: TrackId::Main,
@@ -32,14 +33,17 @@ fn main() {
     let listener_id = manager.add_listener(listener);
     let emitter_id = manager.add_emitter(emitter);
 
+    let source = AudioSource::from_file("./x.ogg");
+
     // manager.play(
-    //     data.clone(),
+    //     source,
     //     Settings {
     //         destination: emitter_id.into(),
     //     },
     // );
+
     manager.play(
-        data.clone(),
+        source,
         Settings {
             destination: track.into(),
         },
@@ -62,15 +66,15 @@ fn main() {
         //dbg!(emitter.translation);
 
         // if now.elapsed().as_millis() > 100_000 && !spawned {
-        //  dbg!("spawn");
-        //  data.volume = Volume(1.0);
-        //  manager.play(
-        //     data.clone(),
-        //    Settings {
-        //         destination: track.into(),
-        //      },
-        //   );
-        //    spawned = true;
+        //     dbg!("spawn");
+        //     data.volume = Volume(1.0);
+        //     manager.play(
+        //         data.clone(),
+        //         Settings {
+        //             destination: track.into(),
+        //         },
+        //     );
+        //     spawned = true;
         // }
 
         now = Instant::now();

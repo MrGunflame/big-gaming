@@ -7,6 +7,7 @@ use game_audio::channel::Receiver;
 use game_audio::effects::Volume;
 use game_audio::sound::Frame;
 use game_audio::sound_data::{Settings, SoundData};
+use game_audio::source::AudioSource;
 use game_audio::AudioManager;
 
 #[test]
@@ -32,7 +33,7 @@ fn test_latency() {
         manager.update();
     }
 
-    manager.play(sound, Settings::default());
+    manager.play(AudioSource::from_data(sound), Settings::default());
 
     let mut ticks = 0;
     let now = Instant::now();
