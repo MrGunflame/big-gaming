@@ -2,20 +2,19 @@ pub mod data;
 pub mod query;
 
 mod convert;
-mod handle;
 mod pipeline;
 
 use std::collections::HashMap;
 use std::fmt::Debug;
 
 use convert::{point, quat, rotation, vec3, vector};
+use game_common::collections::bimap::BiMap;
 use game_common::components::{Axis, Children, ColliderShape, RigidBody, RigidBodyKind, Transform};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::{QueryWrapper, World};
 use game_tracing::trace_span;
 use glam::{Quat, Vec3};
-use handle::HandleMap;
 use nalgebra::{Const, Isometry, OPoint};
 use parking_lot::Mutex;
 use rapier3d::geometry::{BroadPhaseMultiSap, TriMesh};
@@ -48,13 +47,13 @@ pub struct Pipeline {
     query_pipeline: QueryPipeline,
     // Our shit
     /// Set of rigid bodies attached to entities.
-    body_handles: HandleMap<RigidBodyHandle>,
+    body_handles: BiMap<EntityId, RigidBodyHandle>,
     /// Child => Parent
     body_parents: HashMap<EntityId, EntityId>,
     body_children: HashMap<EntityId, Vec<EntityId>>,
     /// Set of colliders attached to entities.
     // We need the collider for collision events.
-    collider_handles: HandleMap<ColliderHandle>,
+    collider_handles: BiMap<EntityId, ColliderHandle>,
     event_handler: CollisionHandler,
 }
 
@@ -77,9 +76,9 @@ impl Pipeline {
             impulse_joints: ImpulseJointSet::new(),
             multibody_joints: MultibodyJointSet::new(),
             ccd_solver: CCDSolver::new(),
-            body_handles: HandleMap::new(),
+            body_handles: BiMap::new(),
             event_handler: CollisionHandler::new(),
-            collider_handles: HandleMap::new(),
+            collider_handles: BiMap::new(),
             query_pipeline: QueryPipeline::new(),
             body_parents: HashMap::new(),
             body_children: HashMap::new(),
@@ -125,7 +124,7 @@ impl Pipeline {
         {
             let children: Children = world.get_typed(entity).unwrap_or_default();
 
-            let Some(handle) = self.body_handles.get(entity) else {
+            let Some(handle) = self.body_handles.get_left(&entity) else {
                 let kind = match rigid_body.kind {
                     RigidBodyKind::Fixed => RigidBodyType::Fixed,
                     RigidBodyKind::Dynamic => RigidBodyType::Dynamic,
@@ -143,7 +142,7 @@ impl Pipeline {
                 continue;
             };
 
-            let body = self.bodies.get_mut(handle).unwrap();
+            let body = self.bodies.get_mut(*handle).unwrap();
 
             let translation = vector(transform.translation);
             if *body.translation() != translation {
@@ -203,7 +202,7 @@ impl Pipeline {
                     .insert(EntityId::from_raw(children.into_raw()), entity);
             }
 
-            despawned_entities.remove(entity);
+            despawned_entities.remove_left(&entity);
         }
 
         for (entity, handle) in despawned_entities.iter() {
@@ -213,9 +212,9 @@ impl Pipeline {
                 }
             }
 
-            self.body_handles.remove(entity);
+            self.body_handles.remove_left(entity);
             self.bodies.remove(
-                handle,
+                *handle,
                 &mut self.islands,
                 &mut self.colliders,
                 &mut self.impulse_joints,
@@ -235,7 +234,7 @@ impl Pipeline {
         for (entity, QueryWrapper((transform, collider))) in
             world.query::<QueryWrapper<(Transform, game_common::components::Collider)>>()
         {
-            let Some(handle) = self.collider_handles.get(entity) else {
+            let Some(handle) = self.collider_handles.get_left(&entity).copied() else {
                 let Some(body) = self.get_collider_parent(entity) else {
                     tracing::warn!("collider for entity {:?} is missing rigid body", entity);
                     continue;
@@ -287,13 +286,13 @@ impl Pipeline {
             self.colliders
                 .set_parent(handle, Some(body), &mut self.bodies);
 
-            despawned_entities.remove(entity);
+            despawned_entities.remove_left(&entity);
         }
 
         for (entity, handle) in despawned_entities.iter() {
-            self.collider_handles.remove(entity);
+            self.collider_handles.remove_left(entity);
             self.colliders
-                .remove(handle, &mut self.islands, &mut self.bodies, true);
+                .remove(*handle, &mut self.islands, &mut self.bodies, true);
         }
     }
 
@@ -301,7 +300,7 @@ impl Pipeline {
         let mut updated_entities = Vec::new();
 
         for (handle, body) in self.bodies.iter() {
-            let entity = self.body_handles.get2(handle).unwrap();
+            let entity = *self.body_handles.get_right(&handle).unwrap();
 
             let mut transform = world.get_typed::<Transform>(entity).unwrap();
             let translation = vec3(*body.translation());
@@ -323,8 +322,8 @@ impl Pipeline {
         let events = self.event_handler.events.get_mut();
 
         for event in &*events {
-            let lhs = self.collider_handles.get2(event.handles[0]).unwrap();
-            let rhs = self.collider_handles.get2(event.handles[1]).unwrap();
+            let lhs = *self.collider_handles.get_right(&event.handles[0]).unwrap();
+            let rhs = *self.collider_handles.get_right(&event.handles[1]).unwrap();
 
             queue.push(Event::Collision(events::CollisionEvent {
                 entity: lhs,
@@ -339,12 +338,12 @@ impl Pipeline {
         // Select a rigid body for the collider. If the entity has a rigid body
         // it is preferred, otherwise we select the rigid body from the parent
         // entity.
-        match self.body_handles.get(entity) {
-            Some(handle) => Some(handle),
+        match self.body_handles.get_left(&entity) {
+            Some(handle) => Some(*handle),
             None => self
                 .body_parents
                 .get(&entity)
-                .map(|parent| self.body_handles.get(*parent).unwrap()),
+                .map(|parent| *self.body_handles.get_left(parent).unwrap()),
         }
     }
 
@@ -360,7 +359,7 @@ impl Pipeline {
         };
 
         let pred = |handle, _collider: &Collider| {
-            let entity = self.collider_handles.get2(handle).unwrap();
+            let entity = *self.collider_handles.get_right(&handle).unwrap();
             !filter.exclude_entities.contains(&entity)
         };
         let filter = QueryFilter::new().predicate(&pred);
@@ -374,7 +373,7 @@ impl Pipeline {
             filter,
         ) {
             Some((handle, toi)) => {
-                let entity = self.collider_handles.get2(handle).unwrap();
+                let entity = *self.collider_handles.get_right(&handle).unwrap();
                 Some((entity, toi))
             }
             None => None,
@@ -397,7 +396,7 @@ impl Pipeline {
         let shape_vel = vector(direction);
 
         let pred = |handle, _collider: &Collider| {
-            let entity = self.collider_handles.get2(handle).unwrap();
+            let entity = self.collider_handles.get_right(&handle).unwrap();
             !filter.exclude_entities.contains(&entity)
         };
         let filter = QueryFilter::new().predicate(&pred);
@@ -424,7 +423,7 @@ impl Pipeline {
                     filter,
                 ) {
                     Some((handle, toi)) => {
-                        let entity = self.collider_handles.get2(handle).unwrap();
+                        let entity = *self.collider_handles.get_right(&handle).unwrap();
                         Some((entity, toi.time_of_impact))
                     }
                     None => None,
@@ -443,7 +442,7 @@ impl Pipeline {
                     filter,
                 ) {
                     Some((handle, toi)) => {
-                        let entity = self.collider_handles.get2(handle).unwrap();
+                        let entity = *self.collider_handles.get_right(&handle).unwrap();
                         Some((entity, toi.time_of_impact))
                     }
                     None => None,
@@ -466,7 +465,7 @@ impl Pipeline {
                     filter,
                 ) {
                     Some((handle, toi)) => {
-                        let entity = self.collider_handles.get2(handle).unwrap();
+                        let entity = *self.collider_handles.get_right(&handle).unwrap();
                         Some((entity, toi.time_of_impact))
                     }
                     None => None,
@@ -496,7 +495,7 @@ impl Pipeline {
                     filter,
                 ) {
                     Some((handle, toi)) => {
-                        let entity = self.collider_handles.get2(handle).unwrap();
+                        let entity = *self.collider_handles.get_right(&handle).unwrap();
                         Some((entity, toi.time_of_impact))
                     }
                     None => None,
