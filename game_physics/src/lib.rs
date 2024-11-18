@@ -17,6 +17,7 @@ use game_tracing::trace_span;
 use glam::{Quat, Vec3};
 use nalgebra::{Const, Isometry, OPoint};
 use parking_lot::Mutex;
+use query::QueryHit;
 use rapier3d::geometry::{BroadPhaseMultiSap, TriMesh};
 use rapier3d::math::Real;
 use rapier3d::parry::query::ShapeCastOptions;
@@ -352,7 +353,9 @@ impl Pipeline {
         ray: game_common::math::Ray,
         max_toi: f32,
         filter: &query::QueryFilter,
-    ) -> Option<(EntityId, f32)> {
+    ) -> Option<QueryHit> {
+        let _span = trace_span!("PhysicsPipeline::cast_ray").entered();
+
         let ray = Ray {
             origin: point(ray.origin),
             dir: vector(ray.direction),
@@ -374,7 +377,7 @@ impl Pipeline {
         ) {
             Some((handle, toi)) => {
                 let entity = *self.collider_handles.get_right(&handle).unwrap();
-                Some((entity, toi))
+                Some(QueryHit { entity, toi })
             }
             None => None,
         }
@@ -388,7 +391,9 @@ impl Pipeline {
         max_toi: f32,
         shape: &ColliderShape,
         filter: &query::QueryFilter,
-    ) -> Option<(EntityId, f32)> {
+    ) -> Option<QueryHit> {
+        let _span = trace_span!("PhysicsPipeline::cast_shape").entered();
+
         let shape_origin = Isometry {
             rotation: rotation(rot),
             translation: vector(translation).into(),
@@ -408,12 +413,12 @@ impl Pipeline {
             compute_impact_geometry_on_penetration: false,
         };
 
-        match shape {
+        let res = match shape {
             ColliderShape::Cuboid(cuboid) => {
                 let half_extents = vector(Vec3::new(cuboid.hx, cuboid.hy, cuboid.hz));
                 let shape = Cuboid::new(half_extents);
 
-                match self.query_pipeline.cast_shape(
+                self.query_pipeline.cast_shape(
                     &self.bodies,
                     &self.colliders,
                     &shape_origin,
@@ -421,18 +426,12 @@ impl Pipeline {
                     &shape,
                     options,
                     filter,
-                ) {
-                    Some((handle, toi)) => {
-                        let entity = *self.collider_handles.get_right(&handle).unwrap();
-                        Some((entity, toi.time_of_impact))
-                    }
-                    None => None,
-                }
+                )
             }
             ColliderShape::Ball(ball) => {
                 let shape = Ball::new(ball.radius);
 
-                match self.query_pipeline.cast_shape(
+                self.query_pipeline.cast_shape(
                     &self.bodies,
                     &self.colliders,
                     &shape_origin,
@@ -440,13 +439,7 @@ impl Pipeline {
                     &shape,
                     options,
                     filter,
-                ) {
-                    Some((handle, toi)) => {
-                        let entity = *self.collider_handles.get_right(&handle).unwrap();
-                        Some((entity, toi.time_of_impact))
-                    }
-                    None => None,
-                }
+                )
             }
             ColliderShape::Capsule(capsule) => {
                 let shape = match capsule.axis {
@@ -455,7 +448,7 @@ impl Pipeline {
                     Axis::Z => Capsule::new_z(capsule.half_height, capsule.radius),
                 };
 
-                match self.query_pipeline.cast_shape(
+                self.query_pipeline.cast_shape(
                     &self.bodies,
                     &self.colliders,
                     &shape_origin,
@@ -463,13 +456,7 @@ impl Pipeline {
                     &shape,
                     options,
                     filter,
-                ) {
-                    Some((handle, toi)) => {
-                        let entity = *self.collider_handles.get_right(&handle).unwrap();
-                        Some((entity, toi.time_of_impact))
-                    }
-                    None => None,
-                }
+                )
             }
             ColliderShape::TriMesh(mesh) => {
                 let vertices = mesh
@@ -485,7 +472,7 @@ impl Pipeline {
 
                 let shape = TriMesh::new(vertices, indices);
 
-                match self.query_pipeline.cast_shape(
+                self.query_pipeline.cast_shape(
                     &self.bodies,
                     &self.colliders,
                     &shape_origin,
@@ -493,15 +480,17 @@ impl Pipeline {
                     &shape,
                     options,
                     filter,
-                ) {
-                    Some((handle, toi)) => {
-                        let entity = *self.collider_handles.get_right(&handle).unwrap();
-                        Some((entity, toi.time_of_impact))
-                    }
-                    None => None,
-                }
+                )
             }
-        }
+        };
+
+        res.map(|(handle, toi)| {
+            let entity = *self.collider_handles.get_right(&handle).unwrap();
+            QueryHit {
+                entity,
+                toi: toi.time_of_impact,
+            }
+        })
     }
 }
 
@@ -689,7 +678,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(res.0, entity);
-        assert_eq!(res.1, 3.0);
+        assert_eq!(res.entity, entity);
+        assert_eq!(res.toi, 3.0);
     }
 }
