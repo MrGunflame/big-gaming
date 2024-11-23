@@ -123,6 +123,9 @@ impl Pipeline {
         for (entity, QueryWrapper((transform, GlobalTransform(global_transform), rigid_body))) in
             world.query::<QueryWrapper<(Transform, GlobalTransform, RigidBody)>>()
         {
+            let translation = vector(global_transform.translation);
+            let rotation = rotation(global_transform.rotation);
+
             let Some(handle) = self.body_handles.get_left(&entity) else {
                 let kind = match rigid_body.kind {
                     RigidBodyKind::Fixed => RigidBodyType::Fixed,
@@ -132,8 +135,8 @@ impl Pipeline {
 
                 let mut builder = RigidBodyBuilder::new(kind);
                 builder = builder.position(Isometry {
-                    translation: vector(transform.translation).into(),
-                    rotation: rotation(transform.rotation),
+                    translation: translation.into(),
+                    rotation,
                 });
 
                 let body_handle = self.bodies.insert(builder);
@@ -146,12 +149,10 @@ impl Pipeline {
 
             let body = self.bodies.get_mut(*handle).unwrap();
 
-            let translation = vector(transform.translation);
             if *body.translation() != translation {
                 body.set_translation(translation, true);
             }
 
-            let rotation = rotation(transform.rotation);
             if *body.rotation() != rotation {
                 body.set_rotation(rotation, true);
             }
@@ -222,7 +223,7 @@ impl Pipeline {
             // that has a `RigidBody`, with the offset applied from the `Collider`s
             // transform.
             // `Collider` without any `RigidBody` parents are ignored.
-            let Some(parent_rigid_body) = self.get_collider_parent(entity) else {
+            let Some(collider_parent) = self.get_collider_parent(entity) else {
                 continue;
             };
 
@@ -238,20 +239,22 @@ impl Pipeline {
                 self.collider_handles.insert(entity, handle);
 
                 self.colliders
-                    .set_parent(handle, Some(parent_rigid_body), &mut self.bodies);
+                    .set_parent(handle, Some(collider_parent.body), &mut self.bodies);
 
                 continue;
             };
 
             let state = self.colliders.get_mut(handle).unwrap();
 
+            let current_pos = *state.position_wrt_parent().unwrap();
+
             let translation = vector(transform.translation);
-            if *state.translation() != translation {
-                state.set_translation(translation);
+            if current_pos.translation.vector != translation {
+                state.set_translation_wrt_parent(translation);
             }
 
             let rotation = rotation(transform.rotation);
-            if *state.rotation() != rotation {
+            if current_pos.rotation != rotation {
                 state.set_rotation(rotation);
             }
 
@@ -266,7 +269,7 @@ impl Pipeline {
             // TODO: Handle updated collider shape.
 
             self.colliders
-                .set_parent(handle, Some(parent_rigid_body), &mut self.bodies);
+                .set_parent(handle, Some(collider_parent.body), &mut self.bodies);
 
             despawned_entities.remove_left(&entity);
         }
@@ -284,16 +287,33 @@ impl Pipeline {
         for (handle, body) in self.bodies.iter() {
             let entity = *self.body_handles.get_right(&handle).unwrap();
 
-            let mut transform = world.get_typed::<Transform>(entity).unwrap();
-            let translation = vec3(*body.translation());
-            let rotation = quat(*body.rotation());
+            // We source the position of the rigid body from the `GlobalTransform` component,
+            // but we cannot write back directly to the `GlobalTransform` component since
+            // it will be overwritten in the next frame.
+            // Instead we must write to the `Transform` component, but it may differ from the
+            // `GlobalTransform` since the rigid body may itself be a children of another entity.
 
-            if transform.translation != translation || transform.rotation != rotation {
+            // To handle this correctly we compute the delta between the absolute `GlobalTransform`
+            // (before the physics tick) and the new absolute position (after the physics tick).
+            // The delta describes the changed transform in this physics tick and can be applied
+            // to `Transform`.
+
+            let mut transform = world.get_typed::<Transform>(entity).unwrap();
+            let global_transform = world.get_typed::<GlobalTransform>(entity).unwrap();
+
+            let new_translation = vec3(*body.translation());
+            let new_rotation = quat(*body.rotation());
+
+            let delta_translation = new_translation - global_transform.0.translation;
+            // Note that `delta_rotation` is applied from left.
+            let delta_rotation = new_rotation * global_transform.0.rotation.conjugate();
+
+            if delta_translation != Vec3::ZERO || delta_rotation != Quat::IDENTITY {
                 updated_entities.push(entity);
             }
 
-            transform.translation = translation;
-            transform.rotation = rotation;
+            transform.translation += delta_translation;
+            transform.rotation = (delta_rotation * transform.rotation).normalize();
             world.insert_typed(entity, transform);
         }
 
@@ -316,17 +336,23 @@ impl Pipeline {
         events.clear();
     }
 
-    fn get_collider_parent(&self, entity: EntityId) -> Option<RigidBodyHandle> {
+    fn get_collider_parent(&self, entity: EntityId) -> Option<ColliderParent> {
         // Select a rigid body for the collider. If the entity has a rigid body
         // it is preferred, otherwise we select the rigid body from the parent
         // entity.
         match self.body_handles.get_left(&entity) {
-            Some(handle) => Some(*handle),
+            Some(handle) => Some(ColliderParent {
+                body: *handle,
+                transform: Transform::IDENTITY,
+            }),
             None => {
                 for (parent, children) in self.body_children.iter() {
-                    if children.contains_key(&entity) {
+                    if let Some(transform) = children.get(&entity).copied() {
                         let parent_handle = self.body_handles.get_left(parent).unwrap();
-                        return Some(*parent_handle);
+                        return Some(ColliderParent {
+                            body: *parent_handle,
+                            transform,
+                        });
                     }
                 }
 
@@ -513,6 +539,15 @@ fn collect_collider_children_with(entity: EntityId, world: &World) -> HashMap<En
     }
 
     entities
+}
+
+/// A reference to a rigid body that a collider should attach to.
+#[derive(Copy, Clone, Debug)]
+struct ColliderParent {
+    /// The handle of the rigid body.
+    body: RigidBodyHandle,
+    /// The transform of the collider relative to the rigid body.
+    transform: Transform,
 }
 
 #[derive(Debug)]
@@ -714,7 +749,7 @@ mod tests {
         let mut pipeline = Pipeline::new();
         pipeline.step(&mut world, &mut events);
 
-        let handle = pipeline.get_collider_parent(entity).unwrap();
+        let handle = pipeline.get_collider_parent(entity).unwrap().body;
         assert_eq!(handle, *pipeline.body_handles.get_left(&entity).unwrap());
     }
 
@@ -736,7 +771,7 @@ mod tests {
         let mut pipeline = Pipeline::new();
         pipeline.step(&mut world, &mut events);
 
-        let handle = pipeline.get_collider_parent(child).unwrap();
+        let handle = pipeline.get_collider_parent(child).unwrap().body;
         assert_eq!(handle, *pipeline.body_handles.get_left(&root).unwrap());
     }
 
@@ -763,7 +798,7 @@ mod tests {
         let mut pipeline = Pipeline::new();
         pipeline.step(&mut world, &mut events);
 
-        let handle = pipeline.get_collider_parent(child2).unwrap();
+        let handle = pipeline.get_collider_parent(child2).unwrap().body;
         assert_eq!(handle, *pipeline.body_handles.get_left(&root).unwrap());
     }
 
