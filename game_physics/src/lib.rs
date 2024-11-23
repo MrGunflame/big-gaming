@@ -9,7 +9,9 @@ use std::fmt::Debug;
 
 use convert::{point, quat, rotation, vec3, vector};
 use game_common::collections::bimap::BiMap;
-use game_common::components::{Axis, Children, ColliderShape, RigidBody, RigidBodyKind, Transform};
+use game_common::components::{
+    Axis, Children, ColliderShape, GlobalTransform, RigidBody, RigidBodyKind, Transform,
+};
 use game_common::entity::EntityId;
 use game_common::events::{self, Event, EventQueue};
 use game_common::world::{QueryWrapper, World};
@@ -49,9 +51,8 @@ pub struct Pipeline {
     // Our shit
     /// Set of rigid bodies attached to entities.
     body_handles: BiMap<EntityId, RigidBodyHandle>,
-    /// Child => Parent
-    body_parents: HashMap<EntityId, EntityId>,
-    body_children: HashMap<EntityId, Vec<EntityId>>,
+    /// Recursive children of a rigid body entity.
+    body_children: HashMap<EntityId, HashMap<EntityId, Transform>>,
     /// Set of colliders attached to entities.
     // We need the collider for collision events.
     collider_handles: BiMap<EntityId, ColliderHandle>,
@@ -81,7 +82,6 @@ impl Pipeline {
             event_handler: CollisionHandler::new(),
             collider_handles: BiMap::new(),
             query_pipeline: QueryPipeline::new(),
-            body_parents: HashMap::new(),
             body_children: HashMap::new(),
         }
     }
@@ -120,11 +120,9 @@ impl Pipeline {
 
         let mut despawned_entities = self.body_handles.clone();
 
-        for (entity, QueryWrapper((transform, rigid_body))) in
-            world.query::<QueryWrapper<(Transform, RigidBody)>>()
+        for (entity, QueryWrapper((transform, GlobalTransform(global_transform), rigid_body))) in
+            world.query::<QueryWrapper<(Transform, GlobalTransform, RigidBody)>>()
         {
-            let children: Children = world.get_typed(entity).unwrap_or_default();
-
             let Some(handle) = self.body_handles.get_left(&entity) else {
                 let kind = match rigid_body.kind {
                     RigidBodyKind::Fixed => RigidBodyType::Fixed,
@@ -140,6 +138,9 @@ impl Pipeline {
 
                 let body_handle = self.bodies.insert(builder);
                 self.body_handles.insert(entity, body_handle);
+                self.body_children
+                    .insert(entity, collect_collider_children_with(entity, world));
+
                 continue;
             };
 
@@ -184,34 +185,14 @@ impl Pipeline {
             }
 
             // Remove previous children before updating.
-            if let Some(children) = self.body_children.remove(&entity) {
-                for children in children {
-                    self.body_parents.remove(&children);
-                }
-            }
-
-            self.body_children.insert(
-                entity,
-                children
-                    .get()
-                    .iter()
-                    .map(|v| EntityId::from_raw(v.into_raw()))
-                    .collect(),
-            );
-            for children in children.get() {
-                self.body_parents
-                    .insert(EntityId::from_raw(children.into_raw()), entity);
-            }
+            self.body_children
+                .insert(entity, collect_collider_children_with(entity, world));
 
             despawned_entities.remove_left(&entity);
         }
 
         for (entity, handle) in despawned_entities.iter() {
-            if let Some(children) = self.body_children.remove(&entity) {
-                for children in children {
-                    self.body_parents.remove(&children);
-                }
-            }
+            self.body_children.remove(entity);
 
             self.body_handles.remove_left(entity);
             self.bodies.remove(
@@ -235,12 +216,17 @@ impl Pipeline {
         for (entity, QueryWrapper((transform, collider))) in
             world.query::<QueryWrapper<(Transform, game_common::components::Collider)>>()
         {
-            let Some(handle) = self.collider_handles.get_left(&entity).copied() else {
-                let Some(body) = self.get_collider_parent(entity) else {
-                    tracing::warn!("collider for entity {:?} is missing rigid body", entity);
-                    continue;
-                };
+            // If a `Collider` is attached to a `RigidBody` entity,
+            // the transform of the `Collider` from the `RigidBody` is used.
+            // Otherwise the `Collider` will be attached to first parent
+            // that has a `RigidBody`, with the offset applied from the `Collider`s
+            // transform.
+            // `Collider` without any `RigidBody` parents are ignored.
+            let Some(parent_rigid_body) = self.get_collider_parent(entity) else {
+                continue;
+            };
 
+            let Some(handle) = self.collider_handles.get_left(&entity).copied() else {
                 let mut builder = ColliderBuilder::new(build_shape(&collider.shape));
 
                 builder = builder.position(Isometry {
@@ -252,7 +238,7 @@ impl Pipeline {
                 self.collider_handles.insert(entity, handle);
 
                 self.colliders
-                    .set_parent(handle, Some(body), &mut self.bodies);
+                    .set_parent(handle, Some(parent_rigid_body), &mut self.bodies);
 
                 continue;
             };
@@ -279,13 +265,8 @@ impl Pipeline {
 
             // TODO: Handle updated collider shape.
 
-            let Some(body) = self.get_collider_parent(entity) else {
-                tracing::warn!("collider for entity {:?} is missing rigid body", entity);
-                continue;
-            };
-
             self.colliders
-                .set_parent(handle, Some(body), &mut self.bodies);
+                .set_parent(handle, Some(parent_rigid_body), &mut self.bodies);
 
             despawned_entities.remove_left(&entity);
         }
@@ -341,10 +322,16 @@ impl Pipeline {
         // entity.
         match self.body_handles.get_left(&entity) {
             Some(handle) => Some(*handle),
-            None => self
-                .body_parents
-                .get(&entity)
-                .map(|parent| *self.body_handles.get_left(parent).unwrap()),
+            None => {
+                for (parent, children) in self.body_children.iter() {
+                    if children.contains_key(&entity) {
+                        let parent_handle = self.body_handles.get_left(parent).unwrap();
+                        return Some(*parent_handle);
+                    }
+                }
+
+                None
+            }
         }
     }
 
@@ -500,6 +487,34 @@ impl Default for Pipeline {
     }
 }
 
+fn collect_collider_children_with(entity: EntityId, world: &World) -> HashMap<EntityId, Transform> {
+    let mut entities = HashMap::new();
+    let mut backlog = vec![(entity, Transform::default())];
+
+    while let Some((entity, parent_transform)) = backlog.pop() {
+        let children = world.get_typed::<Children>(entity).unwrap_or_default();
+        for child in children.get() {
+            let Ok(child_transform) = world.get_typed::<Transform>(*child) else {
+                continue;
+            };
+
+            // If the child itself is a rigid body it should
+            // not be considered a child of this rigid body
+            // anymore and be detached.
+            if world.get_typed::<RigidBody>(*child).is_ok() {
+                continue;
+            }
+
+            let transform = parent_transform.mul_transform(child_transform);
+
+            entities.insert(*child, transform);
+            backlog.push((*child, transform));
+        }
+    }
+
+    entities
+}
+
 #[derive(Debug)]
 pub struct CollisionHandler {
     events: Mutex<Vec<Collision>>,
@@ -590,9 +605,11 @@ fn build_shape(shape: &ColliderShape) -> SharedShape {
 #[cfg(test)]
 mod tests {
     use game_common::components::{
-        Collider, ColliderShape, Cuboid, RigidBody, RigidBodyKind, Transform,
+        Children, Collider, ColliderShape, Cuboid, GlobalTransform, RigidBody, RigidBodyKind,
+        Transform,
     };
     use game_common::events::EventQueue;
+    use game_common::world::hierarchy::update_global_transform;
     use game_common::world::World;
     use glam::{Quat, Vec3};
 
@@ -624,6 +641,7 @@ mod tests {
             },
         );
         world.insert_typed(entity, Transform::IDENTITY);
+        update_global_transform(&mut world);
 
         let mut events = EventQueue::new();
         let mut pipeline = Pipeline::new();
@@ -658,6 +676,7 @@ mod tests {
             },
         );
         world.insert_typed(entity, Transform::IDENTITY);
+        update_global_transform(&mut world);
 
         let mut events = EventQueue::new();
         let mut pipeline = Pipeline::new();
@@ -680,5 +699,83 @@ mod tests {
 
         assert_eq!(res.entity, entity);
         assert_eq!(res.toi, 3.0);
+    }
+
+    #[test]
+    fn get_collider_parent_direct() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.insert_typed(entity, Transform::default());
+        world.insert_typed(entity, GlobalTransform::default());
+        world.insert_typed(entity, RigidBody::new(RigidBodyKind::Fixed));
+        world.insert_typed(entity, create_test_collider());
+
+        let mut events = EventQueue::new();
+        let mut pipeline = Pipeline::new();
+        pipeline.step(&mut world, &mut events);
+
+        let handle = pipeline.get_collider_parent(entity).unwrap();
+        assert_eq!(handle, *pipeline.body_handles.get_left(&entity).unwrap());
+    }
+
+    #[test]
+    fn get_collider_parent_nested_one() {
+        let mut world = World::new();
+        let root = world.spawn();
+        let child = world.spawn();
+        world.insert_typed(root, Transform::default());
+        world.insert_typed(root, GlobalTransform::default());
+        world.insert_typed(root, RigidBody::new(RigidBodyKind::Fixed));
+        world.insert_typed(root, Children::from_iter([child]));
+
+        world.insert_typed(child, Transform::default());
+        world.insert_typed(child, GlobalTransform::default());
+        world.insert_typed(child, create_test_collider());
+
+        let mut events = EventQueue::new();
+        let mut pipeline = Pipeline::new();
+        pipeline.step(&mut world, &mut events);
+
+        let handle = pipeline.get_collider_parent(child).unwrap();
+        assert_eq!(handle, *pipeline.body_handles.get_left(&root).unwrap());
+    }
+
+    #[test]
+    fn get_collider_parent_nested_twice() {
+        let mut world = World::new();
+        let root = world.spawn();
+        let child1 = world.spawn();
+        let child2 = world.spawn();
+        world.insert_typed(root, Transform::default());
+        world.insert_typed(root, GlobalTransform::default());
+        world.insert_typed(root, RigidBody::new(RigidBodyKind::Fixed));
+        world.insert_typed(root, Children::from_iter([child1]));
+
+        world.insert_typed(child1, Transform::default());
+        world.insert_typed(child1, GlobalTransform::default());
+        world.insert_typed(child1, Children::from_iter([child2]));
+
+        world.insert_typed(child2, Transform::default());
+        world.insert_typed(child2, GlobalTransform::default());
+        world.insert_typed(child2, create_test_collider());
+
+        let mut events = EventQueue::new();
+        let mut pipeline = Pipeline::new();
+        pipeline.step(&mut world, &mut events);
+
+        let handle = pipeline.get_collider_parent(child2).unwrap();
+        assert_eq!(handle, *pipeline.body_handles.get_left(&root).unwrap());
+    }
+
+    fn create_test_collider() -> Collider {
+        Collider {
+            friction: 0.0,
+            restitution: 0.0,
+            shape: ColliderShape::Cuboid(Cuboid {
+                hx: 1.0,
+                hy: 1.0,
+                hz: 1.0,
+            }),
+        }
     }
 }

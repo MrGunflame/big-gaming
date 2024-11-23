@@ -128,6 +128,16 @@ pub struct RigidBody {
     pub angvel: Vec3,
 }
 
+impl RigidBody {
+    pub const fn new(kind: RigidBodyKind) -> Self {
+        Self {
+            kind,
+            linvel: Vec3::ZERO,
+            angvel: Vec3::ZERO,
+        }
+    }
+}
+
 impl Component for RigidBody {
     const ID: RecordReference = RIGID_BODY;
 }
