@@ -231,8 +231,8 @@ impl Pipeline {
                 let mut builder = ColliderBuilder::new(build_shape(&collider.shape));
 
                 builder = builder.position(Isometry {
-                    translation: vector(transform.translation).into(),
-                    rotation: rotation(transform.rotation),
+                    translation: vector(collider_parent.transform.translation).into(),
+                    rotation: rotation(collider_parent.transform.rotation),
                 });
 
                 let handle = self.colliders.insert(builder);
@@ -248,14 +248,13 @@ impl Pipeline {
 
             let current_pos = *state.position_wrt_parent().unwrap();
 
-            let translation = vector(transform.translation);
-            if current_pos.translation.vector != translation {
-                state.set_translation_wrt_parent(translation);
-            }
-
-            let rotation = rotation(transform.rotation);
-            if current_pos.rotation != rotation {
-                state.set_rotation(rotation);
+            let translation = vector(collider_parent.transform.translation);
+            let rotation = rotation(collider_parent.transform.rotation);
+            if current_pos.translation.vector != translation || current_pos.rotation != rotation {
+                state.set_position_wrt_parent(Isometry {
+                    translation: translation.into(),
+                    rotation,
+                });
             }
 
             if state.friction() != collider.friction {
