@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use game_common::components::{Axis, Collider, ColliderShape, Color, Transform};
+use game_common::components::{Axis, Collider, ColliderShape, Color, GlobalTransform, Transform};
 use game_common::world::{QueryWrapper, World};
 use game_gizmos::Gizmos;
 use game_tracing::trace_span;
@@ -10,8 +10,11 @@ use glam::{Quat, Vec3};
 pub fn draw_collider_lines(world: &World, gizmos: &Gizmos) {
     let _span = trace_span!("draw_collider_lines").entered();
 
-    for (_, QueryWrapper((mut transform, collider))) in
-        world.query::<QueryWrapper<(Transform, Collider)>>()
+    // We don't need `Transform` to render the entity,
+    // but colliders without `Transform` are ignored by
+    // the physics engine.
+    for (_, QueryWrapper((_, GlobalTransform(mut transform), collider))) in
+        world.query::<QueryWrapper<(Transform, GlobalTransform, Collider)>>()
     {
         // Colliders don't use scale and always use the default scale
         // value of 1. (The physics engine cannot efficiently support
