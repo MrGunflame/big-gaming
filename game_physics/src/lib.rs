@@ -51,7 +51,9 @@ pub struct Pipeline {
     // Our shit
     /// Set of rigid bodies attached to entities.
     body_handles: BiMap<EntityId, RigidBodyHandle>,
-    /// Recursive children of a rigid body entity.
+    /// Maps [`RigidBody`] entities to a list of [`Collider`] entities that are attached to the
+    /// [`RigidBody`]. The [`Transform`] represents the offset from the [`Collider`] to the
+    /// [`RigidBody`].
     body_children: HashMap<EntityId, HashMap<EntityId, Transform>>,
     /// Set of colliders attached to entities.
     // We need the collider for collision events.
@@ -120,7 +122,11 @@ impl Pipeline {
 
         let mut despawned_entities = self.body_handles.clone();
 
-        for (entity, QueryWrapper((transform, GlobalTransform(global_transform), rigid_body))) in
+        // We use `GlobalTransform` to fetch the transform the entities,
+        // but we also only query entities with `Transform` components.
+        // The `Transform` component is used to write back the new transform
+        // after stepping the pipeline.
+        for (entity, QueryWrapper((_, GlobalTransform(global_transform), rigid_body))) in
             world.query::<QueryWrapper<(Transform, GlobalTransform, RigidBody)>>()
         {
             let translation = vector(global_transform.translation);
@@ -142,7 +148,7 @@ impl Pipeline {
                 let body_handle = self.bodies.insert(builder);
                 self.body_handles.insert(entity, body_handle);
                 self.body_children
-                    .insert(entity, collect_collider_children_with(entity, world));
+                    .insert(entity, collect_collider_children(entity, world));
 
                 continue;
             };
@@ -187,7 +193,7 @@ impl Pipeline {
 
             // Remove previous children before updating.
             self.body_children
-                .insert(entity, collect_collider_children_with(entity, world));
+                .insert(entity, collect_collider_children(entity, world));
 
             despawned_entities.remove_left(&entity);
         }
@@ -214,9 +220,22 @@ impl Pipeline {
 
         let mut despawned_entities = self.collider_handles.clone();
 
-        for (entity, QueryWrapper((transform, collider))) in
-            world.query::<QueryWrapper<(Transform, game_common::components::Collider)>>()
+        // `self.body_children` contains a list of all rigid bodies with
+        // their collider children, so the list of all rigid bodies contains
+        // all components that are in use.
+        // Note that every entity can only occur once, as it must be
+        // attached to exact one rigid body.
+        for entity in self
+            .body_children
+            .values()
+            .map(|v| v.keys())
+            .flatten()
+            .copied()
         {
+            let collider = world
+                .get_typed::<game_common::components::Collider>(entity)
+                .unwrap();
+
             // If a `Collider` is attached to a `RigidBody` entity,
             // the transform of the `Collider` from the `RigidBody` is used.
             // Otherwise the `Collider` will be attached to first parent
@@ -512,9 +531,24 @@ impl Default for Pipeline {
     }
 }
 
-fn collect_collider_children_with(entity: EntityId, world: &World) -> HashMap<EntityId, Transform> {
+/// Collects and returns all entities with collider components that are children of `entity`.
+/// (This also includes `entity` itself).
+///
+/// The [`Transform`] value of an entity is the local offset from the root `entity`.
+///
+/// The branch is interrupted if an entity contains no transform, or if it contains a rigid body
+/// component, signaling the start of a new rigid body.
+fn collect_collider_children(entity: EntityId, world: &World) -> HashMap<EntityId, Transform> {
     let mut entities = HashMap::new();
     let mut backlog = vec![(entity, Transform::default())];
+
+    // The root entity can also be a collider.
+    if world
+        .get_typed::<game_common::components::Collider>(entity)
+        .is_ok()
+    {
+        entities.insert(entity, Transform::default());
+    }
 
     while let Some((entity, parent_transform)) = backlog.pop() {
         let children = world.get_typed::<Children>(entity).unwrap_or_default();
@@ -532,7 +566,13 @@ fn collect_collider_children_with(entity: EntityId, world: &World) -> HashMap<En
 
             let transform = parent_transform.mul_transform(child_transform);
 
-            entities.insert(*child, transform);
+            if world
+                .get_typed::<game_common::components::Collider>(*child)
+                .is_ok()
+            {
+                entities.insert(*child, transform);
+            }
+
             backlog.push((*child, transform));
         }
     }
