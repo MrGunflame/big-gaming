@@ -79,3 +79,14 @@ impl Decode for Children {
 impl Component for Children {
     const ID: RecordReference = CHILDREN;
 }
+
+impl FromIterator<EntityId> for Children {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = EntityId>,
+    {
+        let mut entities = Vec::new();
+        entities.extend(iter);
+        Self { entities }
+    }
+}

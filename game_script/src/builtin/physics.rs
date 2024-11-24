@@ -55,12 +55,12 @@ pub fn physics_cast_ray(
     }
 
     match res {
-        Some((entity_id, toi)) => {
+        Some(hit) => {
             caller.write(
                 out,
                 &CastRayResult {
-                    entity_id: entity_id.into_raw(),
-                    toi,
+                    entity_id: hit.entity.into_raw(),
+                    toi: hit.toi,
                     _pad0: 0,
                 },
             )?;
@@ -173,12 +173,12 @@ pub fn physics_cast_shape(
     );
 
     match res {
-        Some((entity, toi)) => {
+        Some(hit) => {
             caller.write(
                 out,
                 &CastRayResult {
-                    entity_id: entity.into_raw(),
-                    toi,
+                    entity_id: hit.entity.into_raw(),
+                    toi: hit.toi,
                     _pad0: 0,
                 },
             )?;
