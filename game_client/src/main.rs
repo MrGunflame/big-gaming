@@ -122,8 +122,8 @@ fn main() -> ExitCode {
         renderer.set_fps_limit(FpsLimit::limited(fps_limit));
     }
 
-    let ui_state = UiState::new(&renderer);
-    let gizmos = Gizmos::new(&renderer);
+    let ui_state = UiState::new(&mut renderer);
+    let gizmos = Gizmos::new(&mut renderer);
     let events = spsc::Queue::new(8192);
     let (events_tx, events_rx) = events.split();
 

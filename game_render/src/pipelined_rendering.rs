@@ -7,6 +7,7 @@ use game_common::cell::UnsafeRefCell;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 use glam::UVec2;
+use wgpu::hal::auxil::db;
 use wgpu::{
     Adapter, BufferAddress, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Device,
     Extent3d, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, Instance, MapMode, Origin3d,
@@ -16,7 +17,8 @@ use wgpu::{
 
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
-use crate::graph::{RenderContext, RenderGraph};
+use crate::graph::scheduler::RenderGraphScheduler;
+use crate::graph::{RenderContext, RenderGraph, SlotLabel, SlotValueInner};
 use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
 use crate::texture::RenderImageId;
@@ -162,6 +164,9 @@ unsafe fn execute_render(shared: &SharedState) {
 
     let mut outputs = Vec::new();
 
+    let render_passes = RenderGraphScheduler.schedule(&graph).unwrap();
+    dbg!(&render_passes);
+
     for (window, surface) in surfaces.iter() {
         let output = match surface.surface.get_current_texture() {
             Ok(output) => output,
@@ -177,19 +182,29 @@ unsafe fn execute_render(shared: &SharedState) {
             ..Default::default()
         });
 
-        let mut ctx = RenderContext {
-            render_target: RenderTarget::Window(*window),
-            encoder: &mut encoder,
-            size: UVec2::new(surface.config.width, surface.config.height),
-            target: &target,
-            format: surface.config.format,
-            device: &shared.device,
-            queue: &shared.queue,
-            mipmap: &mut mipmap,
-        };
+        let mut resources = HashMap::new();
+        resources.insert(
+            SlotLabel::SURFACE,
+            SlotValueInner::TextureRef(&output.texture),
+        );
 
-        for node in &graph.nodes {
-            node.render(&mut ctx);
+        for node in &render_passes {
+            let node = graph.get(*node).unwrap();
+
+            let mut ctx = RenderContext {
+                render_target: RenderTarget::Window(*window),
+                encoder: &mut encoder,
+                size: UVec2::new(surface.config.width, surface.config.height),
+                target: &target,
+                format: surface.config.format,
+                device: &shared.device,
+                queue: &shared.queue,
+                mipmap: &mut mipmap,
+                resources: &mut resources,
+                resource_permissions: &node.permissions,
+            };
+
+            node.node.render(&mut ctx);
         }
 
         outputs.push((surface, output));
@@ -218,19 +233,26 @@ unsafe fn execute_render(shared: &SharedState) {
 
         let target = texture.create_view(&TextureViewDescriptor::default());
 
-        let mut ctx = RenderContext {
-            render_target: RenderTarget::Image(*id),
-            encoder: &mut encoder,
-            size: render_texture.size,
-            target: &target,
-            format: texture.format(),
-            device: &shared.device,
-            queue: &shared.queue,
-            mipmap: &mut mipmap,
-        };
+        let mut resources = HashMap::new();
+        resources.insert(SlotLabel::SURFACE, SlotValueInner::TextureRef(&texture));
 
-        for node in &graph.nodes {
-            node.render(&mut ctx);
+        for node in &render_passes {
+            let node = graph.get(*node).unwrap();
+
+            let mut ctx = RenderContext {
+                render_target: RenderTarget::Image(*id),
+                encoder: &mut encoder,
+                size: render_texture.size,
+                target: &target,
+                format: texture.format(),
+                device: &shared.device,
+                queue: &shared.queue,
+                mipmap: &mut mipmap,
+                resources: &mut resources,
+                resource_permissions: &node.permissions,
+            };
+
+            node.node.render(&mut ctx);
         }
     }
 

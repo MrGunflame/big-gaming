@@ -19,12 +19,14 @@ pub mod texture;
 mod debug;
 mod depth_stencil;
 mod fps_limiter;
+mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
 mod post_process;
 mod state;
 
 pub use fps_limiter::FpsLimit;
+use game_common::cell::RefMut;
 use scene::{RendererScene, Scene};
 
 use std::collections::{HashMap, VecDeque};
@@ -41,13 +43,11 @@ use camera::RenderTarget;
 use forward::ForwardPipeline;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use graph::Node;
+use graph::RenderGraph;
 use parking_lot::Mutex;
 use pbr::material::Materials;
 use pbr::mesh::Meshes;
 use pipelined_rendering::{Pipeline, RenderImageGpu};
-use post_process::PostProcessPipeline;
-use render_pass::RenderPass;
 use state::RenderState;
 use texture::{Images, RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
 use thiserror::Error;
@@ -56,6 +56,8 @@ use wgpu::{
     Backends, Device, DeviceDescriptor, Features, Gles3MinorVersion, Instance, InstanceDescriptor,
     InstanceFlags, Limits, PowerPreference, Queue, RequestAdapterOptions, RequestDeviceError,
 };
+
+pub use passes::FINAL_RENDER_PASS;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -126,7 +128,6 @@ impl Renderer {
 
         let mut images = Images::new();
         let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
-        let post_process = PostProcessPipeline::new(&device);
 
         let state = Arc::new(Mutex::new(HashMap::new()));
 
@@ -134,12 +135,12 @@ impl Renderer {
 
         {
             let mut graph = unsafe { pipeline.shared.graph.borrow_mut() };
-            graph.push(RenderPass {
-                state: state.clone(),
-                forward: forward.clone(),
-                post_process,
-                depth_stencils: Mutex::new(HashMap::new()),
-            });
+            passes::init(
+                &mut graph,
+                state.clone(),
+                forward.clone(),
+                &pipeline.shared.device,
+            );
         }
 
         Ok(Self {
@@ -182,11 +183,9 @@ impl Renderer {
         &self.pipeline.shared.queue
     }
 
-    pub fn add_to_graph(&self, node: impl Node) {
+    pub fn graph_mut(&mut self) -> RefMut<'_, RenderGraph> {
         self.pipeline.wait_idle();
-
-        let mut graph = unsafe { self.pipeline.shared.graph.borrow_mut() };
-        graph.push(node);
+        unsafe { self.pipeline.shared.graph.borrow_mut() }
     }
 
     pub fn create_render_texture(&mut self, texture: RenderTexture) -> RenderImageId {

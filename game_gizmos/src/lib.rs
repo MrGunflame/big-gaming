@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use game_common::components::Color;
 use game_render::camera::Camera;
+use game_render::graph::NodeLabel;
 use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::Quat;
@@ -16,6 +17,8 @@ use parking_lot::Mutex;
 use parking_lot::RwLock;
 use render::pipeline::GizmoPass;
 use render::DrawCommand;
+
+const GIZMO_PASS: NodeLabel = NodeLabel::new("GIZMO_PASS");
 
 /// A immediate mode gizmo renderer.
 #[derive(Debug)]
@@ -29,12 +32,13 @@ pub struct Gizmos {
 
 impl Gizmos {
     /// Creates a new `Gizmos` renderer.
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(renderer: &mut Renderer) -> Self {
         let elements = Arc::new(RwLock::new(Vec::new()));
         let camera = Arc::new(Mutex::new(None));
 
         let node = GizmoPass::new(renderer.device(), elements.clone(), camera.clone());
-        renderer.add_to_graph(node);
+        let mut graph = renderer.graph_mut();
+        graph.add_node(GIZMO_PASS, node);
 
         Self {
             current: elements,
