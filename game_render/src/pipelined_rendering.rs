@@ -230,7 +230,7 @@ unsafe fn execute_render(state: &mut State) {
     let mut render_textures = unsafe { state.shared.render_textures.borrow_mut() };
     for (id, render_texture) in render_textures.iter_mut() {
         let texture = render_texture.texture.get_or_insert_with(|| {
-            let texture = state.shared.device.create_texture(&TextureDescriptor {
+            state.shared.device.create_texture(&TextureDescriptor {
                 label: None,
                 size: Extent3d {
                     width: render_texture.size.x,
@@ -243,15 +243,13 @@ unsafe fn execute_render(state: &mut State) {
                 format: TextureFormat::Rgba8Unorm,
                 usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
-            });
-
-            texture
+            })
         });
 
         let target = texture.create_view(&TextureViewDescriptor::default());
 
         let mut resources = HashMap::new();
-        resources.insert(SlotLabel::SURFACE, SlotValueInner::TextureRef(&texture));
+        resources.insert(SlotLabel::SURFACE, SlotValueInner::TextureRef(texture));
 
         for node in &state.schedule {
             let node = graph.get(*node).unwrap();

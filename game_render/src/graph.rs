@@ -35,7 +35,7 @@ use crate::mipmap::MipMapGenerator;
 
 pub trait Node: Send + Sync + 'static {
     /// Renders the node.
-    fn render<'a, 'b>(&self, ctx: &'b mut RenderContext<'a, 'b>);
+    fn render<'a>(&self, ctx: &'a mut RenderContext<'_, 'a>);
 }
 
 /// Context provided to render a [`Node`].

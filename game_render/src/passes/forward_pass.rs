@@ -53,7 +53,7 @@ impl Node for ForwardPass {
             if cam.target == ctx.render_target {
                 self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
 
-                self.render_camera_target(&state, cam, ctx);
+                self.render_camera_target(state, cam, ctx);
                 return;
             }
         }

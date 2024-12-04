@@ -69,7 +69,7 @@ impl RenderGraphScheduler {
                                 // If the node that provides the dependency is always
                                 // scheduled after the current node it cannot possibly
                                 // provide the slot for this node.
-                                .filter(|src| match fixed_dependencies.get(&src) {
+                                .filter(|src| match fixed_dependencies.get(src) {
                                     Some(nodes) => !nodes.contains(&&node.label),
                                     None => true,
                                 })
@@ -91,7 +91,7 @@ impl RenderGraphScheduler {
                                 fixed_dependencies
                                     .entry(node.label)
                                     .or_default()
-                                    .push(&src[0]);
+                                    .push(src[0]);
                                 continue;
                             }
 
@@ -126,7 +126,7 @@ impl RenderGraphScheduler {
         let mut permutations_iter = permutations.iter();
 
         let mut output = Vec::new();
-        loop {
+        'outer: loop {
             output.clear();
 
             let mut dependency_list = fixed_dependencies.clone();
@@ -171,7 +171,9 @@ impl RenderGraphScheduler {
                     }
                     // No node could be scheduled this iteration.
                     // This means we have a cycle.
-                    None => return Err(ScheduleError::Cycle),
+                    // If we have no other permutations to try this is the end.
+                    None if permutations.is_empty() => return Err(ScheduleError::Cycle),
+                    None => continue 'outer,
                 }
             }
 
