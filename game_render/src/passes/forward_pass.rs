@@ -43,18 +43,16 @@ impl ForwardPass {
 impl Node for ForwardPass {
     fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let mut state = self.state.lock();
-        let Some(state) = state.get_mut(&ctx.render_target) else {
-            return;
-        };
+        if let Some(state) = state.get_mut(&ctx.render_target) {
+            state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
 
-        state.update_buffers(ctx.device, ctx.queue, &self.forward, ctx.mipmap);
+            for cam in state.cameras.values() {
+                if cam.target == ctx.render_target {
+                    self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
 
-        for cam in state.cameras.values() {
-            if cam.target == ctx.render_target {
-                self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
-
-                self.render_camera_target(state, cam, ctx);
-                return;
+                    self.render_camera_target(state, cam, ctx);
+                    return;
+                }
             }
         }
 
