@@ -244,7 +244,7 @@ impl UiPass {
 }
 
 impl Node for UiPass {
-    fn render(&self, ctx: &mut RenderContext<'_>) {
+    fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("UiPass::render").entered();
 
         self.update_buffers(ctx.render_target, ctx.device, ctx.queue, ctx.size);

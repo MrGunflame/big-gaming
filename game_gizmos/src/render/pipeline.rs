@@ -152,7 +152,7 @@ impl GizmoPass {
 }
 
 impl Node for GizmoPass {
-    fn render(&self, ctx: &mut RenderContext<'_>) {
+    fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("GizmoPass::render").entered();
 
         let Some(camera) = *self.camera.lock() else {

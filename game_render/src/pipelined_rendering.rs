@@ -16,7 +16,8 @@ use wgpu::{
 
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
-use crate::graph::{RenderContext, RenderGraph};
+use crate::graph::scheduler::RenderGraphScheduler;
+use crate::graph::{NodeLabel, RenderContext, RenderGraph, SlotLabel, SlotValueInner};
 use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
 use crate::texture::RenderImageId;
@@ -41,6 +42,11 @@ pub struct SharedState {
     pub jobs: UnsafeRefCell<VecDeque<Job>>,
     fps_limiter: UnsafeRefCell<FpsLimiter>,
     shutdown: AtomicBool,
+}
+
+struct State {
+    shared: Arc<SharedState>,
+    schedule: Vec<NodeLabel>,
 }
 
 pub struct Pipeline {
@@ -122,45 +128,61 @@ fn start_render_thread(shared: Arc<SharedState>) -> Arc<Parker> {
 
     std::thread::spawn(move || {
         let _span = trace_span!("render_thread").entered();
+
+        let mut state = State {
+            shared,
+            schedule: Vec::new(),
+        };
+
         loop {
-            if shared.shutdown.load(Ordering::Acquire) {
+            if state.shared.shutdown.load(Ordering::Acquire) {
                 return;
             }
 
             // FIXME: If it is guaranteed that the parker will never yield
             // before being signaled, there is not need to watch for the atomic
             // to change.
-            while shared.state.load(Ordering::Acquire) != PIPELINE_STATE_RENDERING {
+            while state.shared.state.load(Ordering::Acquire) != PIPELINE_STATE_RENDERING {
                 parker.park();
             }
 
             // SAFETY: The pipeline is in rendering state, the render thread
             // has full access to the state.
             unsafe {
-                execute_render(&shared);
+                execute_render(&mut state);
             }
 
-            shared.state.store(PIPELINE_STATE_IDLE, Ordering::Relaxed);
-            shared.main_unparker.unpark();
+            state
+                .shared
+                .state
+                .store(PIPELINE_STATE_IDLE, Ordering::Relaxed);
+            state.shared.main_unparker.unpark();
         }
     });
 
     unparker
 }
 
-unsafe fn execute_render(shared: &SharedState) {
+unsafe fn execute_render(state: &mut State) {
     let _span = trace_span!("render_frame").entered();
 
-    let surfaces = unsafe { shared.surfaces.borrow() };
-    let graph = unsafe { shared.graph.borrow() };
-    let mut mipmap = unsafe { shared.mipmap_generator.borrow_mut() };
-    let mut fps_limiter = unsafe { shared.fps_limiter.borrow_mut() };
+    let surfaces = unsafe { state.shared.surfaces.borrow() };
+    let mut graph = unsafe { state.shared.graph.borrow_mut() };
+    let mut mipmap = unsafe { state.shared.mipmap_generator.borrow_mut() };
+    let mut fps_limiter = unsafe { state.shared.fps_limiter.borrow_mut() };
 
-    let mut encoder = shared
+    let mut encoder = state
+        .shared
         .device
         .create_command_encoder(&CommandEncoderDescriptor { label: None });
 
     let mut outputs = Vec::new();
+
+    if graph.has_changed {
+        graph.has_changed = false;
+        let render_passes = RenderGraphScheduler.schedule(&graph).unwrap();
+        state.schedule = render_passes;
+    }
 
     for (window, surface) in surfaces.iter() {
         let output = match surface.surface.get_current_texture() {
@@ -177,28 +199,38 @@ unsafe fn execute_render(shared: &SharedState) {
             ..Default::default()
         });
 
-        let mut ctx = RenderContext {
-            render_target: RenderTarget::Window(*window),
-            encoder: &mut encoder,
-            size: UVec2::new(surface.config.width, surface.config.height),
-            target: &target,
-            format: surface.config.format,
-            device: &shared.device,
-            queue: &shared.queue,
-            mipmap: &mut mipmap,
-        };
+        let mut resources = HashMap::new();
+        resources.insert(
+            SlotLabel::SURFACE,
+            SlotValueInner::TextureRef(&output.texture),
+        );
 
-        for node in &graph.nodes {
-            node.render(&mut ctx);
+        for node in &state.schedule {
+            let node = graph.get(*node).unwrap();
+
+            let mut ctx = RenderContext {
+                render_target: RenderTarget::Window(*window),
+                encoder: &mut encoder,
+                size: UVec2::new(surface.config.width, surface.config.height),
+                target: &target,
+                format: surface.config.format,
+                device: &state.shared.device,
+                queue: &state.shared.queue,
+                mipmap: &mut mipmap,
+                resources: &mut resources,
+                resource_permissions: &node.permissions,
+            };
+
+            node.node.render(&mut ctx);
         }
 
         outputs.push((surface, output));
     }
 
-    let mut render_textures = unsafe { shared.render_textures.borrow_mut() };
+    let mut render_textures = unsafe { state.shared.render_textures.borrow_mut() };
     for (id, render_texture) in render_textures.iter_mut() {
         let texture = render_texture.texture.get_or_insert_with(|| {
-            let texture = shared.device.create_texture(&TextureDescriptor {
+            state.shared.device.create_texture(&TextureDescriptor {
                 label: None,
                 size: Extent3d {
                     width: render_texture.size.x,
@@ -211,32 +243,37 @@ unsafe fn execute_render(shared: &SharedState) {
                 format: TextureFormat::Rgba8Unorm,
                 usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
-            });
-
-            texture
+            })
         });
 
         let target = texture.create_view(&TextureViewDescriptor::default());
 
-        let mut ctx = RenderContext {
-            render_target: RenderTarget::Image(*id),
-            encoder: &mut encoder,
-            size: render_texture.size,
-            target: &target,
-            format: texture.format(),
-            device: &shared.device,
-            queue: &shared.queue,
-            mipmap: &mut mipmap,
-        };
+        let mut resources = HashMap::new();
+        resources.insert(SlotLabel::SURFACE, SlotValueInner::TextureRef(texture));
 
-        for node in &graph.nodes {
-            node.render(&mut ctx);
+        for node in &state.schedule {
+            let node = graph.get(*node).unwrap();
+
+            let mut ctx = RenderContext {
+                render_target: RenderTarget::Image(*id),
+                encoder: &mut encoder,
+                size: render_texture.size,
+                target: &target,
+                format: texture.format(),
+                device: &state.shared.device,
+                queue: &state.shared.queue,
+                mipmap: &mut mipmap,
+                resources: &mut resources,
+                resource_permissions: &node.permissions,
+            };
+
+            node.node.render(&mut ctx);
         }
     }
 
     let mut mapping_buffers = Vec::new();
 
-    let mut jobs = unsafe { shared.jobs.borrow_mut() };
+    let mut jobs = unsafe { state.shared.jobs.borrow_mut() };
     for job in jobs.drain(..) {
         match job {
             Job::SetFpsLimit(limit) => {
@@ -255,7 +292,7 @@ unsafe fn execute_render(shared: &SharedState) {
 
                 let buffer_size = bytes_per_row * texture.size.y;
 
-                let buffer = shared.device.create_buffer(&BufferDescriptor {
+                let buffer = state.shared.device.create_buffer(&BufferDescriptor {
                     size: buffer_size as BufferAddress,
                     usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
                     mapped_at_creation: false,
@@ -289,7 +326,7 @@ unsafe fn execute_render(shared: &SharedState) {
         }
     }
 
-    shared.queue.submit(std::iter::once(encoder.finish()));
+    state.shared.queue.submit(std::iter::once(encoder.finish()));
 
     fps_limiter.block_until_ready();
 

@@ -1,30 +1,30 @@
-//! Post processing pipeline
-
 use game_tracing::trace_span;
 use wgpu::{
     AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Color, ColorTargetState, ColorWrites,
-    CommandEncoder, Device, FilterMode, FragmentState, FrontFace, LoadOp, MultisampleState,
-    Operations, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureFormat, TextureSampleType,
-    TextureView, TextureViewDimension, VertexState,
+    Device, FilterMode, FragmentState, FrontFace, LoadOp, MultisampleState, Operations,
+    PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule, ShaderModuleDescriptor,
+    ShaderSource, ShaderStages, StoreOp, Texture, TextureFormat, TextureSampleType,
+    TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
+use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
 
-const SHADER: &str = include_str!("../shaders/post_process.wgsl");
+const SHADER: &str = include_str!("../../shaders/post_process.wgsl");
 
-#[derive(Debug)]
-pub struct PostProcessPipeline {
+pub struct PostProcessPass {
     sampler: Sampler,
     bind_group_layout: BindGroupLayout,
     pipelines: PipelineCache<PostProcessPipelineBuilder>,
+    src: SlotLabel,
+    dst: SlotLabel,
 }
 
-impl PostProcessPipeline {
-    pub fn new(device: &Device) -> Self {
+impl PostProcessPass {
+    pub fn new(device: &Device, src: SlotLabel, dst: SlotLabel) -> Self {
         let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("post_process_bind_group_layout"),
             entries: &[
@@ -77,28 +77,31 @@ impl PostProcessPipeline {
             bind_group_layout,
             sampler,
             pipelines,
+            src,
+            dst,
         }
     }
+}
 
-    pub fn render(
-        &self,
-        encoder: &mut CommandEncoder,
-        source: &TextureView,
-        target: &TextureView,
-        device: &Device,
-        format: TextureFormat,
-    ) {
+impl Node for PostProcessPass {
+    fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("PostProcessPass::render").entered();
 
-        let pipeline = self.pipelines.get(device, format);
+        let input = ctx.read::<Texture>(self.src).unwrap();
+        let output = ctx.read::<Texture>(self.dst).unwrap();
 
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("post_process_render_pass"),
+        let src = input.create_view(&TextureViewDescriptor::default());
+        let dst = output.create_view(&TextureViewDescriptor::default());
+
+        let pipeline = self.pipelines.get(ctx.device, output.format());
+
+        let bind_group = ctx.device.create_bind_group(&BindGroupDescriptor {
+            label: None,
             layout: &self.bind_group_layout,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: BindingResource::TextureView(source),
+                    resource: BindingResource::TextureView(&src),
                 },
                 BindGroupEntry {
                     binding: 1,
@@ -107,10 +110,10 @@ impl PostProcessPipeline {
             ],
         });
 
-        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("post_process_render_pass"),
+        let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+            label: None,
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: target,
+                view: &dst,
                 resolve_target: None,
                 ops: Operations {
                     load: LoadOp::Clear(Color::BLACK),

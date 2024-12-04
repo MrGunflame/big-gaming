@@ -14,20 +14,34 @@ use wgpu::{
 use crate::camera::{Camera, CameraUniform, RenderTarget};
 use crate::depth_stencil::DepthData;
 use crate::forward::ForwardPipeline;
-use crate::graph::{Node, RenderContext};
+use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::options::MainPassOptionsEncoded;
-use crate::post_process::PostProcessPipeline;
 use crate::state::RenderState;
 
-pub(crate) struct RenderPass {
+pub(super) struct ForwardPass {
     pub state: Arc<Mutex<HashMap<RenderTarget, RenderState>>>,
     pub forward: Arc<ForwardPipeline>,
-    pub post_process: PostProcessPipeline,
     pub depth_stencils: Mutex<HashMap<RenderTarget, DepthData>>,
+    pub dst: SlotLabel,
 }
 
-impl Node for RenderPass {
-    fn render(&self, ctx: &mut RenderContext<'_>) {
+impl ForwardPass {
+    pub(super) fn new(
+        state: Arc<Mutex<HashMap<RenderTarget, RenderState>>>,
+        forward: Arc<ForwardPipeline>,
+        dst: SlotLabel,
+    ) -> Self {
+        Self {
+            state,
+            forward,
+            depth_stencils: Mutex::default(),
+            dst,
+        }
+    }
+}
+
+impl Node for ForwardPass {
+    fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let mut state = self.state.lock();
         let Some(state) = state.get_mut(&ctx.render_target) else {
             return;
@@ -39,18 +53,18 @@ impl Node for RenderPass {
             if cam.target == ctx.render_target {
                 self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
 
-                self.render_camera_target(&state, cam, ctx);
+                self.render_camera_target(state, cam, ctx);
                 return;
             }
         }
 
         // Some APIs don't play nicely when not submitting any work
         // for the surface, so we just clear the surface color.
-        clear_pass(ctx);
+        clear_pass(ctx, self.dst);
     }
 }
 
-impl RenderPass {
+impl ForwardPass {
     fn update_depth_stencil(&self, target: RenderTarget, size: UVec2, device: &Device) {
         let mut depth_stencils = self.depth_stencils.lock();
 
@@ -68,7 +82,7 @@ impl RenderPass {
         &self,
         state: &RenderState,
         camera: &Camera,
-        ctx: &mut RenderContext<'_>,
+        ctx: &mut RenderContext<'_, '_>,
     ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
@@ -167,17 +181,31 @@ impl RenderPass {
         }
 
         drop(render_pass);
-
-        self.post_process
-            .render(ctx.encoder, &target_view, ctx.target, device, ctx.format);
+        ctx.write(self.dst, render_target).unwrap();
     }
 }
 
-fn clear_pass(ctx: &mut RenderContext<'_>) {
+fn clear_pass(ctx: &mut RenderContext<'_, '_>, dst: SlotLabel) {
+    let texture = ctx.device.create_texture(&TextureDescriptor {
+        label: None,
+        size: Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: TextureDimension::D2,
+        format: TextureFormat::Rgba16Float,
+        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&TextureViewDescriptor::default());
+
     ctx.encoder.begin_render_pass(&RenderPassDescriptor {
         label: Some("clear_pass"),
         color_attachments: &[Some(RenderPassColorAttachment {
-            view: ctx.target,
+            view: &view,
             resolve_target: None,
             ops: Operations {
                 load: LoadOp::Clear(Color::BLACK),
@@ -188,4 +216,6 @@ fn clear_pass(ctx: &mut RenderContext<'_>) {
         occlusion_query_set: None,
         timestamp_writes: None,
     });
+
+    ctx.write(dst, texture).unwrap();
 }

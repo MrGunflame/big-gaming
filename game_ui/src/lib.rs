@@ -27,7 +27,7 @@ pub struct UiState {
 }
 
 impl UiState {
-    pub fn new(renderer: &Renderer) -> Self {
+    pub fn new(renderer: &mut Renderer) -> Self {
         Self {
             renderer: UiRenderer::new(renderer),
             runtime: Runtime::new(),
