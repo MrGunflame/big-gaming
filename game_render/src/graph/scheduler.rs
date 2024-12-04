@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use game_tracing::trace_span;
 use thiserror::Error;
 
-use super::{Dependency, NodeLabel, RenderGraph, SlotFlags, SlotLabel};
+use super::{Dependency, NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 
 pub struct RenderGraphScheduler;
 
@@ -11,8 +11,8 @@ impl RenderGraphScheduler {
     pub fn schedule(&mut self, graph: &RenderGraph) -> Result<Vec<NodeLabel>, ScheduleError> {
         let _span = trace_span!("RenderGraphScheduler::schedule").entered();
 
-        let mut write_slots: HashMap<&SlotLabel, Vec<_>> = HashMap::new();
-        let mut read_slots: HashMap<&SlotLabel, Vec<_>> = HashMap::new();
+        let mut write_slots: HashMap<SlotKey<'_>, Vec<_>> = HashMap::new();
+        let mut read_slots: HashMap<SlotKey<'_>, Vec<_>> = HashMap::new();
 
         // Dependencies that must always be satisfied
         // regardless of permutation.
@@ -28,11 +28,17 @@ impl RenderGraphScheduler {
                     }
                     Dependency::Slot(label, kind, flags) => {
                         if flags.contains(SlotFlags::READ) {
-                            read_slots.entry(label).or_default().push(node.label);
+                            read_slots
+                                .entry(SlotKey { label, kind: *kind })
+                                .or_default()
+                                .push(node.label);
                         }
 
                         if flags.contains(SlotFlags::WRITE) {
-                            write_slots.entry(label).or_default().push(node.label);
+                            write_slots
+                                .entry(SlotKey { label, kind: *kind })
+                                .or_default()
+                                .push(node.label);
                         }
                     }
                 }
@@ -53,8 +59,9 @@ impl RenderGraphScheduler {
                         // this slot is ran before.
                         if flags.contains(SlotFlags::READ) {
                             let src = write_slots
-                                .get(&label)
-                                .unwrap()
+                                .get(&SlotKey { label, kind: *kind })
+                                .map(|v| v.as_slice())
+                                .unwrap_or_default()
                                 .iter()
                                 // If the node reads and writes to a slot it
                                 // must not be scheduled as its own predecessor.
@@ -71,7 +78,7 @@ impl RenderGraphScheduler {
                             // Cannot schedule the node if no nodes providing the
                             // required dependencies exist.
                             if src.is_empty() {
-                                return Err(ScheduleError::NoSource(node.label, *label));
+                                return Err(ScheduleError::NoSource(node.label, *label, *kind));
                             }
 
                             // If only a single possible node exists we already
@@ -173,12 +180,19 @@ impl RenderGraphScheduler {
     }
 }
 
+/// Unique identifier for a slot.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+struct SlotKey<'a> {
+    label: &'a SlotLabel,
+    kind: SlotKind,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Error)]
 pub enum ScheduleError {
     #[error("cycle detected")]
     Cycle,
-    #[error("no source for slot {1:?} for node {0:?}")]
-    NoSource(NodeLabel, SlotLabel),
+    #[error("no source for slot {1:?} of kind {2:?} for node {0:?}")]
+    NoSource(NodeLabel, SlotLabel, SlotKind),
     #[error("no valid permutation for slot configuration")]
     NoValidPermutation,
 }
@@ -298,7 +312,7 @@ mod test {
         graph.add_slot_dependency(
             c,
             SlotLabel::new("texture"),
-            SlotKind::Buffer,
+            SlotKind::Texture,
             SlotFlags::READ,
         );
         graph.add_slot_dependency(
@@ -347,7 +361,7 @@ mod test {
         graph.add_slot_dependency(
             a,
             SlotLabel::new("test"),
-            SlotKind::Texture,
+            SlotKind::Buffer,
             SlotFlags::WRITE,
         );
 
@@ -360,6 +374,39 @@ mod test {
 
         let res = RenderGraphScheduler.schedule(&graph).unwrap();
         assert_eq!(res, [a, b]);
+    }
+
+    #[test]
+    fn render_graph_different_slot_kinds() {
+        let a = NodeLabel::new("A");
+        let b = NodeLabel::new("A");
+
+        let mut graph = RenderGraph::new();
+        graph.add_node(a, TestNode);
+        graph.add_node(b, TestNode);
+
+        graph.add_slot_dependency(
+            a,
+            SlotLabel::new("test"),
+            SlotKind::Buffer,
+            SlotFlags::WRITE,
+        );
+        graph.add_slot_dependency(
+            b,
+            SlotLabel::new("test"),
+            SlotKind::Texture,
+            SlotFlags::READ,
+        );
+
+        let res = RenderGraphScheduler.schedule(&graph);
+        assert_eq!(
+            res,
+            Err(ScheduleError::NoSource(
+                b,
+                SlotLabel::new("test"),
+                SlotKind::Texture
+            ))
+        );
     }
 
     #[test]
