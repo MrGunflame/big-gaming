@@ -217,5 +217,5 @@ fn clear_pass(ctx: &mut RenderContext<'_, '_>, dst: SlotLabel) {
         timestamp_writes: None,
     });
 
-    ctx.write(dst, texture);
+    ctx.write(dst, texture).unwrap();
 }

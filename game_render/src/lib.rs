@@ -10,7 +10,6 @@ pub mod metrics;
 pub mod mipmap;
 pub mod options;
 pub mod pbr;
-pub mod render_pass;
 pub mod scene;
 pub mod shape;
 pub mod surface;
@@ -22,7 +21,6 @@ mod fps_limiter;
 mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
-mod post_process;
 mod state;
 
 pub use fps_limiter::FpsLimit;
