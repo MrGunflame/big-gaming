@@ -177,10 +177,29 @@ impl RenderGraph {
     ///
     /// This means that the node referred to by `depends_on` must run before the node referred to
     /// by `node` can run.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the nodes `node` or `depends_on` don't exist.
     pub fn add_node_dependency(&mut self, node: NodeLabel, depends_on: NodeLabel) {
-        let node = self.nodes.get_mut(&node).unwrap();
-        node.dependencies.push(Dependency::Node(depends_on));
-        self.has_changed = true;
+        if !self.nodes.contains_key(&depends_on) {
+            panic!("cannot add dependency: {:?} does not exist", depends_on);
+        }
+
+        let Some(node) = self.nodes.get_mut(&node) else {
+            panic!("cannot add dependency: {:?} does not exist", node);
+        };
+
+        let dependency_exists = node.dependencies.iter().any(|dep| match dep {
+            Dependency::Node(label) => *label == depends_on,
+            Dependency::Slot(_, _, _) => false,
+        });
+
+        // Only create the new dependency if it does not yet exist.
+        if !dependency_exists {
+            node.dependencies.push(Dependency::Node(depends_on));
+            self.has_changed = true;
+        }
     }
 
     /// Adds a new slot to the node with the given `node` label.
@@ -200,8 +219,34 @@ impl RenderGraph {
         kind: SlotKind,
         flags: SlotFlags,
     ) {
-        let node = self.nodes.get_mut(&node).unwrap();
-        node.dependencies.push(Dependency::Slot(label, kind, flags));
+        let Some(node) = self.nodes.get_mut(&node) else {
+            panic!("cannot add slot: {:?} does not exist", node);
+        };
+
+        let dependency = node.dependencies.iter_mut().find(|dep| match dep {
+            Dependency::Node(_) => false,
+            Dependency::Slot(dep_label, dep_kind, _) => *dep_label == label && *dep_kind == kind,
+        });
+
+        match dependency {
+            Some(dependency) => match dependency {
+                Dependency::Slot(_, _, dep_flags) => {
+                    let new_flags = *dep_flags | flags;
+
+                    // New flags are unchanged.
+                    if new_flags == *dep_flags {
+                        return;
+                    }
+
+                    *dep_flags = new_flags;
+                }
+                _ => unreachable!(),
+            },
+            None => {
+                node.dependencies.push(Dependency::Slot(label, kind, flags));
+            }
+        }
+
         *node.permissions.entry(label).or_insert(SlotFlags::empty()) |= flags;
         self.has_changed = true;
     }
