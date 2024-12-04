@@ -21,8 +21,8 @@ use tests::table::table;
 fn main() {
     game_core::logger::init();
 
-    let renderer = Renderer::new().unwrap();
-    let ui_state = UiState::new(&renderer);
+    let mut renderer = Renderer::new().unwrap();
+    let ui_state = UiState::new(&mut renderer);
     let pool = TaskPool::new(8);
 
     let mut wm = WindowManager::new();
