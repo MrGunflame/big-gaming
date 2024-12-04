@@ -86,12 +86,14 @@ impl SlotLabel {
 #[derive(Default)]
 pub struct RenderGraph {
     nodes: HashMap<NodeLabel, NodeState>,
+    pub(crate) has_changed: bool,
 }
 
 impl RenderGraph {
     pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
+            has_changed: false,
         }
     }
 
@@ -108,11 +110,13 @@ impl RenderGraph {
                 permissions: HashMap::new(),
             },
         );
+        self.has_changed = true;
     }
 
     pub fn add_node_dependency(&mut self, node: NodeLabel, depends_on: NodeLabel) {
         let node = self.nodes.get_mut(&node).unwrap();
         node.dependencies.push(Dependency::Node(depends_on));
+        self.has_changed = true;
     }
 
     pub fn add_slot_dependency(
@@ -125,6 +129,7 @@ impl RenderGraph {
         let node = self.nodes.get_mut(&node).unwrap();
         node.dependencies.push(Dependency::Slot(label, kind, flags));
         *node.permissions.entry(label).or_insert(SlotFlags::empty()) |= flags;
+        self.has_changed = true;
     }
 
     pub(crate) fn get(&self, node: NodeLabel) -> Option<&NodeState> {

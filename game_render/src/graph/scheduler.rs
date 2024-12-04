@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use game_tracing::trace_span;
 use thiserror::Error;
 
 use super::{Dependency, NodeLabel, RenderGraph, SlotFlags, SlotLabel};
@@ -8,6 +9,8 @@ pub struct RenderGraphScheduler;
 
 impl RenderGraphScheduler {
     pub fn schedule(&mut self, graph: &RenderGraph) -> Result<Vec<NodeLabel>, ScheduleError> {
+        let _span = trace_span!("RenderGraphScheduler::schedule").entered();
+
         let mut write_slots: HashMap<&SlotLabel, Vec<_>> = HashMap::new();
         let mut read_slots: HashMap<&SlotLabel, Vec<_>> = HashMap::new();
 
