@@ -10,6 +10,9 @@ use game_audio::AudioManager;
 use glam::{Quat, Vec3};
 
 fn main() {
+    game_audio::pw_main();
+    return;
+
     let mut manager = AudioManager::new(DefaultBackend::new());
 
     // let mut data = SoundData::from_file("./x.ogg");

@@ -11,4 +11,5 @@ mod buffer;
 mod manager;
 mod resampler;
 
+pub use backend::pipewire::*;
 pub use manager::AudioManager;

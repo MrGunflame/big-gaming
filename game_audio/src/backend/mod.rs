@@ -1,4 +1,5 @@
 mod cpal;
+pub mod pipewire;
 mod stub;
 
 pub use cpal::CpalBackend;
