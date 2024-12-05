@@ -2,9 +2,11 @@
 //!
 mod keys;
 
+use std::alloc::dealloc;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::io::{self, BufRead, Read, Write};
+use std::num::Wrapping;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -26,100 +28,65 @@ pub fn pw_main() {
     let addr = socket_addr().unwrap();
     let mut client = Client::connect(addr).unwrap();
 
-    let mut spa_buf = Vec::new();
-    PodStruct(PodInt(3)).encode(&mut spa_buf);
+    client.send(&Hello { version: 3 }).unwrap();
 
-    let mut buf = Vec::new();
-    Header {
-        id: 0,
-        size: spa_buf.len() as u32,
-        opcode: 1,
-        seq: 0,
-        num_fds: 0,
-    }
-    .encode(&mut buf);
-    buf.extend_from_slice(&spa_buf);
-
-    // dbg!(&spa_buf.len());
-
-    // dbg!(&buf);
-
-    // buf.extend(4_u32.to_ne_bytes());
-    // buf.extend(4_u32.to_ne_bytes());
-    // buf.extend(3_u32.to_ne_bytes());
-    // buf.extend(&[0, 0, 0, 0]);
-
-    client.stream.write_all(&buf).unwrap();
-
-    let mut resp = vec![0; 8192];
-    client.stream.read(&mut resp).unwrap();
-    // dbg!(&resp);
-    // return;
-
-    let info = PodStruct::<([PodInt; 2], [PodString; 4])>::decode(&resp[16..]).unwrap();
-    let info = Info::decode(&resp[16..]);
+    let info = client.recv().unwrap();
     dbg!(&info);
 
-    // let mut buf = Vec::new();
-    // // Id
-    // buf.extend(1_u32.to_ne_bytes());
-    // // OPCODE
-    // buf.push(2u8);
-    // // SIZE
-    // buf.extend(&[8, 0, 0]);
-    // // SEQ
-    // buf.extend(1_u32.to_ne_bytes());
-    // // N_FDS
-    // buf.extend(0_u32.to_ne_bytes());
-    // // SPA
-    // buf.extend(4_u32.to_ne_bytes());
-    // buf.extend(4_u32.to_ne_bytes());
-    // buf.extend(3_u32.to_ne_bytes());
-    // buf.extend(&[0, 0, 0, 0]);
-    let mut spa_buf2 = Vec::new();
-    let client_props = UpdateProperties {
-        props: HashMap::from([
-            (PW_KEY_APP_ID.to_string(), "hello_world".to_string()),
-            (PW_KEY_APP_NAME.to_string(), "hello World".to_string()),
-        ]),
-    };
-    // let client_props = PodStruct(PodStruct((
-    //     PodInt(1),
-    //     PodRepeat(vec![
-    //         PodString(CString::from(c"application.id")),
-    //         PodString(CString::from(c"hello_world_69")),
-    //     ]),
-    // )));
-    client_props.encode(&mut spa_buf2);
-    dbg!(&spa_buf2, spa_buf2.len());
-    // dbg!(spa_buf2.len());
+    client
+        .send(&UpdateProperties {
+            props: HashMap::from([
+                (PW_KEY_APP_ID.to_string(), "hello_world".to_string()),
+                (PW_KEY_APP_NAME.to_string(), "hello World".to_string()),
+            ]),
+        })
+        .unwrap();
 
-    let mut buf = Vec::new();
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
 
-    Header {
-        id: 1,
-        opcode: 2,
-        size: spa_buf2.len() as u32,
-        seq: 1,
-        num_fds: 0,
-    }
-    .encode(&mut buf);
-    buf.extend_from_slice(&spa_buf2);
+    client
+        .send(&CreateObject {
+            factory_name: "node-factory".to_string(),
+            new_id: 12345,
+            r#type: "Node".to_string(),
+            version: 3,
+            props: HashMap::new(),
+        })
+        .unwrap();
 
-    client.stream.write_all(&buf).unwrap();
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
+    // dbg!(&resp, &header);
 
-    let mut resp = vec![0; 8192];
-    client.stream.read(&mut resp).unwrap();
-
-    //let err = Error::decode(&resp[16..]);
-    //dbg!(&err);
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
+    let resp = client.recv().unwrap();
+    dbg!(&resp);
 
     std::thread::park();
 }
 
+#[derive(Clone, Debug)]
+enum Event {
+    Info(Info),
+    Done(Done),
+    Ping(Ping),
+    Error(Error),
+    RemoveId(RemoveId),
+    BoundId(BoundId),
+    ClientInfo(ClientInfo),
+}
+
 struct Client {
     stream: UnixStream,
-    next_seq: u32,
+    next_seq: Wrapping<u32>,
 }
 
 impl Client {
@@ -130,8 +97,56 @@ impl Client {
         let stream = UnixStream::connect(addr)?;
         Ok(Self {
             stream,
-            next_seq: 0,
+            next_seq: Wrapping(0),
         })
+    }
+
+    fn recv(&mut self) -> io::Result<Event> {
+        let mut buf = [0; 16];
+        self.stream.read_exact(&mut buf)?;
+        let header = Header::decode(&buf);
+        let mut buf = vec![0; header.size as usize];
+        self.stream.read_exact(&mut buf)?;
+
+        match header.id {
+            0 => match header.opcode {
+                0 => Ok(Event::Info(Info::decode(&buf))),
+                1 => Ok(Event::Done(Done::decode(&buf))),
+                2 => Ok(Event::Ping(Ping::decode(&buf))),
+                3 => Ok(Event::Error(Error::decode(&buf))),
+                4 => Ok(Event::RemoveId(RemoveId::decode(&buf))),
+                5 => Ok(Event::BoundId(BoundId::decode(&buf))),
+                n => todo!("{:?}", n),
+            },
+            1 => match header.opcode {
+                0 => Ok(Event::ClientInfo(ClientInfo::decode(&buf))),
+                _ => todo!(),
+            },
+            n => todo!("{:?}", n),
+        }
+    }
+
+    fn send<T>(&mut self, msg: &T) -> io::Result<()>
+    where
+        T: Message,
+    {
+        let mut payload = Vec::new();
+        msg.encode(&mut payload);
+
+        let header = Header {
+            id: msg.id(),
+            opcode: msg.opcode(),
+            size: payload.len() as u32,
+            seq: self.next_seq.0,
+            num_fds: 0,
+        };
+        self.next_seq += 1;
+
+        let mut buf = Vec::new();
+        header.encode(&mut buf);
+        buf.extend_from_slice(&payload);
+        self.stream.write_all(&buf)?;
+        Ok(())
     }
 }
 
@@ -170,6 +185,22 @@ impl Header {
         buf.write_u32(self.seq);
         buf.write_u32(self.num_fds);
     }
+
+    fn decode(mut buf: &[u8]) -> Self {
+        let id = buf.read_u32();
+        let octets = buf.read_u32();
+        let opcode = (octets >> 24) as u8;
+        let size = octets & 0xFF_FF_FF;
+        let seq = buf.read_u32();
+        let num_fds = buf.read_u32();
+        Self {
+            id,
+            opcode,
+            size,
+            seq,
+            num_fds,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -185,11 +216,167 @@ enum CoreEventOpcode {
     BoundProps = 8,
 }
 
+#[derive(Copy, Clone, Debug)]
+struct Done {
+    id: i32,
+    seq: i32,
+}
+
+impl Done {
+    fn decode(buf: &[u8]) -> Self {
+        let value = PodStruct::<(PodInt, PodInt)>::decode(buf).unwrap();
+        Self {
+            id: value.0 .0 .0,
+            seq: value.0 .1 .0,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct Ping {
+    id: i32,
+    seq: i32,
+}
+
+impl Ping {
+    fn decode(buf: &[u8]) -> Self {
+        let value = PodStruct::<(PodInt, PodInt)>::decode(buf).unwrap();
+        Self {
+            id: value.0 .0 .0,
+            seq: value.0 .1 .0,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct RemoveId {
+    id: i32,
+}
+
+impl RemoveId {
+    fn decode(buf: &[u8]) -> Self {
+        let value = PodStruct::<PodInt>::decode(buf).unwrap();
+        Self { id: value.0 .0 }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct BoundId {
+    id: i32,
+    global_id: i32,
+}
+
+impl BoundId {
+    fn decode(buf: &[u8]) -> Self {
+        let value = PodStruct::<(PodInt, PodInt)>::decode(buf).unwrap();
+        Self {
+            id: value.0 .0 .0,
+            global_id: value.0 .1 .0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ClientInfo {
+    id: i32,
+    change_mask: i64,
+    props: HashMap<String, String>,
+}
+
+impl ClientInfo {
+    fn decode(buf: &[u8]) -> Self {
+        let value =
+            PodStruct::<(PodInt, PodLong, PodStruct<(PodInt, PodRepeat<PodString>)>)>::decode(buf)
+                .unwrap();
+
+        let id = value.0 .0 .0;
+        let change_mask = value.0 .1 .0;
+
+        let mut props = HashMap::new();
+        let mut props_iter = value.0 .2 .0 .1 .0.into_iter();
+        let prop_count = value.0 .2 .0 .0 .0;
+        for _ in 0..prop_count {
+            let key = props_iter.next().unwrap();
+            let val = props_iter.next().unwrap();
+            props.insert(
+                key.0.to_string_lossy().to_string(),
+                val.0.to_string_lossy().to_string(),
+            );
+        }
+
+        Self {
+            id,
+            change_mask,
+            props,
+        }
+    }
+}
+
+struct GetRegistry {
+    version: i32,
+    new_id: i32,
+}
+
+impl Message for GetRegistry {
+    fn id(&self) -> u32 {
+        0
+    }
+
+    fn opcode(&self) -> u8 {
+        5
+    }
+
+    fn num_fds(&self) -> u32 {
+        0
+    }
+
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        PodStruct((PodInt(self.version), PodInt(self.new_id))).encode(buf);
+    }
+}
+
+struct Global {
+    id: i32,
+    permissions: i32,
+    r#type: String,
+    version: i32,
+    props: HashMap<String, String>,
+}
+
+impl Global {
+    fn decode(mut buf: &[u8]) -> Self {
+        let value = PodStruct::<(
+            [PodInt; 2],
+            PodString,
+            PodInt,
+            //PodStruct<(PodInt, PodRepeat<String>)>,
+        )>::decode(buf);
+
+        todo!()
+    }
+}
+
+#[derive(Clone, Debug)]
 struct Hello {
     version: i32,
 }
 
-impl Hello {
+impl Message for Hello {
+    fn id(&self) -> u32 {
+        0
+    }
+
+    fn opcode(&self) -> u8 {
+        1
+    }
+
+    fn num_fds(&self) -> u32 {
+        0
+    }
+
     fn encode<B>(&self, buf: B)
     where
         B: BufMut,
@@ -268,7 +455,19 @@ struct UpdateProperties {
     props: HashMap<String, String>,
 }
 
-impl UpdateProperties {
+impl Message for UpdateProperties {
+    fn id(&self) -> u32 {
+        1
+    }
+
+    fn opcode(&self) -> u8 {
+        2
+    }
+
+    fn num_fds(&self) -> u32 {
+        0
+    }
+
     fn encode<B>(&self, buf: B)
     where
         B: BufMut,
@@ -285,6 +484,61 @@ impl UpdateProperties {
         )))
         .encode(buf);
     }
+}
+
+#[derive(Clone, Debug)]
+struct CreateObject {
+    factory_name: String,
+    r#type: String,
+    version: i32,
+    props: HashMap<String, String>,
+    new_id: i32,
+}
+
+impl Message for CreateObject {
+    fn id(&self) -> u32 {
+        0
+    }
+
+    fn opcode(&self) -> u8 {
+        6
+    }
+
+    fn num_fds(&self) -> u32 {
+        0
+    }
+
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        let mut strings = Vec::new();
+        for (key, val) in &self.props {
+            strings.push(PodString(CString::new(key.as_bytes()).unwrap()));
+            strings.push(PodString(CString::new(val.as_bytes()).unwrap()));
+        }
+
+        PodStruct((
+            [
+                PodString(CString::new(self.factory_name.as_bytes()).unwrap()),
+                PodString(CString::new(self.r#type.as_bytes()).unwrap()),
+            ],
+            PodInt(self.version),
+            PodStruct((PodInt(self.props.len() as i32), PodRepeat(strings))),
+            PodInt(self.new_id),
+        ))
+        .encode(buf);
+    }
+}
+
+trait Message {
+    fn id(&self) -> u32;
+    fn opcode(&self) -> u8;
+    fn num_fds(&self) -> u32;
+
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut;
 }
 
 trait Pod: Sized {
