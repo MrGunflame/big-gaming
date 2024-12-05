@@ -1,20 +1,15 @@
 //! https://docs.pipewire.org/page_native_protocol.html
 //!
+mod keys;
 
+use std::collections::HashMap;
 use std::ffi::CString;
-use std::io::{BufRead, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use bytemuck::PodCastError;
-use game_common::components::Encode;
-use libspa::pod::builder::Builder;
-use pipewire::context::Context;
-use pipewire::main_loop::MainLoop;
-use rustix::net::{SendAncillaryBuffer, SendFlags};
-
-use crate::manager;
+use keys::{PW_KEY_APP_ID, PW_KEY_APP_NAME};
 
 const SOCKET_LOCATIONS: &[&str] = &["PIPEWIRE_RUNTIME_DIR", "XDG_RUNTIME_DIR", "USERPROFILE"];
 const SOCKET_NAME: &str = "pipewire-0";
@@ -28,23 +23,21 @@ pub fn pw_main() {
     // mainloop.run();
     // std::thread::park();
 
-    let mut stream = UnixStream::connect(socket_addr().unwrap()).unwrap();
+    let addr = socket_addr().unwrap();
+    let mut client = Client::connect(addr).unwrap();
 
     let mut spa_buf = Vec::new();
     PodStruct(PodInt(3)).encode(&mut spa_buf);
 
     let mut buf = Vec::new();
-    // Id
-    buf.extend(0_u32.to_ne_bytes());
-    // SIZE
-    buf.extend(&[spa_buf.len() as u8, 0, 0]);
-    // OPCODE
-    buf.push(1u8);
-    // SEQ
-    buf.extend(0_u32.to_ne_bytes());
-    // N_FDS
-    buf.extend(0_u32.to_ne_bytes());
-    // SPA
+    Header {
+        id: 0,
+        size: spa_buf.len() as u32,
+        opcode: 1,
+        seq: 0,
+        num_fds: 0,
+    }
+    .encode(&mut buf);
     buf.extend_from_slice(&spa_buf);
 
     // dbg!(&spa_buf.len());
@@ -56,20 +49,16 @@ pub fn pw_main() {
     // buf.extend(3_u32.to_ne_bytes());
     // buf.extend(&[0, 0, 0, 0]);
 
-    stream.write_all(&buf).unwrap();
+    client.stream.write_all(&buf).unwrap();
 
-    let mut resp = vec![0; 200];
-    stream
-        .set_read_timeout(Some(Duration::from_secs(1)))
-        .unwrap();
-    stream.read(&mut resp).unwrap();
+    let mut resp = vec![0; 8192];
+    client.stream.read(&mut resp).unwrap();
     // dbg!(&resp);
     // return;
 
     let info = PodStruct::<([PodInt; 2], [PodString; 4])>::decode(&resp[16..]).unwrap();
+    let info = Info::decode(&resp[16..]);
     dbg!(&info);
-
-    return;
 
     // let mut buf = Vec::new();
     // // Id
@@ -88,36 +77,62 @@ pub fn pw_main() {
     // buf.extend(3_u32.to_ne_bytes());
     // buf.extend(&[0, 0, 0, 0]);
     let mut spa_buf2 = Vec::new();
-    let client_props = PodStruct(PodStruct((
-        PodInt(1),
-        PodRepeat(vec![
-            PodString(CString::from(c"application.id")),
-            PodString(CString::from(c"hello_world_69")),
+    let client_props = UpdateProperties {
+        props: HashMap::from([
+            (PW_KEY_APP_ID.to_string(), "hello_world".to_string()),
+            (PW_KEY_APP_NAME.to_string(), "hello World".to_string()),
         ]),
-    )));
+    };
+    // let client_props = PodStruct(PodStruct((
+    //     PodInt(1),
+    //     PodRepeat(vec![
+    //         PodString(CString::from(c"application.id")),
+    //         PodString(CString::from(c"hello_world_69")),
+    //     ]),
+    // )));
     client_props.encode(&mut spa_buf2);
+    dbg!(&spa_buf2, spa_buf2.len());
     // dbg!(spa_buf2.len());
 
     let mut buf = Vec::new();
-    // Id
-    buf.extend(1_u32.to_ne_bytes());
-    // OPCODE
-    buf.push(2u8);
-    // SIZE
-    buf.extend(&[spa_buf2.len() as u8, 0, 0]);
-    // SEQ
-    buf.extend(1_u32.to_ne_bytes());
-    // N_FDS
-    buf.extend(0_u32.to_ne_bytes());
-    // SPA
+
+    Header {
+        id: 1,
+        opcode: 2,
+        size: spa_buf2.len() as u32,
+        seq: 1,
+        num_fds: 0,
+    }
+    .encode(&mut buf);
     buf.extend_from_slice(&spa_buf2);
 
-    stream.write_all(&buf).unwrap();
+    client.stream.write_all(&buf).unwrap();
 
-    // let mut resp = vec![0; 100];
-    // stream.read_to_end(&mut resp).unwrap();
+    let mut resp = vec![0; 8192];
+    client.stream.read(&mut resp).unwrap();
 
-    // dbg!(&resp);
+    //let err = Error::decode(&resp[16..]);
+    //dbg!(&err);
+
+    std::thread::park();
+}
+
+struct Client {
+    stream: UnixStream,
+    next_seq: u32,
+}
+
+impl Client {
+    fn connect<P>(addr: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        let stream = UnixStream::connect(addr)?;
+        Ok(Self {
+            stream,
+            next_seq: 0,
+        })
+    }
 }
 
 fn socket_addr() -> Option<PathBuf> {
@@ -130,6 +145,46 @@ fn socket_addr() -> Option<PathBuf> {
     None
 }
 
+#[derive(Copy, Clone, Debug)]
+struct Header {
+    id: u32,
+    opcode: u8,
+    size: u32,
+    seq: u32,
+    num_fds: u32,
+}
+
+impl Header {
+    fn encode<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        buf.write_u32(self.id);
+        // In the docs it looks like `opnocde` is a single
+        // octete that comes before `size` in the stream,
+        // but this is actually incorrect.
+        // Instead the ordering is dependant on system endianess
+        // as `opcode` is stored in the MSBs of the same 4-octets
+        // that store the `size`.
+        buf.write_u32(u32::from(self.opcode) << 24 | self.size);
+        buf.write_u32(self.seq);
+        buf.write_u32(self.num_fds);
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum CoreEventOpcode {
+    Info = 0,
+    Done = 1,
+    Ping = 2,
+    Error = 3,
+    RemoveId = 4,
+    BoundId = 5,
+    AddMem = 6,
+    RemoveMem = 7,
+    BoundProps = 8,
+}
+
 struct Hello {
     version: i32,
 }
@@ -140,6 +195,95 @@ impl Hello {
         B: BufMut,
     {
         PodStruct(PodInt(self.version)).encode(buf);
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Info {
+    id: i32,
+    cookie: i32,
+    user_name: String,
+    host_name: String,
+    version: String,
+    name: String,
+    change_mask: i64,
+    props: HashMap<String, String>,
+}
+
+impl Info {
+    fn decode(buf: &[u8]) -> Self {
+        let value = PodStruct::<(
+            [PodInt; 2],
+            [PodString; 4],
+            PodLong,
+            PodStruct<(PodInt, PodRepeat<PodString>)>,
+        )>::decode(buf)
+        .unwrap();
+
+        let mut props_iter = value.0 .3 .0 .1 .0.into_iter();
+        let mut props = HashMap::new();
+        let count = value.0 .3 .0 .0 .0;
+        for _ in 0..count {
+            let key = props_iter.next().unwrap().0.to_string_lossy().to_string();
+            let val = props_iter.next().unwrap().0.to_string_lossy().to_string();
+            props.insert(key, val);
+        }
+
+        Self {
+            id: value.0 .0[0].0,
+            cookie: value.0 .0[1].0,
+            user_name: value.0 .1[0].0.to_string_lossy().to_string(),
+            host_name: value.0 .1[1].0.to_string_lossy().to_string(),
+            version: value.0 .1[2].0.to_string_lossy().to_string(),
+            name: value.0 .1[3].0.to_string_lossy().to_string(),
+            change_mask: value.0 .2 .0,
+            props,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Error {
+    id: i32,
+    seq: i32,
+    res: i32,
+    message: String,
+}
+
+impl Error {
+    fn decode(buf: &[u8]) -> Self {
+        let value = PodStruct::<(PodInt, PodInt, PodInt, PodString)>::decode(buf).unwrap();
+
+        Self {
+            id: value.0 .0 .0,
+            seq: value.0 .1 .0,
+            res: value.0 .2 .0,
+            message: value.0 .3 .0.to_string_lossy().to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct UpdateProperties {
+    props: HashMap<String, String>,
+}
+
+impl UpdateProperties {
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        let mut strings = Vec::new();
+        for (key, val) in &self.props {
+            strings.push(PodString(CString::new(key.as_bytes()).unwrap()));
+            strings.push(PodString(CString::new(val.as_bytes()).unwrap()));
+        }
+
+        PodStruct::<PodStruct<(PodInt, PodRepeat<PodString>)>>(PodStruct((
+            PodInt(self.props.len() as i32),
+            PodRepeat(strings),
+        )))
+        .encode(buf);
     }
 }
 
@@ -204,6 +348,43 @@ impl Pod for PodInt {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(transparent)]
+struct PodLong(i64);
+
+impl Pod for PodLong {
+    fn size(&self) -> u32 {
+        8
+    }
+
+    fn kind(&self) -> PodType {
+        PodType::Long
+    }
+
+    fn write_payload<B>(&self, mut buf: B)
+    where
+        B: BufMut,
+    {
+        buf.write_i64(self.0);
+    }
+
+    fn read_payload(mut buf: &[u8]) -> Self {
+        let value = buf.read_i64();
+        Self(value)
+    }
+
+    fn encode<B>(&self, buf: B)
+    where
+        B: BufMut,
+    {
+        todo!()
+    }
+
+    fn decode(buf: &[u8]) -> Result<Self, ()> {
+        todo!()
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct PodStruct<T>(T);
 
@@ -223,7 +404,7 @@ where
     T: PodIterable,
 {
     fn size(&self) -> u32 {
-        self.size_of_members() + 8
+        self.size_of_members()
     }
 
     fn kind(&self) -> PodType {
@@ -244,21 +425,12 @@ where
     fn read_payload(mut buf: &[u8]) -> Self {
         let mut decoder = T::Decoder::default();
 
-        dbg!(&buf);
-
         while !buf.is_empty() {
             let size = align_up(buf.read_u32());
             let kind = buf.read_u32();
-            dbg!(&size, &kind);
-
-            if kind > 20 {
-                break;
-            }
 
             let (elem, rem) = buf.split_at(size as usize);
             buf = rem;
-
-            dbg!(&elem);
 
             let res = decoder.decode(elem);
             if matches!(res, DecodeState::Done) {
@@ -281,7 +453,6 @@ where
     fn decode(mut buf: &[u8]) -> Result<Self, ()> {
         let size = buf.read_u32();
         let kind = buf.read_u32();
-        dbg!(&kind, &size);
         Ok(Self::read_payload(buf))
     }
 }
@@ -449,6 +620,252 @@ where
     }
 }
 
+struct Tuple3Decoder<T0, T1, T2>
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+{
+    next: usize,
+    t0: T0::Decoder,
+    t1: T1::Decoder,
+    t2: T2::Decoder,
+}
+
+impl<T0, T1, T2> Default for Tuple3Decoder<T0, T1, T2>
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+{
+    fn default() -> Self {
+        Self {
+            next: 0,
+            t0: T0::Decoder::default(),
+            t1: T1::Decoder::default(),
+            t2: T2::Decoder::default(),
+        }
+    }
+}
+
+impl<T0, T1, T2> PodIterableDecoder for Tuple3Decoder<T0, T1, T2>
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+{
+    fn decode(&mut self, buf: &[u8]) -> DecodeState {
+        match self.next {
+            0 => match self.t0.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => self.next += 1,
+            },
+            1 => match self.t1.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => self.next += 1,
+            },
+            2 => match self.t2.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => {
+                    self.next += 1;
+                    return DecodeState::Done;
+                }
+            },
+            _ => unreachable!(),
+        }
+
+        DecodeState::NeedMore
+    }
+}
+
+impl<T0, T1, T2> PodIterable for (T0, T1, T2)
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+{
+    type Decoder = Tuple3Decoder<T0, T1, T2>;
+
+    fn len(&self) -> usize {
+        self.0.len() + self.1.len() + self.2.len()
+    }
+
+    fn get_size(&self, index: usize) -> u32 {
+        if index < self.0.len() {
+            self.0.get_size(index)
+        } else if index - self.0.len() < self.1.len() {
+            self.1.get_size(index - self.0.len())
+        } else {
+            self.2.get_size(index - self.0.len() - self.1.len())
+        }
+    }
+
+    fn get_kind(&self, index: usize) -> PodType {
+        if index < self.0.len() {
+            self.0.get_kind(index)
+        } else if index - self.0.len() < self.1.len() {
+            self.1.get_kind(index - self.0.len())
+        } else {
+            self.2.get_kind(index - self.0.len() - self.1.len())
+        }
+    }
+
+    fn write_payload_nth<B>(&self, index: usize, buf: B)
+    where
+        B: BufMut,
+    {
+        if index < self.0.len() {
+            self.0.write_payload_nth(index, buf);
+        } else if index - self.0.len() < self.1.len() {
+            self.1.write_payload_nth(index - self.0.len(), buf);
+        } else {
+            self.2
+                .write_payload_nth(index - self.0.len() - self.1.len(), buf);
+        }
+    }
+
+    fn build(decoder: Self::Decoder) -> Self {
+        (
+            T0::build(decoder.t0),
+            T1::build(decoder.t1),
+            T2::build(decoder.t2),
+        )
+    }
+}
+
+struct Tuple4Decoder<T0, T1, T2, T3>
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+    T3: PodIterable,
+{
+    next: usize,
+    t0: T0::Decoder,
+    t1: T1::Decoder,
+    t2: T2::Decoder,
+    t3: T3::Decoder,
+}
+
+impl<T0, T1, T2, T3> Default for Tuple4Decoder<T0, T1, T2, T3>
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+    T3: PodIterable,
+{
+    fn default() -> Self {
+        Self {
+            next: 0,
+            t0: T0::Decoder::default(),
+            t1: T1::Decoder::default(),
+            t2: T2::Decoder::default(),
+            t3: T3::Decoder::default(),
+        }
+    }
+}
+
+impl<T0, T1, T2, T3> PodIterableDecoder for Tuple4Decoder<T0, T1, T2, T3>
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+    T3: PodIterable,
+{
+    fn decode(&mut self, buf: &[u8]) -> DecodeState {
+        match self.next {
+            0 => match self.t0.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => self.next += 1,
+            },
+            1 => match self.t1.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => self.next += 1,
+            },
+            2 => match self.t2.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => self.next += 1,
+            },
+            3 => match self.t3.decode(buf) {
+                DecodeState::NeedMore => (),
+                DecodeState::Done => {
+                    self.next += 1;
+                    return DecodeState::Done;
+                }
+            },
+            _ => unreachable!(),
+        }
+
+        DecodeState::NeedMore
+    }
+}
+
+impl<T0, T1, T2, T3> PodIterable for (T0, T1, T2, T3)
+where
+    T0: PodIterable,
+    T1: PodIterable,
+    T2: PodIterable,
+    T3: PodIterable,
+{
+    type Decoder = Tuple4Decoder<T0, T1, T2, T3>;
+
+    fn len(&self) -> usize {
+        self.0.len() + self.1.len() + self.2.len() + self.3.len()
+    }
+
+    fn get_size(&self, index: usize) -> u32 {
+        if index < self.0.len() {
+            self.0.get_size(index)
+        } else if index - self.0.len() < self.1.len() {
+            self.1.get_size(index - self.0.len())
+        } else if index - self.0.len() - self.1.len() < self.2.len() {
+            self.2.get_size(index - self.0.len() - self.1.len())
+        } else {
+            self.3
+                .get_size(index - self.0.len() - self.1.len() - self.2.len())
+        }
+    }
+
+    fn get_kind(&self, index: usize) -> PodType {
+        if index < self.0.len() {
+            self.0.get_kind(index)
+        } else if index - self.0.len() < self.1.len() {
+            self.1.get_kind(index - self.0.len())
+        } else if index - self.0.len() - self.1.len() < self.2.len() {
+            self.2.get_kind(index - self.0.len() - self.1.len())
+        } else {
+            self.3
+                .get_kind(index - self.0.len() - self.1.len() - self.2.len())
+        }
+    }
+
+    fn write_payload_nth<B>(&self, index: usize, buf: B)
+    where
+        B: BufMut,
+    {
+        if index < self.0.len() {
+            self.0.write_payload_nth(index, buf);
+        } else if index - self.0.len() < self.1.len() {
+            self.1.write_payload_nth(index - self.0.len(), buf);
+        } else if index - self.0.len() - self.1.len() < self.2.len() {
+            self.2
+                .write_payload_nth(index - self.0.len() - self.1.len(), buf);
+        } else {
+            self.3
+                .write_payload_nth(index - self.0.len() - self.1.len() - self.2.len(), buf);
+        }
+    }
+
+    fn build(decoder: Self::Decoder) -> Self {
+        (
+            T0::build(decoder.t0),
+            T1::build(decoder.t1),
+            T2::build(decoder.t2),
+            T3::build(decoder.t3),
+        )
+    }
+}
+
 struct ArrayDecoder<T, const N: usize>(Vec<T>);
 
 impl<T, const N: usize> Default for ArrayDecoder<T, N> {
@@ -570,6 +987,9 @@ impl Pod for PodString {
     {
         let bytes = self.0.as_bytes_with_nul();
         buf.write_bytes(bytes);
+        for _ in 0..padding_for(bytes.len() as u32) {
+            buf.write_u8(0);
+        }
     }
 
     fn read_payload(mut buf: &[u8]) -> Self {
@@ -635,6 +1055,10 @@ trait BufMut {
     fn write_i32(&mut self, value: i32) {
         self.write_bytes(&value.to_ne_bytes());
     }
+
+    fn write_i64(&mut self, value: i64) {
+        self.write_bytes(&value.to_ne_bytes());
+    }
 }
 
 trait Buf {
@@ -662,6 +1086,12 @@ trait Buf {
         let mut buf = [0; 4];
         self.read_slice(&mut buf);
         i32::from_ne_bytes(buf)
+    }
+
+    fn read_i64(&mut self) -> i64 {
+        let mut buf = [0; 8];
+        self.read_slice(&mut buf);
+        i64::from_ne_bytes(buf)
     }
 }
 
@@ -692,5 +1122,13 @@ fn align_up(size: u32) -> u32 {
         size
     } else {
         size + (8 - (size % 8))
+    }
+}
+
+fn padding_for(size: u32) -> u32 {
+    if size % 8 == 0 {
+        0
+    } else {
+        8 - (size % 8)
     }
 }
