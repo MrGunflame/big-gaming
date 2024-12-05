@@ -1,6 +1,7 @@
 //! https://docs.pipewire.org/page_native_protocol.html
 //!
 mod keys;
+mod spa;
 
 use std::alloc::dealloc;
 use std::collections::HashMap;
@@ -12,15 +13,22 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use keys::{PW_KEY_APP_ID, PW_KEY_APP_NAME};
+use pipewire::context::Context;
+use pipewire::main_loop::MainLoop;
 
 const SOCKET_LOCATIONS: &[&str] = &["PIPEWIRE_RUNTIME_DIR", "XDG_RUNTIME_DIR", "USERPROFILE"];
 const SOCKET_NAME: &str = "pipewire-0";
 
 pub fn pw_main() {
-    // pipewire::init();
+    pipewire::init();
     // let mut mainloop = MainLoop::new(None).unwrap();
     // let context = Context::new(&mainloop).unwrap();
     // let core = context.connect(None).unwrap();
+
+    // unsafe {
+    //     let res = pipewire::sys::pw_context_find_factory(context.as_raw_ptr(), c"adapter".as_ptr());
+    //     dbg!(&*res);
+    // }
 
     // mainloop.run();
     // std::thread::park();
@@ -46,12 +54,19 @@ pub fn pw_main() {
     dbg!(&resp);
 
     client
+        .send(&GetRegistry {
+            version: 1,
+            new_id: 2,
+        })
+        .unwrap();
+
+    client
         .send(&CreateObject {
-            factory_name: "node-factory".to_string(),
-            new_id: 12345,
-            r#type: "Node".to_string(),
+            factory_name: "adapter".to_string(),
+            new_id: 3,
+            r#type: "PipeWire:Interface:Node".to_string(),
             version: 3,
-            props: HashMap::new(),
+            props: HashMap::from([("node.name".to_string(), "test".to_string())]),
         })
         .unwrap();
 
@@ -59,8 +74,11 @@ pub fn pw_main() {
     dbg!(&resp);
     // dbg!(&resp, &header);
 
-    let resp = client.recv().unwrap();
-    dbg!(&resp);
+    loop {
+        let resp = client.recv().unwrap();
+        dbg!(&resp);
+    }
+
     let resp = client.recv().unwrap();
     dbg!(&resp);
     let resp = client.recv().unwrap();
@@ -82,6 +100,7 @@ enum Event {
     RemoveId(RemoveId),
     BoundId(BoundId),
     ClientInfo(ClientInfo),
+    RegistryGlobal(Global),
 }
 
 struct Client {
@@ -120,6 +139,10 @@ impl Client {
             },
             1 => match header.opcode {
                 0 => Ok(Event::ClientInfo(ClientInfo::decode(&buf))),
+                _ => todo!(),
+            },
+            2 => match header.opcode {
+                0 => Ok(Event::RegistryGlobal(Global::decode(&buf))),
                 _ => todo!(),
             },
             n => todo!("{:?}", n),
@@ -338,6 +361,7 @@ impl Message for GetRegistry {
     }
 }
 
+#[derive(Clone, Debug)]
 struct Global {
     id: i32,
     permissions: i32,
@@ -347,15 +371,31 @@ struct Global {
 }
 
 impl Global {
-    fn decode(mut buf: &[u8]) -> Self {
+    fn decode(buf: &[u8]) -> Self {
         let value = PodStruct::<(
             [PodInt; 2],
             PodString,
             PodInt,
-            //PodStruct<(PodInt, PodRepeat<String>)>,
-        )>::decode(buf);
+            PodStruct<(PodInt, PodRepeat<PodString>)>,
+        )>::decode(buf)
+        .unwrap();
 
-        todo!()
+        let mut props_iter = value.0 .3 .0 .1 .0.into_iter();
+        let mut props = HashMap::new();
+        let count = value.0 .3 .0 .0 .0;
+        for _ in 0..count {
+            let key = props_iter.next().unwrap().0.to_string_lossy().to_string();
+            let val = props_iter.next().unwrap().0.to_string_lossy().to_string();
+            props.insert(key, val);
+        }
+
+        Self {
+            id: value.0 .0[0].0,
+            permissions: value.0 .0[1].0,
+            r#type: value.0 .1 .0.to_string_lossy().to_string(),
+            version: value.0 .2 .0,
+            props,
+        }
     }
 }
 
