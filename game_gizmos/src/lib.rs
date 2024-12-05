@@ -10,6 +10,7 @@ use game_common::components::Color;
 use game_render::camera::Camera;
 use game_render::graph::NodeLabel;
 use game_render::Renderer;
+use game_render::FINAL_RENDER_PASS;
 use game_tracing::trace_span;
 use glam::Quat;
 use glam::Vec3;
@@ -39,6 +40,7 @@ impl Gizmos {
         let node = GizmoPass::new(renderer.device(), elements.clone(), camera.clone());
         let mut graph = renderer.graph_mut();
         graph.add_node(GIZMO_PASS, node);
+        graph.add_node_dependency(GIZMO_PASS, FINAL_RENDER_PASS);
 
         Self {
             current: elements,
