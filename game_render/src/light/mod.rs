@@ -2,9 +2,12 @@ pub mod pipeline;
 
 use game_common::components::{Color, Transform};
 
+use crate::entities::SceneId;
+
 #[derive(Copy, Clone, Debug)]
 pub struct DirectionalLight {
     pub transform: Transform,
+    pub scene: SceneId,
     pub color: Color,
     pub illuminance: f32,
 }
@@ -12,6 +15,7 @@ pub struct DirectionalLight {
 #[derive(Copy, Clone, Debug)]
 pub struct PointLight {
     pub transform: Transform,
+    pub scene: SceneId,
     pub color: Color,
     pub intensity: f32,
     pub radius: f32,
@@ -20,6 +24,7 @@ pub struct PointLight {
 #[derive(Copy, Clone, Debug)]
 pub struct SpotLight {
     pub transform: Transform,
+    pub scene: SceneId,
     pub color: Color,
     pub intensity: f32,
     pub radius: f32,

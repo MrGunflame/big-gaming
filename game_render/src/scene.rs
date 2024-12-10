@@ -1,15 +1,13 @@
 use glam::UVec2;
 
-use crate::entities::SceneEntities;
+use crate::entities::Event;
 use crate::options::MainPassOptions;
 use crate::pbr::material::Materials;
 use crate::pbr::mesh::Meshes;
-use crate::state::Event;
 use crate::texture::Images;
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
-    pub entities: SceneEntities,
     options: MainPassOptions,
     pub(super) events: Vec<Event>,
 }

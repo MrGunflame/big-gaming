@@ -17,8 +17,19 @@ pub(crate) struct DirectionalLightUniform {
 }
 
 impl GpuBuffer for DirectionalLightUniform {
-    const SIZE: usize = std::mem::size_of::<Self>();
+    const SIZE: usize = size_of::<Self>();
     const ALIGN: usize = 16;
+}
+
+impl From<DirectionalLight> for DirectionalLightUniform {
+    fn from(entity: DirectionalLight) -> Self {
+        Self {
+            direction: (entity.transform.rotation * -Vec3::Z).to_array(),
+            color: entity.color.as_rgb(),
+            intensity: illuminance_to_candelas(entity.illuminance),
+            _pad0: 0,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
@@ -33,8 +44,21 @@ pub(crate) struct PointLightUniform {
 }
 
 impl GpuBuffer for PointLightUniform {
-    const SIZE: usize = std::mem::size_of::<Self>();
+    const SIZE: usize = size_of::<Self>();
     const ALIGN: usize = 16;
+}
+
+impl From<PointLight> for PointLightUniform {
+    fn from(entity: PointLight) -> Self {
+        Self {
+            position: entity.transform.translation.to_array(),
+            color: entity.color.as_rgb(),
+            intensity: entity.intensity,
+            radius: entity.radius,
+            _pad0: 0,
+            _pad1: [0; 3],
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Zeroable, Pod)]
@@ -53,8 +77,25 @@ pub(crate) struct SpotLightUniform {
 }
 
 impl GpuBuffer for SpotLightUniform {
-    const SIZE: usize = std::mem::size_of::<Self>();
+    const SIZE: usize = size_of::<Self>();
     const ALIGN: usize = 16;
+}
+
+impl From<SpotLight> for SpotLightUniform {
+    fn from(entity: SpotLight) -> Self {
+        Self {
+            position: entity.transform.translation.to_array(),
+            direction: (entity.transform.rotation * -Vec3::Z).to_array(),
+            color: entity.color.as_rgb(),
+            intensity: entity.intensity,
+            radius: entity.radius,
+            inner_cutoff: entity.inner_cutoff,
+            outer_cutoff: entity.outer_cutoff,
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: [0; 1],
+        }
+    }
 }
 
 pub fn update_directional_lights(

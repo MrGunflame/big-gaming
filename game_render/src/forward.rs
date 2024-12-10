@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use game_common::cell::UnsafeRefCell;
 use wgpu::{
     AddressMode, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
     BlendState, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction, DepthBiasState,
@@ -9,6 +12,7 @@ use wgpu::{
 };
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
+use crate::entities::{Event, Resources};
 use crate::pbr::material::DefaultTextures;
 use crate::texture::Images;
 
@@ -22,10 +26,12 @@ pub struct ForwardPipeline {
     pub lights_bind_group_layout: BindGroupLayout,
     pub sampler: Sampler,
     pub default_textures: DefaultTextures,
+    pub resources: Arc<Resources>,
+    pub events: UnsafeRefCell<Vec<Event>>,
 }
 
 impl ForwardPipeline {
-    pub fn new(device: &Device, images: &mut Images) -> Self {
+    pub fn new(device: &Device, images: &mut Images, resources: Arc<Resources>) -> Self {
         let vs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("vs_bind_group_layout"),
             entries: &[
@@ -282,6 +288,8 @@ impl ForwardPipeline {
             lights_bind_group_layout,
             sampler,
             default_textures: DefaultTextures::new(images),
+            resources,
+            events: UnsafeRefCell::new(Vec::new()),
         }
     }
 }

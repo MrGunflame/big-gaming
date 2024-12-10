@@ -6,6 +6,7 @@ use game_common::math::Ray;
 use game_window::windows::WindowId;
 use glam::{Mat4, UVec2, Vec2, Vec3};
 
+use crate::entities::SceneId;
 use crate::texture::RenderImageId;
 
 #[derive(Copy, Clone, Debug)]
@@ -13,6 +14,8 @@ pub struct Camera {
     pub transform: Transform,
     pub projection: Projection,
     pub target: RenderTarget,
+    /// The scene that should be rendered with this camera.
+    pub scene: SceneId,
 }
 
 impl Camera {

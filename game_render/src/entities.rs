@@ -1,256 +1,268 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::mem::ManuallyDrop;
-use std::ops::{Deref, DerefMut};
+pub mod pool;
 
+use game_common::collections::arena::{Arena, Key};
 use game_common::components::Transform;
-use slotmap::{new_key_type, Key, SlotMap};
+use pool::{Pool, Writer};
 
 use crate::camera::Camera;
 use crate::light::{DirectionalLight, PointLight, SpotLight};
+use crate::mesh::Mesh;
 use crate::options::MainPassOptions;
-use crate::pbr::material::MaterialId;
-use crate::pbr::mesh::MeshId;
-use crate::state::Event;
+use crate::pbr::PbrMaterial;
+use crate::texture::Image;
 
-#[derive(Clone, Debug)]
-pub struct EntityManager<K: Key, V: WithEvent<K>> {
-    entities: SlotMap<K, V>,
-    // We only want to maintain the most recent event for every entity.
-    // This has the effect that later events overwrite earlier ones.
-    // This is important as the consumer of the renderer must only maintain
-    // the state of the current entity (the entity at the time the renderer
-    // is dispached) and the renderer MUST NEVER attempt to create an entity
-    // that is not current.
-    // FIXME: Since we control the keys and they are already linear we can
-    // use a Vec instead.
-    pub(crate) events: HashMap<K, Event>,
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MeshId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ImageId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MaterialId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CameraId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ObjectId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DirectionalLightId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PointLightId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SpotLightId(pub(crate) usize);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SceneId(pub(crate) Key);
+
+#[derive(Debug, Default)]
+pub(crate) struct Resources {
+    pub(crate) meshes: Pool<Mesh>,
+    pub(crate) images: Pool<Image>,
+    pub(crate) materials: Pool<PbrMaterial>,
+
+    pub(crate) cameras: Pool<Camera>,
+    pub(crate) objects: Pool<Object>,
+    pub(crate) directional_lights: Pool<DirectionalLight>,
+    pub(crate) point_lights: Pool<PointLight>,
+    pub(crate) spot_lights: Pool<SpotLight>,
+    pub(crate) scenes: Arena<()>,
 }
 
-impl<K: Key, V: WithEvent<K> + Copy> EntityManager<K, V> {
-    fn new() -> Self {
-        Self {
-            entities: SlotMap::default(),
-            events: HashMap::new(),
+impl Resources {
+    pub(crate) unsafe fn commit(&self) {
+        unsafe {
+            self.meshes.commit();
+            self.images.commit();
+            self.materials.commit();
+            self.cameras.commit();
+            self.objects.commit();
+            self.directional_lights.commit();
+            self.point_lights.commit();
+            self.spot_lights.commit();
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.entities.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn insert(&mut self, entity: V) -> K {
-        let id = self.entities.insert(entity);
-        self.events.insert(id, V::create(id, entity));
-        tracing::trace!("spawn entity {:?}", id);
-        id
-    }
-
-    pub fn get(&self, id: K) -> Option<&V> {
-        self.entities.get(id)
-    }
-
-    pub fn get_mut(&mut self, id: K) -> Option<EntityMut<'_, K, V>> {
-        let entity = self.entities.get_mut(id)?;
-
-        let event = self.events.entry(id);
-        Some(EntityMut {
-            id,
-            entity,
-            event: ManuallyDrop::new(event),
-        })
-    }
-
-    pub fn remove(&mut self, id: K) {
-        if self.entities.remove(id).is_some() {
-            self.events.insert(id, V::destroy(id));
-            tracing::trace!("despawn entity {:?}", id);
-        }
-    }
-
-    pub fn values(&self) -> impl Iterator<Item = &V> {
-        self.entities.values()
-    }
-
-    // Provide this instead of `iter_mut` iterator, because it cannot be implemented
-    // soundly with the current event system.
-    pub(crate) fn for_each_mut<F>(&mut self, mut f: F)
-    where
-        F: FnMut(K, EntityMut<'_, K, V>),
-    {
-        for (key, val) in self.entities.iter_mut() {
-            let event = self.events.entry(key);
-
-            f(
-                key,
-                EntityMut {
-                    id: key,
-                    entity: val,
-                    event: ManuallyDrop::new(event),
-                },
-            );
-        }
-    }
-
-    pub(crate) fn drain_events(&mut self) -> impl Iterator<Item = Event> + '_ {
-        self.events.drain().map(|(_, v)| v)
-    }
-}
-
-impl<K: Key, V: WithEvent<K> + Copy> Default for EntityManager<K, V> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
 #[derive(Debug)]
-pub struct EntityMut<'a, K, V>
-where
-    K: Key + Copy,
-    V: WithEvent<K> + Copy,
-{
-    id: K,
-    entity: &'a mut V,
-    // Note that we use an `ManauallyDrop` here because we need to use the entry
-    // API in the `Drop` impl, which requires an owned instance.
-    event: ManuallyDrop<Entry<'a, K, Event>>,
+pub struct ResourcesMut<'a> {
+    resources: &'a Resources,
+    events: &'a mut Vec<Event>,
 }
 
-impl<'a, K, V> Drop for EntityMut<'a, K, V>
-where
-    K: Key + Copy,
-    V: WithEvent<K> + Copy,
-{
-    fn drop(&mut self) {
-        let event = V::create(self.id, *self.entity);
+impl<'a> ResourcesMut<'a> {
+    /// # Safety
+    ///
+    /// Calling this function requires all [`Pool`]s in the given [`Resources`] to be writer-free.
+    ///
+    /// This also implies that no two instances of `ResourceMut` must ever exist with the same
+    /// underlying [`Resources`] instance.
+    pub(crate) unsafe fn new(resources: &'a Resources, events: &'a mut Vec<Event>) -> Self {
+        Self { resources, events }
+    }
 
-        // SAFETY: We only take out the value once in the destructor.
-        // See `EntityMut::event` why this is necessary here.
-        let slot = unsafe { ManuallyDrop::take(&mut self.event) };
-        match slot {
-            Entry::Occupied(mut slot) => {
-                slot.insert(event);
-            }
-            Entry::Vacant(slot) => {
-                slot.insert(event);
-            }
+    pub fn meshes(&mut self) -> MeshesMut<'_> {
+        MeshesMut {
+            meshes: unsafe { self.resources.meshes.writer() },
+            events: &mut self.events,
+        }
+    }
+
+    pub fn images(&mut self) -> ImagesMut<'_> {
+        ImagesMut {
+            images: unsafe { self.resources.images.writer() },
+            events: &mut self.events,
+        }
+    }
+
+    pub fn materials(&mut self) -> MaterialsMut<'_> {
+        MaterialsMut {
+            materials: unsafe { self.resources.materials.writer() },
+            events: &mut self.events,
+        }
+    }
+
+    pub fn objects(&mut self) -> ObjectsMut<'_> {
+        ObjectsMut {
+            objects: unsafe { self.resources.objects.writer() },
+            events: &mut self.events,
         }
     }
 }
 
-impl<'a, K, V> Deref for EntityMut<'a, K, V>
-where
-    K: Key + Copy,
-    V: WithEvent<K> + Copy,
-{
-    type Target = V;
+#[derive(Debug)]
+pub struct MeshesMut<'a> {
+    meshes: Writer<'a, Mesh>,
+    events: &'a mut Vec<Event>,
+}
 
-    fn deref(&self) -> &Self::Target {
-        self.entity
+impl<'a> MeshesMut<'a> {
+    pub fn insert(&mut self, mesh: Mesh) -> MeshId {
+        let id = self.meshes.insert(mesh);
+        MeshId(id)
+    }
+
+    pub fn remove(&mut self, id: MeshId) {
+        self.meshes.remove(id.0);
     }
 }
 
-impl<'a, K, V> DerefMut for EntityMut<'a, K, V>
-where
-    K: Key + Copy,
-    V: WithEvent<K> + Copy,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.entity
+#[derive(Debug)]
+pub struct ImagesMut<'a> {
+    images: Writer<'a, Image>,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a> ImagesMut<'a> {
+    pub fn insert(&mut self, image: Image) -> ImageId {
+        let id = self.images.insert(image);
+        ImageId(id)
+    }
+
+    pub fn remove(&mut self, id: ImageId) {
+        self.images.remove(id.0);
     }
 }
 
-new_key_type! {
-    pub struct ObjectId;
-    pub struct DirectionalLightId;
-    pub struct PointLightId;
-    pub struct SpotLightId;
-    pub struct CameraId;
+#[derive(Debug)]
+pub struct MaterialsMut<'a> {
+    materials: Writer<'a, PbrMaterial>,
+    events: &'a mut Vec<Event>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct SceneEntities {
-    pub objects: EntityManager<ObjectId, Object>,
-    pub cameras: EntityManager<CameraId, Camera>,
-    pub directional_lights: EntityManager<DirectionalLightId, DirectionalLight>,
-    pub point_lights: EntityManager<PointLightId, PointLight>,
-    pub spot_lights: EntityManager<SpotLightId, SpotLight>,
+impl<'a> MaterialsMut<'a> {
+    pub fn insert(&mut self, material: PbrMaterial) -> MaterialId {
+        let id = self.materials.insert(material);
+        MaterialId(id)
+    }
+
+    pub fn remove(&mut self, id: MaterialId) {
+        self.materials.remove(id.0);
+    }
 }
 
-impl SceneEntities {
-    pub fn new() -> Self {
-        Self {
-            objects: EntityManager::new(),
-            cameras: EntityManager::new(),
-            directional_lights: EntityManager::new(),
-            point_lights: EntityManager::new(),
-            spot_lights: EntityManager::new(),
-        }
+#[derive(Debug)]
+pub struct ObjectsMut<'a> {
+    objects: Writer<'a, Object>,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a> ObjectsMut<'a> {
+    pub fn insert(&mut self, object: Object) -> ObjectId {
+        let id = self.objects.insert(object);
+        ObjectId(id)
+    }
+
+    pub fn remove(&mut self, id: ObjectId) {
+        self.objects.remove(id.0);
+    }
+}
+
+pub struct DirectionalLightsMut<'a> {
+    lights: Writer<'a, DirectionalLight>,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a> DirectionalLightsMut<'a> {
+    pub fn insert(&mut self, light: DirectionalLight) -> DirectionalLightId {
+        let id = self.lights.insert(light);
+        DirectionalLightId(id)
+    }
+
+    pub fn remove(&mut self, id: DirectionalLightId) {
+        self.lights.remove(id.0);
+    }
+}
+
+pub struct PointLightsMut<'a> {
+    lights: Writer<'a, PointLight>,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a> PointLightsMut<'a> {
+    pub fn insert(&mut self, light: PointLight) -> PointLightId {
+        let id = self.lights.insert(light);
+        PointLightId(id)
+    }
+
+    pub fn remove(&mut self, id: PointLightId) {
+        self.lights.remove(id.0);
+    }
+}
+
+pub struct SpotLightsMut<'a> {
+    lights: Writer<'a, SpotLight>,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a> SpotLightsMut<'a> {
+    pub fn insert(&mut self, light: SpotLight) -> SpotLightId {
+        let id = self.lights.insert(light);
+        SpotLightId(id)
+    }
+
+    pub fn remove(&mut self, id: SpotLightId) {
+        self.lights.remove(id.0);
+    }
+}
+
+#[derive(Debug)]
+pub struct ScenesMut<'a> {
+    scenes: &'a mut Arena<()>,
+}
+
+impl<'a> ScenesMut<'a> {
+    pub fn insert(&mut self) -> SceneId {
+        SceneId(self.scenes.insert(()))
+    }
+
+    pub fn remove(&mut self, id: SceneId) {
+        self.scenes.remove(id.0);
     }
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct Object {
     pub transform: Transform,
+    pub scene: SceneId,
     pub mesh: MeshId,
     pub material: MaterialId,
 }
 
-pub trait WithEvent<K> {
-    fn create(id: K, v: Self) -> Event;
-    fn destroy(id: K) -> Event;
-}
-
-impl WithEvent<ObjectId> for Object {
-    fn create(id: ObjectId, v: Self) -> Event {
-        Event::CreateObject(id, v)
-    }
-
-    fn destroy(id: ObjectId) -> Event {
-        Event::DestroyObject(id)
-    }
-}
-
-impl WithEvent<CameraId> for Camera {
-    fn create(id: CameraId, v: Self) -> Event {
-        Event::CreateCamera(id, v)
-    }
-
-    fn destroy(id: CameraId) -> Event {
-        Event::DestroyCamera(id)
-    }
-}
-
-impl WithEvent<DirectionalLightId> for DirectionalLight {
-    fn create(id: DirectionalLightId, v: Self) -> Event {
-        Event::CreateDirectionalLight(id, v)
-    }
-
-    fn destroy(id: DirectionalLightId) -> Event {
-        Event::DestroyDirectionalLight(id)
-    }
-}
-
-impl WithEvent<PointLightId> for PointLight {
-    fn create(id: PointLightId, v: Self) -> Event {
-        Event::CreatePointLight(id, v)
-    }
-
-    fn destroy(id: PointLightId) -> Event {
-        Event::DestroyPointLight(id)
-    }
-}
-
-impl WithEvent<SpotLightId> for SpotLight {
-    fn create(id: SpotLightId, v: Self) -> Event {
-        Event::CreateSpotLight(id, v)
-    }
-
-    fn destroy(id: SpotLightId) -> Event {
-        Event::DestroySpotLight(id)
-    }
+#[derive(Clone, Debug)]
+pub(crate) enum Event {
+    CreateCamera(CameraId),
+    DestroyCamera(CameraId),
+    CreateObject(ObjectId),
+    DestroyObject(ObjectId),
+    CreateDirectionalLight(DirectionalLightId),
+    DestroyDirectionalLight(DirectionalLightId),
+    CreatePointLight(PointLightId),
+    DestroyPointLight(PointLightId),
+    CreateSpotLight(SpotLightId),
+    DestroySpotLight(SpotLightId),
+    UpdateMainPassOptions(MainPassOptions),
 }

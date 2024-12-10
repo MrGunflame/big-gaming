@@ -21,13 +21,12 @@ mod fps_limiter;
 mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
-mod state;
 
+use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
 use game_common::cell::RefMut;
-use scene::{RendererScene, Scene};
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -42,11 +41,7 @@ use forward::ForwardPipeline;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
-use parking_lot::Mutex;
-use pbr::material::Materials;
-use pbr::mesh::Meshes;
 use pipelined_rendering::{Pipeline, RenderImageGpu};
-use state::RenderState;
 use texture::{Images, RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
@@ -70,16 +65,12 @@ pub struct Renderer {
 
     backlog: VecDeque<SurfaceEvent>,
 
-    pub images: Images,
-    pub meshes: Meshes,
-    pub materials: Materials,
+    forward: Arc<ForwardPipeline>,
+    resources: Arc<Resources>,
+    events: Vec<Event>,
 
     render_textures: RenderTextures,
     jobs: VecDeque<Job>,
-
-    scenes: HashMap<RenderTarget, Scene>,
-    state: Arc<Mutex<HashMap<RenderTarget, RenderState>>>,
-    forward: Arc<ForwardPipeline>,
 }
 
 impl Renderer {
@@ -124,10 +115,14 @@ impl Renderer {
         ))
         .map_err(Error::NoDevice)?;
 
-        let mut images = Images::new();
-        let forward = Arc::new(ForwardPipeline::new(&device, &mut images));
+        let resources = Arc::new(Resources::default());
 
-        let state = Arc::new(Mutex::new(HashMap::new()));
+        let mut images = Images::new();
+        let forward = Arc::new(ForwardPipeline::new(
+            &device,
+            &mut images,
+            resources.clone(),
+        ));
 
         let pipeline = Pipeline::new(instance, adapter, device, queue);
 
@@ -135,36 +130,25 @@ impl Renderer {
             let mut graph = unsafe { pipeline.shared.graph.borrow_mut() };
             passes::init(
                 &mut graph,
-                state.clone(),
                 forward.clone(),
                 &pipeline.shared.device,
+                &pipeline.shared.queue,
             );
         }
 
         Ok(Self {
-            images,
-            materials: Materials::new(),
-            meshes: Meshes::new(),
             backlog: VecDeque::new(),
             pipeline,
-            state,
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
-            scenes: HashMap::new(),
             forward,
+            resources,
+            events: Vec::new(),
         })
     }
 
-    pub fn scene_mut(&mut self, target: RenderTarget) -> Option<RendererScene<'_>> {
-        let size = self.get_surface_size(target)?;
-
-        self.scenes.get_mut(&target).map(|scene| RendererScene {
-            scene,
-            meshes: &mut self.meshes,
-            images: &mut self.images,
-            materials: &mut self.materials,
-            size,
-        })
+    pub fn resources(&mut self) -> ResourcesMut<'_> {
+        unsafe { ResourcesMut::new(&self.resources, &mut self.events) }
     }
 
     pub fn read_gpu_texture(&mut self, id: RenderImageId) -> ReadTexture {
@@ -188,48 +172,21 @@ impl Renderer {
 
     pub fn create_render_texture(&mut self, texture: RenderTexture) -> RenderImageId {
         let id = self.render_textures.insert(texture);
-        self.scenes.insert(id.into(), Scene::default());
-        // FIXME: Bad because it blocks until the next render pass.
-        self.state.lock().insert(
-            id.into(),
-            RenderState::new(&self.pipeline.shared.device, &self.forward, &self.images),
-        );
         id
     }
 
-    pub fn destory_render_texture(&mut self, id: RenderImageId) {
-        self.scenes.remove(&id.into());
-        // FIXME: Bad because it blocks until the next render pass.
-        self.state.lock().remove(&id.into());
-    }
+    pub fn destory_render_texture(&mut self, id: RenderImageId) {}
 
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
-        self.scenes.insert(id.into(), Scene::default());
-        // FIXME: Bad because it blocks until the next render pass.
-        self.state.lock().insert(
-            id.into(),
-            RenderState::new(&self.pipeline.shared.device, &self.forward, &self.images),
-        );
         self.backlog.push_back(SurfaceEvent::Create(id, window));
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
         self.backlog.push_back(SurfaceEvent::Resize(id, size));
-
-        for scene in self.scenes.values_mut() {
-            scene.entities.cameras.for_each_mut(|_, mut camera| {
-                if camera.target == RenderTarget::Window(id) {
-                    camera.update_aspect_ratio(size);
-                }
-            });
-        }
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.scenes.remove(&id.into());
-        // FIXME: Bad because it blocks until the next render pass.
-        self.state.lock().remove(&id.into());
         self.backlog.push_back(SurfaceEvent::Destroy(id));
     }
 
@@ -259,36 +216,12 @@ impl Renderer {
 
         unsafe {
             self.update_surfaces();
-        }
 
-        for (target, scene) in self.scenes.iter_mut() {
-            let mut state = self.state.lock();
-            let state = state.get_mut(target).unwrap();
-
-            // FIXME: We should attempt to merge all event queues into a single one.
-            for event in scene.entities.cameras.drain_events() {
-                state.update(event, &self.meshes, &self.materials, &self.images);
-            }
-
-            for event in scene.entities.objects.drain_events() {
-                state.update(event, &self.meshes, &self.materials, &self.images);
-            }
-
-            for event in scene.entities.directional_lights.drain_events() {
-                state.update(event, &self.meshes, &self.materials, &self.images);
-            }
-
-            for event in scene.entities.point_lights.drain_events() {
-                state.update(event, &self.meshes, &self.materials, &self.images);
-            }
-
-            for event in scene.entities.spot_lights.drain_events() {
-                state.update(event, &self.meshes, &self.materials, &self.images);
-            }
-
-            for event in scene.events.drain(..) {
-                state.update(event, &self.meshes, &self.materials, &self.images);
-            }
+            // Commit all new resources.
+            // This is safe since the renderer is idle.
+            self.resources.commit();
+            core::mem::swap(&mut *self.forward.events.borrow_mut(), &mut self.events);
+            self.events.clear();
         }
 
         {
@@ -339,6 +272,14 @@ impl Renderer {
                 }
                 SurfaceEvent::Resize(id, size) => {
                     surfaces.resize(id, device, size);
+
+                    // Resize all cameras that are linked to the surface handle.
+                    let mut cameras = unsafe { self.resources.cameras.viewer() };
+                    for camera in cameras.iter_mut() {
+                        if camera.target == RenderTarget::Window(id) {
+                            camera.update_aspect_ratio(size);
+                        }
+                    }
                 }
                 SurfaceEvent::Destroy(id) => {
                     surfaces.destroy(id);
