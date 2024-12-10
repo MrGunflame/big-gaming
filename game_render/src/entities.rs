@@ -1,5 +1,6 @@
 pub mod pool;
 
+use game_common::cell::{RefMut, UnsafeRefCell};
 use game_common::collections::arena::{Arena, Key};
 use game_common::components::Transform;
 use pool::{Pool, Writer};
@@ -49,7 +50,7 @@ pub(crate) struct Resources {
     pub(crate) directional_lights: Pool<DirectionalLight>,
     pub(crate) point_lights: Pool<PointLight>,
     pub(crate) spot_lights: Pool<SpotLight>,
-    pub(crate) scenes: Arena<()>,
+    pub(crate) scenes: UnsafeRefCell<Arena<()>>,
 }
 
 impl Resources {
@@ -87,20 +88,24 @@ impl<'a> ResourcesMut<'a> {
     pub fn meshes(&mut self) -> MeshesMut<'_> {
         MeshesMut {
             meshes: unsafe { self.resources.meshes.writer() },
-            events: &mut self.events,
         }
     }
 
     pub fn images(&mut self) -> ImagesMut<'_> {
         ImagesMut {
             images: unsafe { self.resources.images.writer() },
-            events: &mut self.events,
         }
     }
 
     pub fn materials(&mut self) -> MaterialsMut<'_> {
         MaterialsMut {
             materials: unsafe { self.resources.materials.writer() },
+        }
+    }
+
+    pub fn cameras(&mut self) -> CamerasMut<'_> {
+        CamerasMut {
+            cameras: unsafe { self.resources.cameras.writer() },
             events: &mut self.events,
         }
     }
@@ -111,12 +116,38 @@ impl<'a> ResourcesMut<'a> {
             events: &mut self.events,
         }
     }
+
+    pub fn directional_lights(&mut self) -> DirectionalLightsMut<'_> {
+        DirectionalLightsMut {
+            lights: unsafe { self.resources.directional_lights.writer() },
+            events: &mut self.events,
+        }
+    }
+
+    pub fn point_lights(&mut self) -> PointLightsMut<'_> {
+        PointLightsMut {
+            lights: unsafe { self.resources.point_lights.writer() },
+            events: &mut self.events,
+        }
+    }
+
+    pub fn spot_lights(&mut self) -> SpotLightsMut<'_> {
+        SpotLightsMut {
+            lights: unsafe { self.resources.spot_lights.writer() },
+            events: &mut self.events,
+        }
+    }
+
+    pub fn scenes(&mut self) -> ScenesMut<'_> {
+        ScenesMut {
+            scenes: unsafe { self.resources.scenes.borrow_mut() },
+        }
+    }
 }
 
 #[derive(Debug)]
 pub struct MeshesMut<'a> {
     meshes: Writer<'a, Mesh>,
-    events: &'a mut Vec<Event>,
 }
 
 impl<'a> MeshesMut<'a> {
@@ -133,7 +164,6 @@ impl<'a> MeshesMut<'a> {
 #[derive(Debug)]
 pub struct ImagesMut<'a> {
     images: Writer<'a, Image>,
-    events: &'a mut Vec<Event>,
 }
 
 impl<'a> ImagesMut<'a> {
@@ -150,7 +180,6 @@ impl<'a> ImagesMut<'a> {
 #[derive(Debug)]
 pub struct MaterialsMut<'a> {
     materials: Writer<'a, PbrMaterial>,
-    events: &'a mut Vec<Event>,
 }
 
 impl<'a> MaterialsMut<'a> {
@@ -164,6 +193,27 @@ impl<'a> MaterialsMut<'a> {
     }
 }
 
+pub struct CamerasMut<'a> {
+    cameras: Writer<'a, Camera>,
+    events: &'a mut Vec<Event>,
+}
+
+impl<'a> CamerasMut<'a> {
+    pub fn insert(&mut self, camera: Camera) -> CameraId {
+        let id = CameraId(self.cameras.insert(camera));
+        self.events.push(Event::CreateCamera(id));
+        id
+    }
+
+    pub fn remove(&mut self, id: CameraId) {
+        self.cameras.remove(id.0);
+
+        self.events
+            .retain(|event| *event != Event::CreateCamera(id));
+        self.events.push(Event::DestroyCamera(id));
+    }
+}
+
 #[derive(Debug)]
 pub struct ObjectsMut<'a> {
     objects: Writer<'a, Object>,
@@ -172,12 +222,17 @@ pub struct ObjectsMut<'a> {
 
 impl<'a> ObjectsMut<'a> {
     pub fn insert(&mut self, object: Object) -> ObjectId {
-        let id = self.objects.insert(object);
-        ObjectId(id)
+        let id = ObjectId(self.objects.insert(object));
+        self.events.push(Event::CreateObject(id));
+        id
     }
 
     pub fn remove(&mut self, id: ObjectId) {
         self.objects.remove(id.0);
+
+        self.events
+            .retain(|event| *event != Event::DestroyObject(id));
+        self.events.push(Event::DestroyObject(id));
     }
 }
 
@@ -188,12 +243,17 @@ pub struct DirectionalLightsMut<'a> {
 
 impl<'a> DirectionalLightsMut<'a> {
     pub fn insert(&mut self, light: DirectionalLight) -> DirectionalLightId {
-        let id = self.lights.insert(light);
-        DirectionalLightId(id)
+        let id = DirectionalLightId(self.lights.insert(light));
+        self.events.push(Event::CreateDirectionalLight(id));
+        id
     }
 
     pub fn remove(&mut self, id: DirectionalLightId) {
         self.lights.remove(id.0);
+
+        self.events
+            .retain(|event| *event != Event::DestroyDirectionalLight(id));
+        self.events.push(Event::DestroyDirectionalLight(id));
     }
 }
 
@@ -204,12 +264,17 @@ pub struct PointLightsMut<'a> {
 
 impl<'a> PointLightsMut<'a> {
     pub fn insert(&mut self, light: PointLight) -> PointLightId {
-        let id = self.lights.insert(light);
-        PointLightId(id)
+        let id = PointLightId(self.lights.insert(light));
+        self.events.push(Event::CreatePointLight(id));
+        id
     }
 
     pub fn remove(&mut self, id: PointLightId) {
         self.lights.remove(id.0);
+
+        self.events
+            .retain(|event| *event != Event::DestroyPointLight(id));
+        self.events.push(Event::DestroyPointLight(id));
     }
 }
 
@@ -220,18 +285,23 @@ pub struct SpotLightsMut<'a> {
 
 impl<'a> SpotLightsMut<'a> {
     pub fn insert(&mut self, light: SpotLight) -> SpotLightId {
-        let id = self.lights.insert(light);
-        SpotLightId(id)
+        let id = SpotLightId(self.lights.insert(light));
+        self.events.push(Event::CreateSpotLight(id));
+        id
     }
 
     pub fn remove(&mut self, id: SpotLightId) {
         self.lights.remove(id.0);
+
+        self.events
+            .retain(|event| *event != Event::DestroySpotLight(id));
+        self.events.push(Event::DestroySpotLight(id));
     }
 }
 
 #[derive(Debug)]
 pub struct ScenesMut<'a> {
-    scenes: &'a mut Arena<()>,
+    scenes: RefMut<'a, Arena<()>>,
 }
 
 impl<'a> ScenesMut<'a> {
@@ -252,7 +322,7 @@ pub struct Object {
     pub material: MaterialId,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Event {
     CreateCamera(CameraId),
     DestroyCamera(CameraId),
