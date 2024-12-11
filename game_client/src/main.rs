@@ -26,6 +26,7 @@ use game_core::time::Time;
 use game_crash_handler::main;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
+use game_render::entities::SceneId;
 use game_render::{FpsLimit, Renderer};
 use game_script::Executor;
 use game_tasks::TaskPool;
@@ -165,6 +166,7 @@ fn main() -> ExitCode {
         gizmos: &gizmos,
         modules: &modules,
         windows: &windows,
+        scene_id: None,
     };
 
     std::thread::scope(|scope| {
@@ -312,6 +314,7 @@ pub struct RendererAppState<'a> {
     gizmos: &'a Gizmos,
     modules: &'a RwLock<Option<Modules>>,
     windows: &'a RwLock<HashMap<WindowId, WindowState>>,
+    scene_id: Option<SceneId>,
 }
 
 impl<'a> game_window::App for RendererAppState<'a> {
@@ -331,16 +334,19 @@ impl<'a> game_window::App for RendererAppState<'a> {
         if let Some(modules) = &*self.modules.read() {
             let world = { self.world.lock().clone() };
 
-            if let Some(mut scene) = self.renderer.scene_mut(self.window_id.into()) {
-                self.entities.update(
-                    modules,
-                    &world,
-                    &self.pool,
-                    &mut scene,
-                    self.window_id,
-                    &self.gizmos,
-                );
-            }
+            let scene = self
+                .scene_id
+                .get_or_insert_with(|| self.renderer.resources().scenes().insert());
+
+            self.entities.update(
+                modules,
+                &world,
+                &self.pool,
+                &mut self.renderer,
+                *scene,
+                RenderTarget::Window(self.window_id),
+                &self.gizmos,
+            );
         }
 
         self.renderer.render(&self.pool);

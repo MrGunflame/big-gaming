@@ -3,13 +3,16 @@ use std::collections::HashMap;
 use game_common::collections::arena::{self, Arena};
 use game_common::collections::vec_map::VecMap;
 use game_common::components::{Color, Transform};
-use game_render::entities::ObjectId;
-use game_render::pbr::material::MaterialId;
-use game_render::pbr::mesh::MeshId;
-use game_render::scene::RendererScene;
-use game_render::texture::ImageId;
+use game_render::entities::{ImageId, MaterialId, MeshId, Object, ObjectId};
+use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::Vec3;
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) struct ObjectWithId {
+    pub(crate) object: Object,
+    pub(crate) id: ObjectId,
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Key(pub(crate) arena::Key);
@@ -20,7 +23,7 @@ pub struct SpawnedScene {
     pub(crate) children: HashMap<Key, Vec<Key>>,
     pub(crate) parents: VecMap<arena::Key, arena::Key>,
     pub(crate) global_transform: HashMap<Key, Transform>,
-    pub(crate) entities: HashMap<Key, ObjectId>,
+    pub(crate) entities: HashMap<Key, ObjectWithId>,
 }
 
 #[derive(Clone, Debug)]
@@ -127,9 +130,9 @@ impl SpawnedScene {
         self.nodes.iter().map(|(k, v)| (Key(k), v))
     }
 
-    pub(crate) fn despawn(self, renderer: &mut RendererScene<'_>) {
-        for id in self.entities.values() {
-            renderer.scene.entities.objects.remove(*id);
+    pub(crate) fn despawn(self, renderer: &mut Renderer) {
+        for object in self.entities.values() {
+            renderer.resources().objects().remove(object.id);
         }
     }
 }

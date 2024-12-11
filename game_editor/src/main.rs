@@ -14,6 +14,8 @@ use game_common::world::World;
 use game_crash_handler::main;
 use game_gizmos::Gizmos;
 use game_render::camera::RenderTarget;
+use game_render::entities::SceneId;
+use game_render::options::MainPassOptions;
 use game_render::{FpsLimit, Renderer};
 use game_tasks::TaskPool;
 use game_ui::{UiState, WindowProperties};
@@ -150,7 +152,7 @@ pub struct App {
     state: EditorState,
     cursor: Arc<Cursor>,
     loading_windows: HashMap<WindowId, SpawnWindow>,
-    active_windows: HashMap<WindowId, crate::windows::Window>,
+    active_windows: HashMap<WindowId, ActiveWindowWState>,
     scene: SceneEntities,
     pool: TaskPool,
     gizmos: Gizmos,
@@ -165,7 +167,6 @@ impl game_window::App for App {
                 let window = ctx.windows.state(event.window).unwrap();
                 let size = window.inner_size();
                 let scale_factor = window.scale_factor();
-                dbg!(scale_factor);
 
                 self.renderer.create(event.window, window.clone());
                 self.ui_state.create(
@@ -188,7 +189,14 @@ impl game_window::App for App {
                         self.modules.clone(),
                     );
 
-                    self.active_windows.insert(event.window, window);
+                    self.active_windows.insert(
+                        event.window,
+                        ActiveWindowWState {
+                            window,
+                            scene: self.renderer.resources().scenes().insert(),
+                            options: MainPassOptions::default(),
+                        },
+                    );
                 }
             }
             WindowEvent::WindowResized(event) => {
@@ -217,10 +225,11 @@ impl game_window::App for App {
             WindowEvent::MouseMotion(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(
+                        window.window.handle_event(
                             &mut self.renderer,
                             WindowEvent::MouseMotion(event),
                             window_id,
+                            window.scene,
                         );
                     }
                 }
@@ -228,10 +237,11 @@ impl game_window::App for App {
             WindowEvent::KeyboardInput(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(
+                        window.window.handle_event(
                             &mut self.renderer,
                             WindowEvent::KeyboardInput(event),
                             window_id,
+                            window.scene,
                         );
                     }
                 }
@@ -239,10 +249,11 @@ impl game_window::App for App {
             WindowEvent::MouseWheel(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(
+                        window.window.handle_event(
                             &mut self.renderer,
                             WindowEvent::MouseWheel(event),
                             window_id,
+                            window.scene,
                         );
                     }
                 }
@@ -250,10 +261,11 @@ impl game_window::App for App {
             WindowEvent::MouseButtonInput(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(
+                        window.window.handle_event(
                             &mut self.renderer,
                             WindowEvent::MouseButtonInput(event),
                             window_id,
+                            window.scene,
                         );
                     }
                 }
@@ -261,10 +273,11 @@ impl game_window::App for App {
             WindowEvent::CursorMoved(event) => {
                 if let Some(window_id) = self.cursor.window() {
                     if let Some(window) = self.active_windows.get_mut(&window_id) {
-                        window.handle_event(
+                        window.window.handle_event(
                             &mut self.renderer,
                             WindowEvent::CursorMoved(event),
                             window_id,
+                            window.scene,
                         );
                     }
                 }
@@ -283,26 +296,23 @@ impl game_window::App for App {
         }
 
         for (id, window) in self.active_windows.iter_mut() {
-            let Some(mut scene) = self.renderer.scene_mut((*id).into()) else {
-                continue;
-            };
-            let mut options = scene.scene.options().clone();
+            let mut options = window.options.clone();
 
-            window.update(&mut options);
-            if scene.scene.options() != &options {
-                scene.scene.set_options(options);
+            window.window.update(&mut options);
+            if window.options != options {
+                window.options = options.clone();
+                self.renderer.resources().set_main_pass_options(options);
             }
 
-            // if matches!(window, crate::windows::Window::View(_, _)) {
-            window.scene.update(
+            window.window.scene.update(
                 &self.state.records,
-                &window.world,
+                &window.window.world,
                 &self.pool,
-                &mut scene,
-                *id,
+                &mut self.renderer,
+                window.scene,
+                RenderTarget::Window(*id),
                 &self.gizmos,
             );
-            // }
         }
 
         self.ui_state.update();
@@ -310,4 +320,10 @@ impl game_window::App for App {
 
         self.renderer.render(&self.pool);
     }
+}
+
+struct ActiveWindowWState {
+    window: windows::Window,
+    scene: SceneId,
+    options: MainPassOptions,
 }

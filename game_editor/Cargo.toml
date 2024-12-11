@@ -5,6 +5,10 @@ edition = "2021"
 authors = ["MrGunflame <git@robbsrv.de>"]
 license = "GPL-3.0-or-later"
 
+[features]
+default = ["tracy"]
+tracy = ["game_core/tracy", "game_crash_handler/tracy"]
+
 [lints]
 workspace = true
 

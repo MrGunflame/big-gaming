@@ -2,7 +2,7 @@ use std::collections::{HashMap, VecDeque};
 
 use game_common::collections::arena::{self, Arena};
 use game_common::components::Transform;
-use game_render::scene::RendererScene;
+use game_render::Renderer;
 use game_tasks::{Task, TaskPool};
 use game_tracing::trace_span;
 
@@ -72,7 +72,12 @@ impl SceneSpawner {
         self.instances.get(instance.0).unwrap().scene
     }
 
-    pub fn update(&mut self, pool: &TaskPool, renderer: &mut RendererScene<'_>) {
+    pub fn update(
+        &mut self,
+        pool: &TaskPool,
+        renderer: &mut Renderer,
+        scene_id: game_render::entities::SceneId,
+    ) {
         let _span = trace_span!("SceneSpaner::update").entered();
 
         while let Some(event) = self.events.pop_front() {
@@ -101,16 +106,19 @@ impl SceneSpawner {
                         SceneData::Loaded(scene, resources) => {
                             let instance = self.instances.get_mut(instance.0).unwrap();
 
-                            let mut state = scene.instantiate(resources, renderer);
+                            let mut state = scene.instantiate(resources, renderer, scene_id);
                             state.set_transform(instance.transform);
                             state.compute_transform();
 
-                            for (key, id) in &state.entities {
+                            for (key, object) in &mut state.entities {
                                 let global_transform = *state.global_transform.get(key).unwrap();
 
-                                let mut object =
-                                    renderer.scene.entities.objects.get_mut(*id).unwrap();
-                                object.transform = global_transform;
+                                // Recreate the object once the transform changes.
+                                // The renderer does not support updating existing
+                                // objects.
+                                object.object.transform = global_transform;
+                                renderer.resources().objects().remove(object.id);
+                                object.id = renderer.resources().objects().insert(object.object);
                             }
 
                             instance.state = InstanceState::Spawned(state);
@@ -169,12 +177,15 @@ impl SceneSpawner {
                             state.set_transform(transform);
                             state.compute_transform();
 
-                            for (key, id) in &state.entities {
+                            for (key, object) in &mut state.entities {
                                 let global_transform = *state.global_transform.get(key).unwrap();
 
-                                let mut object =
-                                    renderer.scene.entities.objects.get_mut(*id).unwrap();
-                                object.transform = global_transform;
+                                // Recreate the object once the transform changes.
+                                // The renderer does not support updating existing
+                                // objects.
+                                object.object.transform = global_transform;
+                                renderer.resources().objects().remove(object.id);
+                                object.id = renderer.resources().objects().insert(object.object);
                             }
                         }
                     }

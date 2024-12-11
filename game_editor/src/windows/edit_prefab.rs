@@ -4,6 +4,7 @@ use game_common::components::components::Components;
 use game_common::world::World;
 use game_core::modules::Modules;
 use game_prefab::Prefab;
+use game_render::entities::SceneId;
 use game_tracing::trace_span;
 use game_ui::runtime::reactive::WriteSignal;
 use game_ui::runtime::Context;
@@ -102,8 +103,10 @@ impl WindowTrait for EditPrefabWindow {
         renderer: &mut game_render::Renderer,
         event: game_window::events::WindowEvent,
         window_id: WindowId,
+        scene_id: SceneId,
     ) {
-        self.state.handle_event(event, window_id, renderer);
+        self.state
+            .handle_event(event, window_id, renderer, scene_id);
     }
 
     fn update(&mut self, world: &mut World, options: &mut game_render::options::MainPassOptions) {

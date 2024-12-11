@@ -17,6 +17,7 @@ use edit_world::EditWorldWindow;
 use game_common::world::World;
 use game_data::record::RecordKind;
 use game_render::camera::RenderTarget;
+use game_render::entities::SceneId;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
@@ -43,7 +44,13 @@ use self::main_window::MainWindow;
 use self::open_module::OpenModule;
 
 trait WindowTrait {
-    fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window_id: WindowId);
+    fn handle_event(
+        &mut self,
+        renderer: &mut Renderer,
+        event: WindowEvent,
+        window_id: WindowId,
+        scene_id: SceneId,
+    );
 
     fn update(&mut self, world: &mut World, options: &mut MainPassOptions);
 }
@@ -61,11 +68,12 @@ impl Window {
         renderer: &mut Renderer,
         event: WindowEvent,
         window_id: WindowId,
+        scene_id: SceneId,
     ) {
         let _span = trace_span!("Window::handle_event").entered();
 
         if let Some(inner) = &mut self.inner {
-            inner.handle_event(renderer, event, window_id);
+            inner.handle_event(renderer, event, window_id, scene_id);
         }
     }
 
