@@ -143,6 +143,10 @@ impl<'a> ResourcesMut<'a> {
             scenes: unsafe { self.resources.scenes.borrow_mut() },
         }
     }
+
+    pub fn set_main_pass_options(&mut self, options: MainPassOptions) {
+        self.events.push(Event::UpdateMainPassOptions(options));
+    }
 }
 
 #[derive(Debug)]
@@ -231,7 +235,7 @@ impl<'a> ObjectsMut<'a> {
         self.objects.remove(id.0);
 
         self.events
-            .retain(|event| *event != Event::DestroyObject(id));
+            .retain(|event| *event != Event::CreateObject(id));
         self.events.push(Event::DestroyObject(id));
     }
 }
@@ -252,7 +256,7 @@ impl<'a> DirectionalLightsMut<'a> {
         self.lights.remove(id.0);
 
         self.events
-            .retain(|event| *event != Event::DestroyDirectionalLight(id));
+            .retain(|event| *event != Event::CreateDirectionalLight(id));
         self.events.push(Event::DestroyDirectionalLight(id));
     }
 }
@@ -273,7 +277,7 @@ impl<'a> PointLightsMut<'a> {
         self.lights.remove(id.0);
 
         self.events
-            .retain(|event| *event != Event::DestroyPointLight(id));
+            .retain(|event| *event != Event::CreatePointLight(id));
         self.events.push(Event::DestroyPointLight(id));
     }
 }
@@ -294,7 +298,7 @@ impl<'a> SpotLightsMut<'a> {
         self.lights.remove(id.0);
 
         self.events
-            .retain(|event| *event != Event::DestroySpotLight(id));
+            .retain(|event| *event != Event::CreateSpotLight(id));
         self.events.push(Event::DestroySpotLight(id));
     }
 }

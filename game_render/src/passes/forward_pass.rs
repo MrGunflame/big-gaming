@@ -18,7 +18,10 @@ use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{Camera, CameraUniform, RenderTarget};
 use crate::depth_stencil::DepthData;
 use crate::entities::pool::Viewer;
-use crate::entities::{CameraId, Event, ImageId, MaterialId, MeshId, ObjectId, Resources, SceneId};
+use crate::entities::{
+    CameraId, DirectionalLightId, Event, ImageId, MaterialId, MeshId, ObjectId, PointLightId,
+    Resources, SceneId, SpotLightId,
+};
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
@@ -120,15 +123,15 @@ impl ForwardPass {
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: scene.directional_lights.as_entire_binding(),
+                    resource: scene.directional_lights_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: scene.point_lights.as_entire_binding(),
+                    resource: scene.point_lights_buffer.as_entire_binding(),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: scene.spot_lights.as_entire_binding(),
+                    resource: scene.spot_lights_buffer.as_entire_binding(),
                 },
             ],
         });
@@ -327,10 +330,14 @@ struct ForwardState {
 
 #[derive(Debug)]
 struct Scene {
-    directional_lights: Buffer,
-    point_lights: Buffer,
-    spot_lights: Buffer,
+    directional_lights_buffer: Buffer,
+    point_lights_buffer: Buffer,
+    spot_lights_buffer: Buffer,
     objects: HashSet<ObjectId>,
+    cameras: HashSet<CameraId>,
+    directional_lights: HashSet<DirectionalLightId>,
+    point_lights: HashSet<PointLightId>,
+    spot_lights: HashSet<SpotLightId>,
 }
 
 impl Scene {
@@ -354,11 +361,24 @@ impl Scene {
         });
 
         Self {
-            directional_lights,
-            point_lights,
-            spot_lights,
+            directional_lights_buffer: directional_lights,
+            point_lights_buffer: point_lights,
+            spot_lights_buffer: spot_lights,
             objects: HashSet::new(),
+            cameras: HashSet::new(),
+            directional_lights: HashSet::new(),
+            point_lights: HashSet::new(),
+            spot_lights: HashSet::new(),
         }
+    }
+
+    /// Returns `true` if the `Scene` contains no entities.
+    fn is_empty(&self) -> bool {
+        self.objects.is_empty()
+            && self.cameras.is_empty()
+            && self.directional_lights.is_empty()
+            && self.point_lights.is_empty()
+            && self.spot_lights.is_empty()
     }
 }
 
@@ -397,14 +417,26 @@ impl ForwardState {
         let point_lights = unsafe { resources.point_lights.viewer() };
         let spot_lights = unsafe { resources.spot_lights.viewer() };
 
+        let mut delete_scenes = Vec::new();
+
         for event in events.drain(..) {
             match event {
                 Event::CreateCamera(id) => {
                     let camera = cameras.get(id.0).unwrap();
                     self.cameras.insert(id, *camera);
+
+                    let scene = self
+                        .scenes
+                        .entry(camera.scene)
+                        .or_insert_with(|| Scene::new(device));
+                    scene.cameras.insert(id);
                 }
                 Event::DestroyCamera(id) => {
                     self.cameras.remove(&id);
+
+                    for scene in self.scenes.values_mut() {
+                        scene.cameras.remove(&id);
+                    }
                 }
                 Event::CreateObject(id) => {
                     let object = objects.get(id.0).unwrap();
@@ -459,12 +491,51 @@ impl ForwardState {
                     self.objects.remove(&id);
 
                     // Remove the object from all scenes.
-                    for scene in self.scenes.values_mut() {
+                    for (scene_id, scene) in &mut self.scenes {
                         scene.objects.remove(&id);
+
+                        if scene.is_empty() {
+                            delete_scenes.push(*scene_id);
+                        }
                     }
                 }
-                Event::CreateDirectionalLight(_) | Event::DestroyDirectionalLight(_) => {
+                Event::CreateDirectionalLight(id) => {
+                    let light = directional_lights.get(id.0).unwrap();
+
+                    let scene = self
+                        .scenes
+                        .entry(light.scene)
+                        .or_insert_with(|| Scene::new(device));
+
+                    scene.directional_lights.insert(id);
+
+                    let scene_id = light.scene;
+                    let buffer = directional_lights
+                        .iter()
+                        .copied()
+                        .filter(|light| light.scene == scene_id)
+                        .map(DirectionalLightUniform::from)
+                        .collect::<DynamicBuffer<DirectionalLightUniform>>();
+
+                    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+                        label: None,
+                        contents: buffer.as_bytes(),
+                        usage: BufferUsages::STORAGE,
+                    });
+
+                    scene.directional_lights_buffer = buffer;
+                }
+                Event::DestroyDirectionalLight(id) => {
                     for (scene_id, scene) in &mut self.scenes {
+                        if !scene.directional_lights.remove(&id) {
+                            continue;
+                        }
+
+                        if scene.is_empty() {
+                            delete_scenes.push(*scene_id);
+                            continue;
+                        }
+
                         let buffer = directional_lights
                             .iter()
                             .copied()
@@ -478,11 +549,46 @@ impl ForwardState {
                             usage: BufferUsages::STORAGE,
                         });
 
-                        scene.directional_lights = buffer;
+                        scene.directional_lights_buffer = buffer;
                     }
                 }
-                Event::CreatePointLight(_) | Event::DestroyPointLight(_) => {
+                Event::CreatePointLight(id) => {
+                    let light = point_lights.get(id.0).unwrap();
+
+                    let scene = self
+                        .scenes
+                        .entry(light.scene)
+                        .or_insert_with(|| Scene::new(device));
+
+                    scene.point_lights.insert(id);
+
+                    let scene_id = light.scene;
+                    let buffer = point_lights
+                        .iter()
+                        .copied()
+                        .filter(|light| light.scene == scene_id)
+                        .map(PointLightUniform::from)
+                        .collect::<DynamicBuffer<PointLightUniform>>();
+
+                    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+                        label: None,
+                        contents: buffer.as_bytes(),
+                        usage: BufferUsages::STORAGE,
+                    });
+
+                    scene.point_lights_buffer = buffer;
+                }
+                Event::DestroyPointLight(id) => {
                     for (scene_id, scene) in &mut self.scenes {
+                        if !scene.point_lights.remove(&id) {
+                            continue;
+                        }
+
+                        if scene.is_empty() {
+                            delete_scenes.push(*scene_id);
+                            continue;
+                        }
+
                         let buffer = point_lights
                             .iter()
                             .copied()
@@ -496,11 +602,46 @@ impl ForwardState {
                             usage: BufferUsages::STORAGE,
                         });
 
-                        scene.point_lights = buffer;
+                        scene.point_lights_buffer = buffer;
                     }
                 }
-                Event::CreateSpotLight(_) | Event::DestroySpotLight(_) => {
+                Event::CreateSpotLight(id) => {
+                    let light = spot_lights.get(id.0).unwrap();
+
+                    let scene = self
+                        .scenes
+                        .entry(light.scene)
+                        .or_insert_with(|| Scene::new(device));
+
+                    scene.spot_lights.insert(id);
+
+                    let scene_id = light.scene;
+                    let buffer = spot_lights
+                        .iter()
+                        .copied()
+                        .filter(|light| light.scene == scene_id)
+                        .map(SpotLightUniform::from)
+                        .collect::<DynamicBuffer<SpotLightUniform>>();
+
+                    let buffer = device.create_buffer_init(&BufferInitDescriptor {
+                        label: None,
+                        contents: buffer.as_bytes(),
+                        usage: BufferUsages::STORAGE,
+                    });
+
+                    scene.spot_lights_buffer = buffer;
+                }
+                Event::DestroySpotLight(id) => {
                     for (scene_id, scene) in &mut self.scenes {
+                        if !scene.spot_lights.remove(&id) {
+                            continue;
+                        }
+
+                        if scene.is_empty() {
+                            delete_scenes.push(*scene_id);
+                            continue;
+                        }
+
                         let buffer = spot_lights
                             .iter()
                             .copied()
@@ -514,13 +655,17 @@ impl ForwardState {
                             usage: BufferUsages::STORAGE,
                         });
 
-                        scene.spot_lights = buffer;
+                        scene.spot_lights_buffer = buffer;
                     }
                 }
                 Event::UpdateMainPassOptions(options) => {
                     self.options = options;
                 }
             }
+        }
+
+        for scene in delete_scenes {
+            self.scenes.remove(&scene);
         }
     }
 }
@@ -698,13 +843,13 @@ fn create_material(
                 ),
             },
             BindGroupEntry {
-                binding: 2,
+                binding: 3,
                 resource: BindingResource::TextureView(
                     &metallic_roughness_texture.create_view(&TextureViewDescriptor::default()),
                 ),
             },
             BindGroupEntry {
-                binding: 3,
+                binding: 4,
                 resource: BindingResource::Sampler(sampler),
             },
         ],
@@ -734,7 +879,9 @@ fn upload_material_texture(
         sample_count: 1,
         dimension: TextureDimension::D2,
         format: image.format(),
-        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+        usage: TextureUsages::TEXTURE_BINDING
+            | TextureUsages::COPY_DST
+            | TextureUsages::RENDER_ATTACHMENT,
         view_formats: &[],
     });
 

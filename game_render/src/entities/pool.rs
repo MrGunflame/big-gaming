@@ -126,3 +126,71 @@ impl<'a, T> Writer<'a, T> {
         state.queued_deletion.push(key);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Pool, Viewer, Writer};
+
+    fn split_pool<T>(pool: &mut Pool<T>) -> (Writer<'_, T>, Viewer<'_, T>) {
+        // SAFETY: Since we have exclusive ownership of the pool for
+        // the lifetime of the returned writer/viewer we can guarantee
+        // that no other writers/viewers can be created using the same pool.
+        unsafe { (pool.writer(), pool.viewer()) }
+    }
+
+    #[test]
+    fn pool_insert() {
+        let mut pool = Pool::<i32>::new();
+        let (mut writer, viewer) = split_pool(&mut pool);
+
+        let id0 = writer.insert(0);
+        let id1 = writer.insert(1);
+
+        // New state not yet commited.
+        assert_eq!(viewer.get(id0), None);
+        assert_eq!(viewer.get(id1), None);
+
+        unsafe {
+            drop((writer, viewer));
+            pool.commit();
+        }
+
+        let (_, viewer) = split_pool(&mut pool);
+
+        // New state committed now.
+        assert_eq!(viewer.get(id0), Some(&0));
+        assert_eq!(viewer.get(id1), Some(&1));
+    }
+
+    #[test]
+    fn pool_remove() {
+        let mut pool = Pool::<i32>::new();
+        let (mut writer, viewer) = split_pool(&mut pool);
+
+        let id0 = writer.insert(0);
+        let id1 = writer.insert(1);
+
+        unsafe {
+            drop((writer, viewer));
+            pool.commit();
+        }
+
+        let (mut writer, viewer) = split_pool(&mut pool);
+
+        writer.remove(id0);
+        writer.remove(id1);
+
+        assert_eq!(viewer.get(id0), Some(&0));
+        assert_eq!(viewer.get(id1), Some(&1));
+
+        unsafe {
+            drop((writer, viewer));
+            pool.commit();
+        }
+
+        let (_, viewer) = split_pool(&mut pool);
+
+        assert_eq!(viewer.get(id0), None);
+        assert_eq!(viewer.get(id1), None);
+    }
+}
