@@ -6,18 +6,15 @@ use game_common::components::{
 };
 use game_common::entity::EntityId;
 use game_common::world::{QueryWrapper, World};
-use game_core::modules::Modules;
 use game_gizmos::Gizmos;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
-use game_render::scene::RendererScene;
 use game_render::Renderer;
 use game_scene::debug::draw_collider_lines;
 use game_scene::{InstanceId, SceneId, SceneSpawner};
 use game_tasks::TaskPool;
 use game_wasm::resource::ResourceId;
-use game_window::windows::WindowId;
 
 use crate::state::record::Records;
 

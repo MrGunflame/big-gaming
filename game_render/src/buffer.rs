@@ -156,7 +156,7 @@ where
     }
 
     fn counter_offset() -> usize {
-        T::ALIGN.max(std::mem::size_of::<u32>())
+        T::ALIGN.max(size_of::<u32>())
     }
 }
 
@@ -217,7 +217,7 @@ mod tests {
     }
 
     impl GpuBuffer for TestStruct {
-        const SIZE: usize = std::mem::size_of::<Self>();
+        const SIZE: usize = size_of::<Self>();
         const ALIGN: usize = 16;
     }
 

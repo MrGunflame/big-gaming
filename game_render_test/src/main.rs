@@ -3,7 +3,6 @@ mod tests;
 use clap::{Parser, Subcommand};
 use game_render::camera::RenderTarget;
 use game_render::entities::SceneId;
-use game_render::scene::RendererScene;
 use game_render::texture::RenderTexture;
 use game_render::Renderer;
 use game_tasks::TaskPool;

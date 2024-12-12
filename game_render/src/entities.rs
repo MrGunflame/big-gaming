@@ -1,4 +1,4 @@
-pub mod pool;
+pub(crate) mod pool;
 
 use game_common::cell::{RefMut, UnsafeRefCell};
 use game_common::collections::arena::{Arena, Key};

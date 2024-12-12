@@ -13,8 +13,6 @@ use wgpu::{
 
 use crate::depth_stencil::DEPTH_TEXTURE_FORMAT;
 use crate::entities::{Event, Resources};
-use crate::pbr::material::DefaultTextures;
-use crate::texture::Images;
 
 #[derive(Debug)]
 pub struct ForwardPipeline {
@@ -25,13 +23,12 @@ pub struct ForwardPipeline {
     pub material_bind_group_layout: BindGroupLayout,
     pub lights_bind_group_layout: BindGroupLayout,
     pub sampler: Sampler,
-    pub default_textures: DefaultTextures,
     pub resources: Arc<Resources>,
     pub events: UnsafeRefCell<Vec<Event>>,
 }
 
 impl ForwardPipeline {
-    pub fn new(device: &Device, images: &mut Images, resources: Arc<Resources>) -> Self {
+    pub fn new(device: &Device, resources: Arc<Resources>) -> Self {
         let vs_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("vs_bind_group_layout"),
             entries: &[
@@ -287,7 +284,6 @@ impl ForwardPipeline {
             material_bind_group_layout,
             lights_bind_group_layout,
             sampler,
-            default_textures: DefaultTextures::new(images),
             resources,
             events: UnsafeRefCell::new(Vec::new()),
         }

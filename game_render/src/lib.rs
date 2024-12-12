@@ -10,7 +10,6 @@ pub mod metrics;
 pub mod mipmap;
 pub mod options;
 pub mod pbr;
-pub mod scene;
 pub mod shape;
 pub mod surface;
 pub mod texture;
@@ -42,7 +41,7 @@ use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
 use pipelined_rendering::{Pipeline, RenderImageGpu};
-use texture::{Images, RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
+use texture::{RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
 use wgpu::{
@@ -117,12 +116,7 @@ impl Renderer {
 
         let resources = Arc::new(Resources::default());
 
-        let mut images = Images::new();
-        let forward = Arc::new(ForwardPipeline::new(
-            &device,
-            &mut images,
-            resources.clone(),
-        ));
+        let forward = Arc::new(ForwardPipeline::new(&device, resources.clone()));
 
         let pipeline = Pipeline::new(instance, adapter, device, queue);
 
