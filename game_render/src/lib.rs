@@ -20,6 +20,7 @@ mod fps_limiter;
 mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
+mod preprocessor;
 
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
