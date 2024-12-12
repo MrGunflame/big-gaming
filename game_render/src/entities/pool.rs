@@ -3,8 +3,23 @@ use std::collections::HashMap;
 use game_common::cell::{RefMut, UnsafeRefCell};
 
 /// A collection that can be used by both a [`Viewer`] and a [`Writer`] at the same time.
+///
+/// This is meant to be used as a "transfer channel" between two threads:
+/// - One side inserts and removes values. This is meant to be the game logic side.
+/// - One side reads and modifies the value. This is meant to be the thread uploading data to the
+/// GPU over a transfer queue.
+///
+///
+/// The uploading thread has the ability to "move" values from CPU to GPU memory. This is why
+/// the [`Writer`] does not have access to it after insertion.
+///
+/// A `Pool` requires explicit synchronization between both threads. This is done by calling
+/// [`commit`], which commits all insertions/removals into the `Pool`.
+///
+/// [`commit`]: Self::commit
+// FIXME: This probably is not the best name for this type.
 #[derive(Debug)]
-pub struct Pool<T> {
+pub(crate) struct Pool<T> {
     values: UnsafeRefCell<HashMap<usize, T>>,
     writer: UnsafeRefCell<WriterState<T>>,
 }
@@ -18,7 +33,8 @@ struct WriterState<T> {
 }
 
 impl<T> Pool<T> {
-    pub fn new() -> Self {
+    /// Creates a new, empty `Pool`.
+    pub(crate) fn new() -> Self {
         Self {
             values: UnsafeRefCell::new(HashMap::new()),
             writer: UnsafeRefCell::new(WriterState {
@@ -30,10 +46,20 @@ impl<T> Pool<T> {
         }
     }
 
-    pub unsafe fn writer(&self) -> Writer<'_, T> {
+    /// Creates a new [`Writer`] bound to this `Pool`.
+    ///
+    /// # Safety
+    ///
+    /// At most one [`Writer`] may exist for one `Pool` at the same time.
+    pub(crate) unsafe fn writer(&self) -> Writer<'_, T> {
         Writer { pool: self }
     }
 
+    /// Creates a new [`Viewer`] bound to this `Pool`.
+    ///
+    /// # Safety
+    ///
+    /// At most one [`Viewer`] may exist for one `Pool` at the same time.
     pub unsafe fn viewer(&self) -> Viewer<'_, T> {
         Viewer {
             values: unsafe { self.values.borrow_mut() },
@@ -73,35 +99,31 @@ impl<T> Default for Pool<T> {
 }
 
 #[derive(Debug)]
-pub struct Viewer<'a, T> {
+pub(crate) struct Viewer<'a, T> {
     values: RefMut<'a, HashMap<usize, T>>,
 }
 
 impl<'a, T> Viewer<'a, T> {
-    pub fn get(&self, key: usize) -> Option<&T> {
+    pub(crate) fn get(&self, key: usize) -> Option<&T> {
         self.values.get(&key)
     }
 
-    pub fn get_mut(&mut self, key: usize) -> Option<&mut T> {
-        self.values.get_mut(&key)
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
         self.values.values()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.values.values_mut()
     }
 }
 
 #[derive(Debug)]
-pub struct Writer<'a, T> {
+pub(crate) struct Writer<'a, T> {
     pool: &'a Pool<T>,
 }
 
 impl<'a, T> Writer<'a, T> {
-    pub fn insert(&mut self, value: T) -> usize {
+    pub(crate) fn insert(&mut self, value: T) -> usize {
         let mut state = unsafe { self.pool.writer.borrow_mut() };
         let key = match state.free.pop() {
             Some(key) => key,
@@ -116,7 +138,7 @@ impl<'a, T> Writer<'a, T> {
         key
     }
 
-    pub fn remove(&mut self, key: usize) {
+    pub(crate) fn remove(&mut self, key: usize) {
         let mut state = unsafe { self.pool.writer.borrow_mut() };
 
         if state.queued.remove(&key).is_some() {
