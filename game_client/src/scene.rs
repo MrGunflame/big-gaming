@@ -11,12 +11,11 @@ use game_gizmos::Gizmos;
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::{CameraId, DirectionalLightId, PointLightId, SpotLightId};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
-use game_render::scene::RendererScene;
+use game_render::Renderer;
 use game_scene::debug::draw_collider_lines;
 use game_scene::{InstanceId, SceneId, SceneSpawner};
 use game_tasks::TaskPool;
 use game_wasm::resource::ResourceId;
-use game_window::windows::WindowId;
 
 #[derive(Debug, Default)]
 pub struct SceneEntities {
@@ -36,8 +35,9 @@ impl SceneEntities {
         modules: &Modules,
         world: &World,
         pool: &TaskPool,
-        renderer: &mut RendererScene<'_>,
-        window: WindowId,
+        renderer: &mut Renderer,
+        scene_id: game_render::entities::SceneId,
+        render_target: RenderTarget,
         gizmos: &Gizmos,
     ) {
         let mut removed_mesh_instances = self.mesh_instances.clone();
@@ -95,29 +95,21 @@ impl SceneEntities {
         {
             removed_dir_lights.remove(&entity);
 
-            match self.directional_lights.get(&entity) {
-                Some(id) => {
-                    let mut dir_light = renderer
-                        .scene
-                        .entities
-                        .directional_lights
-                        .get_mut(*id)
-                        .unwrap();
-                    dir_light.color = light.color;
-                    dir_light.illuminance = light.illuminance;
-                    dir_light.transform = transform;
-                }
-                None => {
-                    let dir_light = DirectionalLight {
-                        color: light.color,
-                        illuminance: light.illuminance,
-                        transform,
-                    };
-
-                    let id = renderer.scene.entities.directional_lights.insert(dir_light);
-                    self.directional_lights.insert(entity, id);
-                }
+            if let Some(id) = self.directional_lights.remove(&entity) {
+                renderer.resources().directional_lights().remove(id);
             }
+
+            let id = renderer
+                .resources()
+                .directional_lights()
+                .insert(DirectionalLight {
+                    transform,
+                    scene: scene_id,
+                    color: light.color,
+                    illuminance: light.illuminance,
+                });
+
+            self.directional_lights.insert(entity, id);
         }
 
         for (entity, QueryWrapper((GlobalTransform(transform), light))) in
@@ -125,27 +117,19 @@ impl SceneEntities {
         {
             removed_point_lights.remove(&entity);
 
-            match self.point_lights.get(&entity) {
-                Some(id) => {
-                    let mut point_light =
-                        renderer.scene.entities.point_lights.get_mut(*id).unwrap();
-                    point_light.color = light.color;
-                    point_light.intensity = light.intensity;
-                    point_light.radius = light.radius;
-                    point_light.transform = transform;
-                }
-                None => {
-                    let point_light = PointLight {
-                        color: light.color,
-                        intensity: light.intensity,
-                        radius: light.radius,
-                        transform,
-                    };
-
-                    let id = renderer.scene.entities.point_lights.insert(point_light);
-                    self.point_lights.insert(entity, id);
-                }
+            if let Some(id) = self.point_lights.remove(&entity) {
+                renderer.resources().point_lights().remove(id);
             }
+
+            let id = renderer.resources().point_lights().insert(PointLight {
+                transform,
+                scene: scene_id,
+                color: light.color,
+                radius: light.radius,
+                intensity: light.intensity,
+            });
+
+            self.point_lights.insert(entity, id);
         }
 
         for (entity, QueryWrapper((GlobalTransform(transform), light))) in
@@ -153,30 +137,21 @@ impl SceneEntities {
         {
             removed_spot_lights.remove(&entity);
 
-            match self.spot_lights.get(&entity) {
-                Some(id) => {
-                    let mut spot_light = renderer.scene.entities.spot_lights.get_mut(*id).unwrap();
-                    spot_light.color = light.color;
-                    spot_light.intensity = light.intensity;
-                    spot_light.radius = light.radius;
-                    spot_light.inner_cutoff = light.inner_cutoff;
-                    spot_light.outer_cutoff = light.outer_cutoff;
-                    spot_light.transform = transform;
-                }
-                None => {
-                    let spot_light = SpotLight {
-                        color: light.color,
-                        intensity: light.intensity,
-                        radius: light.radius,
-                        inner_cutoff: light.inner_cutoff,
-                        outer_cutoff: light.outer_cutoff,
-                        transform,
-                    };
-
-                    let id = renderer.scene.entities.spot_lights.insert(spot_light);
-                    self.spot_lights.insert(entity, id);
-                }
+            if let Some(id) = self.spot_lights.remove(&entity) {
+                renderer.resources().spot_lights().remove(id);
             }
+
+            let id = renderer.resources().spot_lights().insert(SpotLight {
+                transform,
+                scene: scene_id,
+                color: light.color,
+                intensity: light.intensity,
+                radius: light.radius,
+                inner_cutoff: light.inner_cutoff,
+                outer_cutoff: light.outer_cutoff,
+            });
+
+            self.spot_lights.insert(entity, id);
         }
 
         for (entity, QueryWrapper((GlobalTransform(transform), PrimaryCamera))) in
@@ -184,30 +159,29 @@ impl SceneEntities {
         {
             removed_primary_cameras.remove(&entity);
 
-            match self.primary_cameras.get(&entity) {
-                Some(id) => {
-                    let mut camera = renderer.scene.entities.cameras.get_mut(*id).unwrap();
-                    camera.transform = transform;
-                    gizmos.update_camera(*camera);
-                }
-                None => {
-                    // Surface might not yet be ready, defer creation until
-                    // next frame.
-                    let size = renderer.get_surface_size();
-
-                    let mut camera = Camera {
-                        transform,
-                        projection: Projection::default(),
-                        target: RenderTarget::Window(window),
-                    };
-                    camera.update_aspect_ratio(size);
-
-                    gizmos.update_camera(camera);
-
-                    let id = renderer.scene.entities.cameras.insert(camera);
-                    self.primary_cameras.insert(entity, id);
-                }
+            if let Some(id) = self.primary_cameras.remove(&entity) {
+                renderer.resources().cameras().remove(id);
             }
+
+            // Surface might not yet be ready, defer creation until
+            // next frame.
+            let Some(size) = renderer.get_surface_size(render_target) else {
+                continue;
+            };
+
+            let mut camera = Camera {
+                transform,
+                projection: Projection::default(),
+                target: render_target,
+                scene: scene_id,
+            };
+            camera.update_aspect_ratio(size);
+
+            gizmos.update_camera(camera);
+
+            let id = renderer.resources().cameras().insert(camera);
+
+            self.primary_cameras.insert(entity, id);
         }
 
         for (entity, id) in removed_mesh_instances {
@@ -233,26 +207,26 @@ impl SceneEntities {
         }
 
         for (entity, id) in removed_dir_lights {
-            renderer.scene.entities.directional_lights.remove(id);
+            renderer.resources().directional_lights().remove(id);
             self.directional_lights.remove(&entity);
         }
 
         for (entity, id) in removed_point_lights {
-            renderer.scene.entities.point_lights.remove(id);
+            renderer.resources().point_lights().remove(id);
             self.point_lights.remove(&entity);
         }
 
         for (entity, id) in removed_spot_lights {
-            renderer.scene.entities.spot_lights.remove(id);
+            renderer.resources().spot_lights().remove(id);
             self.spot_lights.remove(&entity);
         }
 
         for (entity, id) in removed_primary_cameras {
-            renderer.scene.entities.cameras.remove(id);
+            renderer.resources().cameras().remove(id);
             self.primary_cameras.remove(&entity);
         }
 
-        self.spawner.update(pool, renderer);
+        self.spawner.update(pool, renderer, scene_id);
 
         draw_collider_lines(world, gizmos);
     }

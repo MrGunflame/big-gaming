@@ -12,8 +12,8 @@ use glam::Vec3;
 use crate::Harness;
 
 pub(super) fn spot_light() -> Harness {
-    Harness::new(stringify!(spot_light), |renderer, target| {
-        renderer.scene.entities.cameras.insert(Camera {
+    Harness::new(stringify!(spot_light), |renderer, scene, target| {
+        renderer.resources().cameras().insert(Camera {
             transform: Transform::from_translation(Vec3::new(0.0, 1.0, 0.0)),
             target,
             projection: Projection {
@@ -22,19 +22,24 @@ pub(super) fn spot_light() -> Harness {
                 near: 1.0,
                 far: 1000.0,
             },
+            scene,
         });
 
         let plane = Mesh::from(Plane { size: 10.0 });
-        let mesh = renderer.meshes.insert(plane);
-        let material = renderer.materials.insert(PbrMaterial::default());
+        let mesh = renderer.resources().meshes().insert(plane);
+        let material = renderer
+            .resources()
+            .materials()
+            .insert(PbrMaterial::default());
 
-        renderer.scene.entities.objects.insert(Object {
+        renderer.resources().objects().insert(Object {
             transform: Transform::default(),
             mesh,
             material,
+            scene,
         });
 
-        renderer.scene.entities.spot_lights.insert(SpotLight {
+        renderer.resources().spot_lights().insert(SpotLight {
             transform: Transform {
                 translation: Vec3::new(0.0, 1.0, -5.0),
                 // rotation: Quat::from_axis_angle(Vec3::Y, PI / 2.0),
@@ -45,6 +50,7 @@ pub(super) fn spot_light() -> Harness {
             radius: 100.0,
             inner_cutoff: PI / 8.0,
             outer_cutoff: PI / 4.0,
+            scene,
         });
     })
 }

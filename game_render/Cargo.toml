@@ -18,7 +18,7 @@ game_asset = { version = "0.1.0", path = "../game_asset" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 
-bytemuck = { version = "1.16.1", features = ["derive"] }
+bytemuck = { version = "1.16.1", features = ["derive", "must_cast"] }
 futures-lite = "2.3.0"
 glam = { version = "0.28.0", features = ["bytemuck"] }
 tracing = { version = "0.1.40", features = ["log-always"] }

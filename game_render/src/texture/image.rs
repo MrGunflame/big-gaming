@@ -1,10 +1,8 @@
-use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use glam::UVec2;
 
-use slotmap::{DefaultKey, SlotMap};
 pub use wgpu::TextureFormat;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -114,44 +112,6 @@ impl PartialEq for &Image {
         }
 
         self.bytes == other.bytes
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ImageId(DefaultKey);
-
-#[derive(Clone, Debug)]
-enum Entry {
-    Image(Image),
-    Loading,
-}
-
-#[derive(Debug, Default)]
-pub struct Images {
-    images: SlotMap<DefaultKey, Entry>,
-}
-
-impl Images {
-    pub fn new() -> Self {
-        Self {
-            images: SlotMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, image: Image) -> ImageId {
-        let id = self.images.insert(Entry::Image(image));
-        ImageId(id)
-    }
-
-    pub fn remove(&mut self, id: ImageId) {
-        self.images.remove(id.0);
-    }
-
-    pub fn get(&self, id: ImageId) -> Option<&Image> {
-        match self.images.get(id.0)? {
-            Entry::Image(img) => Some(img),
-            Entry::Loading => None,
-        }
     }
 }
 

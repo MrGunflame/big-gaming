@@ -5,6 +5,7 @@ use game_common::components::Transform;
 use game_common::world::World;
 use game_data::record::{Record, RecordKind};
 use game_prefab::Prefab;
+use game_render::entities::SceneId;
 use game_render::options::MainPassOptions;
 use game_render::Renderer;
 use game_tracing::trace_span;
@@ -177,8 +178,15 @@ impl EditWorldWindow {
 }
 
 impl WindowTrait for EditWorldWindow {
-    fn handle_event(&mut self, renderer: &mut Renderer, event: WindowEvent, window_id: WindowId) {
-        self.state.handle_event(event, window_id, renderer);
+    fn handle_event(
+        &mut self,
+        renderer: &mut Renderer,
+        event: WindowEvent,
+        window_id: WindowId,
+        scene_id: SceneId,
+    ) {
+        self.state
+            .handle_event(event, window_id, renderer, scene_id);
     }
 
     fn update(&mut self, world: &mut World, options: &mut MainPassOptions) {

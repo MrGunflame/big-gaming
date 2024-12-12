@@ -2,15 +2,14 @@ use std::collections::HashMap;
 
 use game_common::components::{Color, Transform};
 use game_core::hierarchy::Hierarchy;
-use game_render::entities::Object;
+use game_render::entities::{Object, SceneId};
 use game_render::mesh::Mesh;
 use game_render::pbr::{AlphaMode, PbrMaterial};
-use game_render::scene::RendererScene;
-use game_render::shape;
 use game_render::texture::Image;
+use game_render::{shape, Renderer};
 use game_tracing::trace_span;
 
-use crate::scene2::{Key, SceneResources, SpawnedScene};
+use crate::scene2::{Key, ObjectWithId, SceneResources, SpawnedScene};
 
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
@@ -42,24 +41,24 @@ pub struct ObjectNode {
 }
 
 impl Scene {
-    pub(crate) fn setup_materials(&mut self, renderer: &mut RendererScene<'_>) -> SceneResources {
+    pub(crate) fn setup_materials(&mut self, renderer: &mut Renderer) -> SceneResources {
         let meshes = self
             .meshes
             .drain(..)
-            .map(|mesh| renderer.meshes.insert(mesh))
+            .map(|mesh| renderer.resources().meshes().insert(mesh))
             .collect();
 
         let images = self
             .images
             .drain(..)
-            .map(|image| renderer.images.insert(image))
+            .map(|image| renderer.resources().images().insert(image))
             .collect::<Vec<_>>();
 
         let materials = self
             .materials
             .drain(..)
             .map(|material| {
-                renderer.materials.insert({
+                renderer.resources().materials().insert({
                     PbrMaterial {
                         alpha_mode: material.alpha_mode,
                         base_color: material.base_color,
@@ -86,7 +85,8 @@ impl Scene {
     pub(crate) fn instantiate(
         &self,
         res: &SceneResources,
-        renderer: &mut RendererScene<'_>,
+        renderer: &mut Renderer,
+        scene: SceneId,
     ) -> SpawnedScene {
         let _span = trace_span!("Scene::instantiate").entered();
 
@@ -161,13 +161,17 @@ impl Scene {
                 Color::BLUE,
             ),
         ] {
-            renderer.scene.entities.objects.insert(Object {
+            let mesh = renderer.resources().meshes().insert(mesh.into());
+            let material = renderer.resources().materials().insert(PbrMaterial {
+                base_color: color,
+                ..Default::default()
+            });
+
+            renderer.resources().objects().insert(Object {
                 transform: Default::default(),
-                mesh: renderer.meshes.insert(mesh.into()),
-                material: renderer.materials.insert(PbrMaterial {
-                    base_color: color,
-                    ..Default::default()
-                }),
+                mesh,
+                material,
+                scene,
             });
         }
 
@@ -180,14 +184,18 @@ impl Scene {
                     let mesh = res.meshes[object.mesh];
                     let material = res.materials[object.material];
                     let transform = *spawned_scene.global_transform.get(&Key(key)).unwrap();
-
-                    let id = renderer.scene.entities.objects.insert(Object {
+                    let object = Object {
                         transform,
                         mesh,
                         material,
-                    });
+                        scene,
+                    };
 
-                    spawned_scene.entities.insert(Key(key), id);
+                    let id = renderer.resources().objects().insert(object);
+
+                    spawned_scene
+                        .entities
+                        .insert(Key(key), ObjectWithId { object, id });
                 }
                 _ => todo!(),
             }

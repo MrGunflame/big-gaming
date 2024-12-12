@@ -19,6 +19,7 @@ use game_input::keyboard::KeyCode;
 use game_input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use game_input::ButtonState;
 use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::entities::SceneId;
 use game_render::options::{MainPassOptions, ShadingMode};
 use game_render::Renderer;
 use game_ui::widgets::Callback;
@@ -73,13 +74,20 @@ impl WorldWindowState {
         }
     }
 
-    pub fn handle_event(&mut self, event: WindowEvent, window: WindowId, renderer: &mut Renderer) {
+    pub fn handle_event(
+        &mut self,
+        event: WindowEvent,
+        window: WindowId,
+        renderer: &mut Renderer,
+        scene_id: SceneId,
+    ) {
         let viewport_size = renderer.get_surface_size(window.into()).unwrap();
 
         let mut camera = Camera {
             transform: self.camera_controller.transform,
             projection: Projection::default(),
             target: RenderTarget::Window(window),
+            scene: scene_id,
         };
         camera.update_aspect_ratio(viewport_size);
 

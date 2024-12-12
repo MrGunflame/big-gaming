@@ -7,9 +7,9 @@ use std::io::Read;
 
 use game_common::components::{Color, Transform};
 use game_gltf::types::{GltfMaterial, GltfMesh, TextureIndex};
+use game_render::entities::ImageId;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::{AlphaMode, PbrMaterial};
-use game_render::texture::ImageId;
 use game_render::Renderer;
 use glam::{Quat, Vec2, Vec3};
 use serde::Deserialize;
@@ -137,18 +137,19 @@ fn load_mesh_instance(path: &str, parent: Key, graph: &mut SceneGraph, renderer:
     let mut images = HashMap::new();
 
     for (index, mesh) in data.meshes.clone() {
-        let id = renderer.meshes.insert(convert_mesh(mesh));
+        let id = renderer.resources().meshes().insert(convert_mesh(mesh));
         meshes.insert(index, id);
     }
 
     for (index, image) in data.images.clone() {
-        let id = renderer.images.insert(image);
+        let id = renderer.resources().images().insert(image);
         images.insert(index, id);
     }
 
     for (index, material) in data.materials.clone() {
         let id = renderer
-            .materials
+            .resources()
+            .materials()
             .insert(create_material(material, &mut images));
         materials.insert(index, id);
     }

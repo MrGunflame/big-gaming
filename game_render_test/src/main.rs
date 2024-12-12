@@ -2,7 +2,7 @@ mod tests;
 
 use clap::{Parser, Subcommand};
 use game_render::camera::RenderTarget;
-use game_render::scene::RendererScene;
+use game_render::entities::SceneId;
 use game_render::texture::RenderTexture;
 use game_render::Renderer;
 use game_tasks::TaskPool;
@@ -46,13 +46,13 @@ fn main() {
 
 struct Harness {
     name: &'static str,
-    setup: Box<dyn Fn(&mut RendererScene<'_>, RenderTarget)>,
+    setup: Box<dyn Fn(&mut Renderer, SceneId, RenderTarget)>,
 }
 
 impl Harness {
     fn new<F>(name: &'static str, setup: F) -> Self
     where
-        F: Fn(&mut RendererScene<'_>, RenderTarget) + 'static,
+        F: Fn(&mut Renderer, SceneId, RenderTarget) + 'static,
     {
         Self {
             name,
@@ -66,9 +66,9 @@ impl Harness {
 
         let id = renderer.create_render_texture(RenderTexture { size });
 
-        let mut scene = renderer.scene_mut(id.into()).unwrap();
+        let scene_id = renderer.resources().scenes().insert();
 
-        (self.setup)(&mut scene, RenderTarget::Image(id));
+        (self.setup)(&mut renderer, scene_id, RenderTarget::Image(id));
 
         let fut = renderer.read_gpu_texture(id);
 
