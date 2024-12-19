@@ -10,9 +10,9 @@ use ash::vk::{
     DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
     DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT,
     DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, Extent2D, Format, ImageUsageFlags,
-    InstanceCreateInfo, PhysicalDevice, PhysicalDeviceFeatures, PhysicalDeviceType, PresentModeKHR,
-    QueueFlags, SharingMode, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR,
-    SwapchainKHR, FALSE,
+    InstanceCreateInfo, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
+    PhysicalDeviceFeatures, PhysicalDeviceType, PresentModeKHR, QueueFlags, ShaderModuleCreateInfo,
+    SharingMode, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR, SwapchainKHR, FALSE,
 };
 use ash::Entry;
 use glam::UVec2;
@@ -52,7 +52,13 @@ const EXTENSIONS: &[&CStr] = &[
     ash::vk::EXT_DEBUG_UTILS_NAME,
 ];
 
-const DEVICE_EXTENSIONS: &[&CStr] = &[ash::khr::swapchain::NAME];
+const DEVICE_EXTENSIONS: &[&CStr] = &[
+    // VK_KHR_swapchain
+    ash::khr::swapchain::NAME,
+    // VK_KHR_dynamic_rendering
+    // Core in Vulkan 1.3
+    ash::khr::dynamic_rendering::NAME,
+];
 
 const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
@@ -308,6 +314,9 @@ impl<'a> Adapter<'a> {
 
         let features = PhysicalDeviceFeatures::default();
 
+        let mut dynamic_rendering =
+            PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
+
         let create_info = DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             // Device layers are deprecated, but the Vulkan spec still recommends
@@ -315,7 +324,8 @@ impl<'a> Adapter<'a> {
             // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#extendingvulkan-layers-devicelayerdeprecation
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions)
-            .enabled_features(&features);
+            .enabled_features(&features)
+            .push_next(&mut dynamic_rendering);
 
         let device = unsafe {
             self.instance
@@ -351,6 +361,19 @@ impl<'a> Device<'a> {
         Queue {
             device: self,
             queue,
+        }
+    }
+
+    pub unsafe fn create_shader(&mut self, code: &[u32]) -> ShaderModule<'_> {
+        // Code size must be greater than 0.
+        assert!(code.len() != 0);
+
+        let info = ShaderModuleCreateInfo::default().code(code);
+
+        let shader = unsafe { self.device.create_shader_module(&info, None).unwrap() };
+        ShaderModule {
+            device: self,
+            shader,
         }
     }
 }
@@ -569,6 +592,21 @@ impl From<TextureFormat> for Format {
         }
     }
 }
+
+pub struct ShaderModule<'a> {
+    device: &'a Device<'a>,
+    shader: vk::ShaderModule,
+}
+
+impl<'a> Drop for ShaderModule<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.device.destroy_shader_module(self.shader, None);
+        }
+    }
+}
+
+pub struct Pipeline {}
 
 const fn cstr_to_fixed_array<const N: usize>(s: &CStr) -> [i8; N] {
     assert!(s.count_bytes() < N);

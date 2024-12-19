@@ -14,6 +14,7 @@ pub mod shape;
 pub mod surface;
 pub mod texture;
 
+pub mod backend;
 mod debug;
 mod depth_stencil;
 mod fps_limiter;
