@@ -58,7 +58,7 @@ fn vk_main(state: WindowState) {
                 let caps = surface.get_capabilities(&device);
                 dbg!(&caps);
 
-                let swapchain = surface.create_swapchain(
+                let mut swapchain = surface.create_swapchain(
                     &device,
                     SwapchainConfig {
                         format: game_render::backend::TextureFormat::R8G8B8A8UnormSrgb,
@@ -81,7 +81,7 @@ fn vk_main(state: WindowState) {
                     device.create_shader(spv)
                 };
 
-                let pool = device.create_command_pool();
+                let mut pool = device.create_command_pool();
 
                 let pipeline = device.create_pipeline(&PipelineDescriptor {
                     stages: &[
@@ -89,6 +89,18 @@ fn vk_main(state: WindowState) {
                         PipelineStage::Fragment(FragmentStage { shader: &frag }),
                     ],
                 });
+
+                let mut encoder = pool.create_encoder();
+
+                let mut render_pass = encoder.begin_render_pass();
+                render_pass.bind_pipeline(&pipeline);
+                render_pass.draw(0..3, 0..1);
+                drop(render_pass);
+
+                queue.submit(&[encoder.finish()]);
+
+                let img = swapchain.acquire_next_image();
+                swapchain.present(&queue, img);
             }
         }
     }

@@ -83,3 +83,9 @@ pub struct VertexStage<'a> {
 pub struct FragmentStage<'a> {
     pub shader: &'a ShaderModule<'a>,
 }
+
+pub struct RenderPassDescriptor<'a> {
+    color_attachments: &'a [RenderPassColorAttachment],
+}
+
+pub struct RenderPassColorAttachment {}
