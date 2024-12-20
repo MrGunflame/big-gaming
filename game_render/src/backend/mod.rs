@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use ash::vk;
 use bitflags::bitflags;
 use glam::UVec2;
 use vulkan::ShaderModule;
@@ -85,7 +86,23 @@ pub struct FragmentStage<'a> {
 }
 
 pub struct RenderPassDescriptor<'a> {
-    color_attachments: &'a [RenderPassColorAttachment],
+    pub color_attachments: &'a [RenderPassColorAttachment],
 }
 
-pub struct RenderPassColorAttachment {}
+pub struct RenderPassColorAttachment {
+    pub view: vk::ImageView,
+    pub layout: vk::ImageLayout,
+    pub size: UVec2,
+    pub load_op: LoadOp,
+    pub store_op: StoreOp,
+}
+
+pub enum LoadOp {
+    Clear([f32; 4]),
+    Load,
+}
+
+pub enum StoreOp {
+    Discard,
+    Store,
+}

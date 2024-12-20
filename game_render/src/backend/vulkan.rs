@@ -1,3 +1,4 @@
+use core::arch;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
@@ -7,23 +8,26 @@ use std::ptr::null_mut;
 
 use ash::ext::debug_utils;
 use ash::vk::{
-    self, AcquireNextImageInfoKHR, ApplicationInfo, AttachmentDescription, AttachmentLoadOp,
-    AttachmentReference, AttachmentStoreOp, BlendFactor, BlendOp, Bool32, ColorComponentFlags,
-    ColorSpaceKHR, CommandBufferAllocateInfo, CommandBufferBeginInfo, CommandBufferInheritanceInfo,
-    CommandBufferLevel, CommandBufferUsageFlags, CommandPoolCreateFlags, CommandPoolCreateInfo,
-    CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
+    self, AccessFlags, AcquireNextImageInfoKHR, ApplicationInfo, AttachmentDescription,
+    AttachmentLoadOp, AttachmentReference, AttachmentStoreOp, BlendFactor, BlendOp, Bool32,
+    ClearColorValue, ClearValue, ColorComponentFlags, ColorSpaceKHR, CommandBufferAllocateInfo,
+    CommandBufferBeginInfo, CommandBufferInheritanceInfo, CommandBufferLevel,
+    CommandBufferUsageFlags, CommandPoolCreateFlags, CommandPoolCreateInfo, ComponentMapping,
+    ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
     DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
-    DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DeviceCreateInfo,
+    DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags, DeviceCreateInfo,
     DeviceQueueCreateInfo, DeviceQueueInfo2, Extent2D, Format, FrontFace,
-    GraphicsPipelineCreateInfo, Image, ImageLayout, ImageUsageFlags, InstanceCreateInfo, LogicOp,
-    Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures,
-    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
-    PipelineColorBlendStateCreateInfo, PipelineInputAssemblyStateCreateInfo,
-    PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
-    PipelineRasterizationStateCreateInfo, PipelineRenderingCreateInfo,
-    PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
-    PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
-    PrimitiveTopology, QueueFlags, Rect2D, RenderingFlags, RenderingInfo, SampleCountFlags,
+    GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
+    ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
+    LogicOp, Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
+    PhysicalDeviceFeatures, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
+    PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
+    PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
+    PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
+    PresentInfoKHR, PresentModeKHR, PrimitiveTopology, QueueFlags, Rect2D, RenderingAttachmentInfo,
+    RenderingFlags, RenderingInfo, ResolveModeFlags, SampleCountFlags, SemaphoreCreateInfo,
     ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo, SubpassDependency,
     SubpassDescription, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR, SwapchainKHR,
     Viewport, FALSE,
@@ -33,8 +37,8 @@ use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use super::{
-    AdapterKind, AdapterProperties, PipelineDescriptor, PipelineStage, PresentMode,
-    QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor,
+    AdapterKind, AdapterProperties, LoadOp, PipelineDescriptor, PipelineStage, PresentMode,
+    QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, StoreOp,
     SwapchainCapabilities, SwapchainConfig, TextureFormat,
 };
 
@@ -521,6 +525,17 @@ impl<'a> Device<'a> {
             buffers,
         }
     }
+
+    pub fn create_semaphore(&self) -> Semaphore<'_> {
+        let info = SemaphoreCreateInfo::default();
+
+        let semaphore = unsafe { self.device.create_semaphore(&info, None).unwrap() };
+
+        Semaphore {
+            device: self,
+            semaphore,
+        }
+    }
 }
 
 impl<'a> Drop for Device<'a> {
@@ -537,14 +552,24 @@ pub struct Queue<'a> {
 }
 
 impl<'a> Queue<'a> {
-    pub fn submit(&self, buffers: &[CommandBuffer<'_>]) {
+    pub fn submit(
+        &self,
+        buffers: &[CommandBuffer<'_>],
+        wait_semaphore: &Semaphore<'_>,
+        wait_stages: PipelineStageFlags,
+        signal_semaphore: &Semaphore<'_>,
+    ) {
         let buffers: Vec<_> = buffers.iter().map(|buf| *buf.buffer).collect();
 
+        let wait_semaphores = &[wait_semaphore.semaphore];
+        let wait_stages = &[wait_stages];
+        let signal_semaphores = &[signal_semaphore.semaphore];
+
         let info = SubmitInfo::default()
-            .wait_semaphores(&[])
-            .wait_dst_stage_mask(&[])
+            .wait_semaphores(wait_semaphores)
+            .wait_dst_stage_mask(wait_stages)
             .command_buffers(&buffers)
-            .signal_semaphores(&[]);
+            .signal_semaphores(signal_semaphores);
 
         unsafe {
             self.device
@@ -667,11 +692,39 @@ impl<'a> Surface<'a> {
 
         let images = unsafe { khr_device.get_swapchain_images(swapchain).unwrap() };
 
+        let image_views = images
+            .iter()
+            .map(|image| {
+                let components = ComponentMapping::default()
+                    .r(ComponentSwizzle::IDENTITY)
+                    .g(ComponentSwizzle::IDENTITY)
+                    .b(ComponentSwizzle::IDENTITY)
+                    .a(ComponentSwizzle::IDENTITY);
+
+                let subresource_range = ImageSubresourceRange::default()
+                    .aspect_mask(ImageAspectFlags::COLOR)
+                    .base_mip_level(0)
+                    .level_count(1)
+                    .base_array_layer(0)
+                    .layer_count(1);
+
+                let info = ImageViewCreateInfo::default()
+                    .image(*image)
+                    .view_type(ImageViewType::TYPE_2D)
+                    .format(config.format.into())
+                    .components(components)
+                    .subresource_range(subresource_range);
+
+                unsafe { device.device.create_image_view(&info, None).unwrap() }
+            })
+            .collect();
+
         Swapchain {
             surface: self,
             swapchain,
             device,
             images,
+            image_views,
             extent: config.extent,
             format: config.format,
         }
@@ -693,40 +746,46 @@ pub struct Swapchain<'a, 'b> {
     surface: &'a Surface<'a>,
     device: &'b Device<'b>,
     swapchain: SwapchainKHR,
-    images: Vec<vk::Image>,
+    pub images: Vec<vk::Image>,
+    pub image_views: Vec<vk::ImageView>,
 
     format: TextureFormat,
-    extent: UVec2,
+    pub extent: UVec2,
 }
 
 impl<'a, 'b> Swapchain<'a, 'b> {
-    pub fn acquire_next_image(&mut self) -> u32 {
+    pub fn acquire_next_image(&mut self, semaphore: &Semaphore<'_>) -> u32 {
         let device = ash::khr::swapchain::Device::new(
             &self.device.adapter.instance.instance,
             &self.device.device,
         );
 
-        let info = AcquireNextImageInfoKHR::default()
-            .swapchain(self.swapchain)
-            .timeout(u64::MAX)
-            .semaphore(vk::Semaphore::null())
-            .fence(vk::Fence::null());
-
-        let (image_index, suboptimal) = unsafe { device.acquire_next_image2(&info).unwrap() };
+        let (image_index, suboptimal) = unsafe {
+            device
+                .acquire_next_image(
+                    self.swapchain,
+                    u64::MAX,
+                    semaphore.semaphore,
+                    vk::Fence::null(),
+                )
+                .unwrap()
+        };
 
         image_index
     }
 
-    pub fn present(&mut self, queue: &Queue<'_>, image_index: u32) {
+    pub fn present(&mut self, queue: &Queue<'_>, image_index: u32, wait_semaphore: &Semaphore<'_>) {
         let device = ash::khr::swapchain::Device::new(
             &self.device.adapter.instance.instance,
             &self.device.device,
         );
 
+        let wait_semaphores = &[wait_semaphore.semaphore];
+
         let swapchains = &[self.swapchain];
         let image_indices = &[image_index];
         let info = PresentInfoKHR::default()
-            .wait_semaphores(&[])
+            .wait_semaphores(wait_semaphores)
             .swapchains(swapchains)
             .image_indices(image_indices);
 
@@ -866,25 +925,96 @@ pub struct CommandEncoder<'a> {
 }
 
 impl<'a> CommandEncoder<'a> {
-    pub fn begin_render_pass(&mut self) -> RenderPass<'_> {
+    pub fn begin_render_pass(&mut self, descriptor: &RenderPassDescriptor<'_>) -> RenderPass<'_> {
+        let mut extent = UVec2::ZERO;
+
+        let mut color_attachments = Vec::new();
+        for attachment in descriptor.color_attachments {
+            let load_op = match attachment.load_op {
+                LoadOp::Load => AttachmentLoadOp::LOAD,
+                LoadOp::Clear(color) => AttachmentLoadOp::CLEAR,
+            };
+
+            let store_op = match attachment.store_op {
+                StoreOp::Discard => AttachmentStoreOp::NONE,
+                StoreOp::Store => AttachmentStoreOp::STORE,
+            };
+
+            let clear_value = match attachment.load_op {
+                LoadOp::Clear(color) => ClearValue {
+                    color: ClearColorValue { float32: color },
+                },
+                LoadOp::Load => ClearValue::default(),
+            };
+
+            let info = RenderingAttachmentInfo::default()
+                .image_view(attachment.view)
+                .image_layout(attachment.layout)
+                .resolve_mode(ResolveModeFlags::NONE)
+                .load_op(load_op)
+                .store_op(store_op)
+                .clear_value(clear_value);
+
+            color_attachments.push(info);
+            extent = UVec2::max(extent, attachment.size);
+        }
+
         let info = RenderingInfo::default()
             .flags(RenderingFlags::empty())
             .render_area(Rect2D {
                 offset: Offset2D { x: 0, y: 0 },
                 extent: Extent2D {
-                    width: 4096,
-                    height: 4096,
+                    width: extent.x,
+                    height: extent.y,
                 },
             })
             .layer_count(1)
             .view_mask(0)
-            .color_attachments(&[]);
+            .color_attachments(&color_attachments);
 
         unsafe {
             self.device.device.cmd_begin_rendering(*self.buffer, &info);
         }
 
         RenderPass { encoder: self }
+    }
+
+    pub fn emit_pipeline_barrier(
+        &mut self,
+        image: vk::Image,
+        old_layout: vk::ImageLayout,
+        new_layout: vk::ImageLayout,
+        src: PipelineStageFlags,
+        dst: PipelineStageFlags,
+        src_mask: AccessFlags,
+        dst_mask: AccessFlags,
+    ) {
+        let subresource_range = ImageSubresourceRange::default()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .base_mip_level(0)
+            .level_count(1)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let barrier = ImageMemoryBarrier::default()
+            .src_access_mask(src_mask)
+            .dst_access_mask(dst_mask)
+            .old_layout(old_layout)
+            .new_layout(new_layout)
+            .image(image)
+            .subresource_range(subresource_range);
+
+        unsafe {
+            self.device.device.cmd_pipeline_barrier(
+                *self.buffer,
+                src,
+                dst,
+                DependencyFlags::empty(),
+                &[],
+                &[],
+                &[barrier],
+            );
+        }
     }
 
     pub fn finish(self) -> CommandBuffer<'a> {
@@ -945,6 +1075,21 @@ impl<'a> Drop for RenderPass<'a> {
 pub struct CommandBuffer<'a> {
     device: &'a Device<'a>,
     buffer: &'a vk::CommandBuffer,
+}
+
+pub struct Semaphore<'a> {
+    device: &'a Device<'a>,
+    semaphore: vk::Semaphore,
+}
+
+impl<'a> Semaphore<'a> {}
+
+impl<'a> Drop for Semaphore<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.device.destroy_semaphore(self.semaphore, None);
+        }
+    }
 }
 
 const fn cstr_to_fixed_array<const N: usize>(s: &CStr) -> [i8; N] {
