@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 
 use bitflags::bitflags;
 use glam::UVec2;
+use vulkan::ShaderModule;
 
 pub mod vulkan;
 
@@ -64,4 +65,21 @@ pub struct SwapchainConfig {
     pub extent: UVec2,
     pub format: TextureFormat,
     pub present_mode: PresentMode,
+}
+
+pub struct PipelineDescriptor<'a> {
+    pub stages: &'a [PipelineStage<'a>],
+}
+
+pub enum PipelineStage<'a> {
+    Vertex(VertexStage<'a>),
+    Fragment(FragmentStage<'a>),
+}
+
+pub struct VertexStage<'a> {
+    pub shader: &'a ShaderModule<'a>,
+}
+
+pub struct FragmentStage<'a> {
+    pub shader: &'a ShaderModule<'a>,
 }

@@ -6,21 +6,31 @@ use std::ptr::null_mut;
 
 use ash::ext::debug_utils;
 use ash::vk::{
-    self, ApplicationInfo, Bool32, ColorSpaceKHR, CompositeAlphaFlagsKHR,
+    self, ApplicationInfo, AttachmentDescription, AttachmentLoadOp, AttachmentReference,
+    AttachmentStoreOp, BlendFactor, BlendOp, Bool32, ColorComponentFlags, ColorSpaceKHR,
+    CommandPoolCreateFlags, CommandPoolCreateInfo, CompositeAlphaFlagsKHR, CullModeFlags,
     DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
     DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT,
-    DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, Extent2D, Format, ImageUsageFlags,
-    InstanceCreateInfo, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
-    PhysicalDeviceFeatures, PhysicalDeviceType, PresentModeKHR, QueueFlags, ShaderModuleCreateInfo,
-    SharingMode, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR, SwapchainKHR, FALSE,
+    DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, Extent2D, Format, FrontFace,
+    GraphicsPipelineCreateInfo, Image, ImageLayout, ImageUsageFlags, InstanceCreateInfo, LogicOp,
+    Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures,
+    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+    PipelineColorBlendStateCreateInfo, PipelineInputAssemblyStateCreateInfo,
+    PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo,
+    PipelineRasterizationStateCreateInfo, PipelineRenderingCreateInfo,
+    PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
+    PipelineViewportStateCreateInfo, PolygonMode, PresentModeKHR, PrimitiveTopology, QueueFlags,
+    Rect2D, SampleCountFlags, ShaderModuleCreateInfo, ShaderStageFlags, SharingMode,
+    SubpassDependency, SubpassDescription, SurfaceKHR, SurfaceTransformFlagsKHR,
+    SwapchainCreateInfoKHR, SwapchainKHR, Viewport, FALSE,
 };
 use ash::Entry;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use super::{
-    AdapterKind, AdapterProperties, PresentMode, QueueCapabilities, QueueFamily,
-    SwapchainCapabilities, SwapchainConfig, TextureFormat,
+    AdapterKind, AdapterProperties, PipelineDescriptor, PipelineStage, PresentMode,
+    QueueCapabilities, QueueFamily, SwapchainCapabilities, SwapchainConfig, TextureFormat,
 };
 
 /// The highest version of Vulkan that we support.
@@ -364,7 +374,7 @@ impl<'a> Device<'a> {
         }
     }
 
-    pub unsafe fn create_shader(&mut self, code: &[u32]) -> ShaderModule<'_> {
+    pub unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule<'_> {
         // Code size must be greater than 0.
         assert!(code.len() != 0);
 
@@ -375,6 +385,126 @@ impl<'a> Device<'a> {
             device: self,
             shader,
         }
+    }
+
+    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline<'_> {
+        let mut stages = Vec::new();
+        for stage in descriptor.stages {
+            let vk_stage = match stage {
+                PipelineStage::Vertex(stage) => PipelineShaderStageCreateInfo::default()
+                    .stage(ShaderStageFlags::VERTEX)
+                    .module(stage.shader.shader)
+                    .name(c"main"),
+                PipelineStage::Fragment(stage) => PipelineShaderStageCreateInfo::default()
+                    .stage(ShaderStageFlags::FRAGMENT)
+                    .module(stage.shader.shader)
+                    .name(c"main"),
+            };
+
+            stages.push(vk_stage);
+        }
+
+        let vertex_input_state = PipelineVertexInputStateCreateInfo::default();
+
+        let input_assembly_state = PipelineInputAssemblyStateCreateInfo::default()
+            .topology(PrimitiveTopology::TRIANGLE_LIST)
+            .primitive_restart_enable(false);
+
+        let viewport = Viewport::default()
+            .x(0.0)
+            .y(0.0)
+            .width(4096.0)
+            .height(4096.0)
+            .min_depth(0.0)
+            .max_depth(1.0);
+
+        let scissor = Rect2D::default()
+            .offset(Offset2D::default())
+            .extent(Extent2D {
+                width: 4096,
+                height: 4096,
+            });
+
+        let viewports = [viewport];
+        let scissors = [scissor];
+
+        let viewport_state = PipelineViewportStateCreateInfo::default()
+            .viewports(&viewports)
+            .scissors(&scissors);
+
+        let rasterization_state = PipelineRasterizationStateCreateInfo::default()
+            .depth_bias_enable(true)
+            .rasterizer_discard_enable(false)
+            .polygon_mode(PolygonMode::FILL)
+            .line_width(1.0)
+            .cull_mode(CullModeFlags::BACK)
+            .front_face(FrontFace::CLOCKWISE);
+
+        let multisample_state = PipelineMultisampleStateCreateInfo::default()
+            .sample_shading_enable(false)
+            .rasterization_samples(SampleCountFlags::TYPE_1);
+
+        let attachment = PipelineColorBlendAttachmentState::default()
+            .color_write_mask(ColorComponentFlags::RGBA)
+            .blend_enable(false)
+            .src_color_blend_factor(BlendFactor::ONE)
+            .dst_color_blend_factor(BlendFactor::ZERO)
+            .color_blend_op(BlendOp::ADD)
+            .src_alpha_blend_factor(BlendFactor::ONE)
+            .dst_alpha_blend_factor(BlendFactor::ZERO)
+            .alpha_blend_op(BlendOp::ADD);
+
+        let attachments = &[attachment];
+        let color_blend_state = PipelineColorBlendStateCreateInfo::default()
+            .logic_op_enable(false)
+            .logic_op(LogicOp::COPY)
+            .attachments(attachments)
+            .blend_constants([0.0, 0.0, 0.0, 0.0]);
+
+        let pipeline_layout_info = PipelineLayoutCreateInfo::default();
+        let pipeline_layout = unsafe {
+            self.device
+                .create_pipeline_layout(&pipeline_layout_info, None)
+                .unwrap()
+        };
+
+        let mut rendering_info = PipelineRenderingCreateInfo::default();
+
+        let info = GraphicsPipelineCreateInfo::default()
+            .stages(&stages)
+            .vertex_input_state(&vertex_input_state)
+            .input_assembly_state(&input_assembly_state)
+            .viewport_state(&viewport_state)
+            .rasterization_state(&rasterization_state)
+            .multisample_state(&multisample_state)
+            .color_blend_state(&color_blend_state)
+            .layout(pipeline_layout)
+            // Not needed since we are using VK_KHR_dynamic_rendering.
+            .render_pass(vk::RenderPass::null())
+            .subpass(0)
+            .push_next(&mut rendering_info);
+
+        let pipelines = unsafe {
+            self.device
+                .create_graphics_pipelines(PipelineCache::null(), &[info], None)
+                .unwrap()
+        };
+
+        Pipeline {
+            device: self,
+            pipeline: pipelines[0],
+            pipeline_layout,
+        }
+    }
+
+    pub fn create_command_pool(&self) -> CommandPool<'_> {
+        let info = CommandPoolCreateInfo::default()
+            .flags(CommandPoolCreateFlags::empty())
+            .queue_family_index(self.queue_family_index);
+
+        let pool = unsafe { self.device.create_command_pool(&info, None).unwrap() };
+
+        CommandPool { device: self, pool }
     }
 }
 
@@ -606,7 +736,41 @@ impl<'a> Drop for ShaderModule<'a> {
     }
 }
 
-pub struct Pipeline {}
+pub struct Pipeline<'a> {
+    device: &'a Device<'a>,
+    pipeline: vk::Pipeline,
+    pipeline_layout: vk::PipelineLayout,
+}
+
+impl<'a> Drop for Pipeline<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.device.destroy_pipeline(self.pipeline, None);
+            self.device
+                .device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
+        }
+    }
+}
+
+pub struct CommandPool<'a> {
+    device: &'a Device<'a>,
+    pool: vk::CommandPool,
+}
+
+impl<'a> Drop for CommandPool<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.device.destroy_command_pool(self.pool, None);
+        }
+    }
+}
+
+pub struct CommandEncoder {}
+
+impl CommandEncoder {}
+
+pub struct CommandBuffer {}
 
 const fn cstr_to_fixed_array<const N: usize>(s: &CStr) -> [i8; N] {
     assert!(s.count_bytes() < N);

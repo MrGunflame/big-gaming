@@ -1,4 +1,7 @@
-use game_render::backend::{QueueCapabilities, SwapchainConfig};
+use game_render::backend::{
+    FragmentStage, PipelineDescriptor, PipelineStage, QueueCapabilities, SwapchainConfig,
+    VertexStage,
+};
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
@@ -32,6 +35,9 @@ impl App for MyApp {
 fn vk_main(state: WindowState) {
     let instance = game_render::backend::vulkan::Instance::new().unwrap();
 
+    let vert_spv = include_bytes!("../vert.spv");
+    let frag_spv = include_bytes!("../frag.spv");
+
     for adapter in instance.adapters() {
         dbg!(adapter.properties());
         dbg!(&adapter.queue_families());
@@ -61,6 +67,28 @@ fn vk_main(state: WindowState) {
                         extent: state.inner_size(),
                     },
                 );
+
+                let vert = unsafe {
+                    let data = vert_spv.to_vec();
+                    let (prefix, spv, suffix) = data.align_to::<u32>();
+                    assert!(prefix.is_empty() && suffix.is_empty());
+                    device.create_shader(spv)
+                };
+                let frag = unsafe {
+                    let data = frag_spv.to_vec();
+                    let (prefix, spv, suffix) = data.align_to::<u32>();
+                    assert!(prefix.is_empty() && suffix.is_empty());
+                    device.create_shader(spv)
+                };
+
+                let pool = device.create_command_pool();
+
+                let pipeline = device.create_pipeline(&PipelineDescriptor {
+                    stages: &[
+                        PipelineStage::Vertex(VertexStage { shader: &vert }),
+                        PipelineStage::Fragment(FragmentStage { shader: &frag }),
+                    ],
+                });
             }
         }
     }
