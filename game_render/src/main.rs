@@ -110,7 +110,7 @@ fn vk_main(state: WindowState) {
 
                 let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                     color_attachments: &[RenderPassColorAttachment {
-                        load_op: LoadOp::Load,
+                        load_op: LoadOp::Clear([1.0, 1.0, 1.0, 1.0]),
                         store_op: StoreOp::Store,
                         view: swapchain.image_views[img as usize],
                         layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,

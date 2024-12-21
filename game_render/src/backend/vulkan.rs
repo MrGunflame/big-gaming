@@ -16,13 +16,13 @@ use ash::vk::{
     ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
     DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
     DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags, DeviceCreateInfo,
-    DeviceQueueCreateInfo, DeviceQueueInfo2, Extent2D, Format, FrontFace,
+    DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D, Format, FrontFace,
     GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
     ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
     LogicOp, Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
     PhysicalDeviceFeatures, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
     PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
-    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
     PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
@@ -446,7 +446,7 @@ impl<'a> Device<'a> {
             .rasterizer_discard_enable(false)
             .polygon_mode(PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(CullModeFlags::BACK)
+            .cull_mode(CullModeFlags::empty())
             .front_face(FrontFace::CLOCKWISE);
 
         let multisample_state = PipelineMultisampleStateCreateInfo::default()
@@ -470,6 +470,9 @@ impl<'a> Device<'a> {
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
+        let dynamic_state = PipelineDynamicStateCreateInfo::default()
+            .dynamic_states(&[DynamicState::VIEWPORT, DynamicState::SCISSOR]);
+
         let pipeline_layout_info = PipelineLayoutCreateInfo::default();
         let pipeline_layout = unsafe {
             self.device
@@ -477,7 +480,8 @@ impl<'a> Device<'a> {
                 .unwrap()
         };
 
-        let mut rendering_info = PipelineRenderingCreateInfo::default();
+        let mut rendering_info = PipelineRenderingCreateInfo::default()
+            .color_attachment_formats(&[Format::R8G8B8A8_SRGB]);
 
         let info = GraphicsPipelineCreateInfo::default()
             .stages(&stages)
@@ -488,6 +492,7 @@ impl<'a> Device<'a> {
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
             .layout(pipeline_layout)
+            .dynamic_state(&dynamic_state)
             // Not needed since we are using VK_KHR_dynamic_rendering.
             .render_pass(vk::RenderPass::null())
             .subpass(0)
@@ -974,6 +979,33 @@ impl<'a> CommandEncoder<'a> {
 
         unsafe {
             self.device.device.cmd_begin_rendering(*self.buffer, &info);
+        }
+
+        // Since we have created the pipeline with `VK_DYNAMIC_STATE_VIEWPORT` and
+        // `VK_DYNAMIC_STATE_SCISSOR` we must set the the viewport and scissors
+        // before any draw opertaions.
+        let viewport = Viewport {
+            x: 0.0,
+            y: 0.0,
+            height: extent.x as f32,
+            width: extent.y as f32,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        };
+        let scissor = Rect2D {
+            offset: Offset2D { x: 0, y: 0 },
+            extent: Extent2D {
+                width: extent.x,
+                height: extent.y,
+            },
+        };
+        unsafe {
+            self.device
+                .device
+                .cmd_set_viewport(*self.buffer, 0, &[viewport]);
+            self.device
+                .device
+                .cmd_set_scissor(*self.buffer, 0, &[scissor]);
         }
 
         RenderPass { encoder: self }
