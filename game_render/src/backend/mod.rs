@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use ash::vk;
 use bitflags::bitflags;
 use glam::UVec2;
-use vulkan::ShaderModule;
+use vulkan::{ShaderModule, TextureView};
 
 pub mod vulkan;
 
@@ -86,11 +86,11 @@ pub struct FragmentStage<'a> {
 }
 
 pub struct RenderPassDescriptor<'a> {
-    pub color_attachments: &'a [RenderPassColorAttachment],
+    pub color_attachments: &'a [RenderPassColorAttachment<'a>],
 }
 
-pub struct RenderPassColorAttachment {
-    pub view: vk::ImageView,
+pub struct RenderPassColorAttachment<'a> {
+    pub view: &'a TextureView<'a>,
     pub layout: vk::ImageLayout,
     pub size: UVec2,
     pub load_op: LoadOp,
