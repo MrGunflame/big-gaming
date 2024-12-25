@@ -482,7 +482,7 @@ impl<'a> Device<'a> {
         };
 
         let mut rendering_info = PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(&[Format::R8G8B8A8_SRGB]);
+            .color_attachment_formats(&[Format::B8G8R8A8_SRGB]);
 
         let info = GraphicsPipelineCreateInfo::default()
             .stages(&stages)
@@ -681,9 +681,34 @@ impl<'a> Surface<'a> {
         &'a self,
         device: &'b Device<'b>,
         config: SwapchainConfig,
+        caps: &SwapchainCapabilities,
     ) -> Swapchain<'a, 'b> {
-        let caps = self.get_capabilities(device);
+        // SAFETY: `old_swapchain` is null.
+        let (swapchain, images) =
+            unsafe { self.create_swapchain_inner(device, &config, &caps, SwapchainKHR::null()) };
 
+        Swapchain {
+            surface: self,
+            device: device,
+            swapchain,
+            images,
+            format: config.format,
+            extent: config.extent,
+        }
+    }
+
+    /// Creates a new [`SwapchainKHR`] and returns its images.
+    ///
+    /// # Safety
+    ///
+    /// `old_swapchain` must be either null or a non-retired swapchain created by this `Surface`.
+    unsafe fn create_swapchain_inner<'b>(
+        &'a self,
+        device: &'b Device<'b>,
+        config: &SwapchainConfig,
+        caps: &SwapchainCapabilities,
+        old_swapchain: SwapchainKHR,
+    ) -> (SwapchainKHR, Vec<vk::Image>) {
         // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkSwapchainCreateInfoKHR.html
         // `imageExtent` members `width` and `height` must both be non-zero.
         assert_ne!(config.extent.x, 0);
@@ -742,21 +767,16 @@ impl<'a> Surface<'a> {
             // Since we do not need to read back the swapchain images we do not care about the
             // discarded pixels.
             .clipped(true)
-            .old_swapchain(SwapchainKHR::null());
+            // - `oldSwapchain` must be null or a non-retired swapchain.
+            // This is guaranteed by the caller.
+            .old_swapchain(old_swapchain);
 
         let khr_device = ash::khr::swapchain::Device::new(&self.instance.instance, &device.device);
         let swapchain = unsafe { khr_device.create_swapchain(&info, None).unwrap() };
 
         let images = unsafe { khr_device.get_swapchain_images(swapchain).unwrap() };
 
-        Swapchain {
-            surface: self,
-            swapchain,
-            device,
-            images,
-            extent: config.extent,
-            format: config.format,
-        }
+        (swapchain, images)
     }
 }
 
@@ -782,6 +802,29 @@ pub struct Swapchain<'a, 'b> {
 }
 
 impl<'a, 'b> Swapchain<'a, 'b> {
+    pub fn recreate(&mut self, config: SwapchainConfig, caps: &SwapchainCapabilities) {
+        // SAFETY: `self.swapchain` is a valid swapchain created by `self.surface`.
+        // Since this function accepts a mutable reference this swapchain is not used.
+        let (swapchain, images) = unsafe {
+            self.surface
+                .create_swapchain_inner(self.device, &config, caps, self.swapchain)
+        };
+
+        // The swapchain still needs to be destroyed after it has been invalidated.
+        unsafe {
+            let device = ash::khr::swapchain::Device::new(
+                &self.surface.instance.instance,
+                &self.device.device,
+            );
+            device.destroy_swapchain(self.swapchain, None);
+        }
+
+        self.swapchain = swapchain;
+        self.images = images;
+        self.format = config.format;
+        self.extent = config.extent;
+    }
+
     pub fn acquire_next_image(&self, semaphore: &Semaphore<'_>) -> SwapchainTexture<'_> {
         let device = ash::khr::swapchain::Device::new(
             &self.device.adapter.instance.instance,

@@ -67,6 +67,7 @@ fn vk_main(state: WindowState) {
                         image_count: 4,
                         extent: state.inner_size(),
                     },
+                    &caps,
                 );
 
                 let vert = unsafe {
@@ -149,14 +150,15 @@ fn vk_main(state: WindowState) {
                     }
 
                     if img.suboptimal {
-                        swapchain = surface.create_swapchain(
-                            &device,
+                        let caps = surface.get_capabilities(&device);
+                        swapchain.recreate(
                             SwapchainConfig {
                                 format: caps.formats[0],
                                 present_mode: game_render::backend::PresentMode::Fifo,
                                 image_count: 4,
-                                extent: state.inner_size(),
+                                extent: state.inner_size().clamp(caps.min_extent, caps.max_extent),
                             },
+                            &caps,
                         );
                     }
                 }
