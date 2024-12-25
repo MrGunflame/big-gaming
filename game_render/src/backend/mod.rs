@@ -40,10 +40,14 @@ pub struct QueueFamily {
 pub struct SwapchainCapabilities {
     pub min_extent: UVec2,
     pub max_extent: UVec2,
+    /// The minimum number of images that must be in a swapchain.
     pub min_images: u32,
+    /// The maximum number of images that can be in a swapchain. `None` indicates no limit.
     pub max_images: Option<NonZeroU32>,
     pub formats: Vec<TextureFormat>,
     pub present_modes: Vec<PresentMode>,
+    current_transform: vk::SurfaceTransformFlagsKHR,
+    supported_composite_alpha: vk::CompositeAlphaFlagsKHR,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -58,6 +62,8 @@ pub enum PresentMode {
 pub enum TextureFormat {
     R8G8B8A8Unorm,
     R8G8B8A8UnormSrgb,
+    B8G8R8A8Unorm,
+    B8G8R8A8UnormSrgb,
 }
 
 #[derive(Clone, Debug)]
@@ -85,12 +91,12 @@ pub struct FragmentStage<'a> {
     pub shader: &'a ShaderModule<'a>,
 }
 
-pub struct RenderPassDescriptor<'a> {
-    pub color_attachments: &'a [RenderPassColorAttachment<'a>],
+pub struct RenderPassDescriptor<'a, 'res> {
+    pub color_attachments: &'a [RenderPassColorAttachment<'res>],
 }
 
-pub struct RenderPassColorAttachment<'a> {
-    pub view: &'a TextureView<'a>,
+pub struct RenderPassColorAttachment<'res> {
+    pub view: &'res TextureView<'res>,
     pub layout: vk::ImageLayout,
     pub size: UVec2,
     pub load_op: LoadOp,

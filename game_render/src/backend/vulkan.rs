@@ -2,6 +2,7 @@ use core::arch;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::ops::Range;
 use std::ptr::null_mut;
@@ -565,7 +566,7 @@ impl<'a> Queue<'a> {
         wait_stages: PipelineStageFlags,
         signal_semaphore: &Semaphore<'_>,
     ) {
-        let buffers: Vec<_> = buffers.iter().map(|buf| *buf.buffer).collect();
+        let buffers: Vec<_> = buffers.iter().map(|buf| buf.buffer).collect();
 
         let wait_semaphores = &[wait_semaphore.semaphore];
         let wait_stages = &[wait_stages];
@@ -637,9 +638,18 @@ impl<'a> Surface<'a> {
                 )
                 .unwrap()
         };
-        dbg!(&present_modes);
-        dbg!(&formats);
-        dbg!(&caps);
+
+        // Vulkan spec requires that `maxImageArrayLayers` is at least one.
+        debug_assert!(caps.max_image_array_layers >= 1);
+
+        // Vulkan spec requires that `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must be included.
+        debug_assert!(caps
+            .supported_usage_flags
+            .contains(ImageUsageFlags::COLOR_ATTACHMENT));
+
+        // FIXME: This does not seem strictly required by the Vulkan spec?
+        // See https://github.com/KhronosGroup/Vulkan-Docs/issues/2440
+        assert!(caps.supported_transforms.contains(caps.current_transform));
 
         SwapchainCapabilities {
             min_extent: UVec2 {
@@ -662,6 +672,8 @@ impl<'a> Surface<'a> {
                 .into_iter()
                 .filter_map(|v| v.try_into().ok())
                 .collect(),
+            current_transform: caps.current_transform,
+            supported_composite_alpha: caps.supported_composite_alpha,
         }
     }
 
@@ -670,32 +682,65 @@ impl<'a> Surface<'a> {
         device: &'b Device<'b>,
         config: SwapchainConfig,
     ) -> Swapchain<'a, 'b> {
-        let queue_family_indices = [device.queue_family_index];
+        let caps = self.get_capabilities(device);
 
         // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkSwapchainCreateInfoKHR.html
         // `imageExtent` members `width` and `height` must both be non-zero.
         assert_ne!(config.extent.x, 0);
         assert_ne!(config.extent.y, 0);
+        assert!(config.extent.x >= caps.min_extent.x && config.extent.x <= caps.max_extent.x);
+        assert!(config.extent.y >= caps.min_extent.y && config.extent.y <= caps.max_extent.y);
+
+        assert!(config.image_count <= caps.max_images.unwrap_or(NonZeroU32::MAX).get());
+        assert!(config.image_count >= caps.min_images);
+
+        // TODO: Handle case where `OPAQUE` is not supported.
+        assert!(caps
+            .supported_composite_alpha
+            .contains(CompositeAlphaFlagsKHR::OPAQUE));
+
+        assert!(caps.present_modes.contains(&config.present_mode));
+
+        assert!(caps.formats.contains(&config.format));
+
+        let queue_family_indices = [device.queue_family_index];
 
         let info = SwapchainCreateInfoKHR::default()
+            // - Surface must be supported. This is checked by the call to `get_capabilities` above.
             .surface(self.surface)
+            // - `minImageCount` must be less than or equal to the `maxImageCount`. Checked above.
+            // - `minImageCount` must be greater than or equal to `minImageCount`. Checked above.
             .min_image_count(config.image_count)
+            // - `imageFormat` must match one of the formats returned by `vkGetPhysicalDeviceSurfaceFormatsKHR`.
+            // Checked above.
             .image_format(config.format.into())
+            // TODO: Unchecked
             .image_color_space(ColorSpaceKHR::SRGB_NONLINEAR)
+            // - `width` and `height` must both ne non-zero. Checked above.
+            // - `width` and `height` must be between `minImageExtent` and `maxImageExtent`. Checked above.
             .image_extent(Extent2D {
                 width: config.extent.x,
                 height: config.extent.y,
             })
+            // - `imageArrayLayers` must be at least 1 and less than or equal to `maxImageArrayLayers`.
+            // `vkGetPhysicalDeviceSurfaceCapabilitiesKHR` is required to always return at least 1.
+            // This means the value `1` is always valid here.
             .image_array_layers(1)
-            // TODO: Unchecked
+            // - `imageUsage` must be a set of `supportedUsageFlags`.
+            // `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must always be included, so this value is always valid.
             .image_usage(ImageUsageFlags::COLOR_ATTACHMENT)
             .image_sharing_mode(SharingMode::EXCLUSIVE)
             .queue_family_indices(&queue_family_indices)
-            // TODO: Unchecked
+            // - `compositeAlpha` must be one bit from `supportedCompositeAlpha`. Checked above.
             .composite_alpha(CompositeAlphaFlagsKHR::OPAQUE)
-            // TODO: Unchecked
-            .pre_transform(SurfaceTransformFlagsKHR::IDENTITY)
+            // - `preTransform` must be one bit from `supportedTransforms`.
+            .pre_transform(caps.current_transform)
+            // - `presentMode` must be one of the values returned by `vkGetPhysicalDeviceSurfacePresentModesKHR`.
+            // Checked above.
             .present_mode(config.present_mode.into())
+            // Whether Vulkan is allowed to discard pixels of the surface that are not visible.
+            // Since we do not need to read back the swapchain images we do not care about the
+            // discarded pixels.
             .clipped(true)
             .old_swapchain(SwapchainKHR::null());
 
@@ -831,6 +876,8 @@ impl TryFrom<Format> for TextureFormat {
         match value {
             Format::R8G8B8A8_UNORM => Ok(Self::R8G8B8A8Unorm),
             Format::R8G8B8A8_SRGB => Ok(Self::R8G8B8A8UnormSrgb),
+            Format::B8G8R8A8_UNORM => Ok(Self::B8G8R8A8Unorm),
+            Format::B8G8R8A8_SRGB => Ok(Self::B8G8R8A8UnormSrgb),
             _ => Err(UnknownEnumValue),
         }
     }
@@ -841,6 +888,8 @@ impl From<TextureFormat> for Format {
         match value {
             TextureFormat::R8G8B8A8Unorm => Self::R8G8B8A8_UNORM,
             TextureFormat::R8G8B8A8UnormSrgb => Self::R8G8B8A8_SRGB,
+            TextureFormat::B8G8R8A8Unorm => Self::B8G8R8A8_SNORM,
+            TextureFormat::B8G8R8A8UnormSrgb => Self::B8G8R8A8_SRGB,
         }
     }
 }
@@ -910,7 +959,8 @@ impl<'a> CommandPool<'a> {
 
         Some(CommandEncoder {
             device: self.device,
-            buffer: &self.buffers[0],
+            pool: self,
+            buffer,
         })
     }
 
@@ -968,11 +1018,15 @@ impl<'a> Drop for CommandPool<'a> {
 
 pub struct CommandEncoder<'a> {
     device: &'a Device<'a>,
-    buffer: &'a vk::CommandBuffer,
+    pool: &'a CommandPool<'a>,
+    buffer: vk::CommandBuffer,
 }
 
 impl<'a> CommandEncoder<'a> {
-    pub fn begin_render_pass(&mut self, descriptor: &RenderPassDescriptor<'_>) -> RenderPass<'_> {
+    pub fn begin_render_pass<'res>(
+        &mut self,
+        descriptor: &RenderPassDescriptor<'_, 'res>,
+    ) -> RenderPass<'_, 'res> {
         let mut extent = UVec2::ZERO;
 
         let mut color_attachments = Vec::new();
@@ -1020,7 +1074,7 @@ impl<'a> CommandEncoder<'a> {
             .color_attachments(&color_attachments);
 
         unsafe {
-            self.device.device.cmd_begin_rendering(*self.buffer, &info);
+            self.device.device.cmd_begin_rendering(self.buffer, &info);
         }
 
         // Since we have created the pipeline with `VK_DYNAMIC_STATE_VIEWPORT` and
@@ -1044,13 +1098,16 @@ impl<'a> CommandEncoder<'a> {
         unsafe {
             self.device
                 .device
-                .cmd_set_viewport(*self.buffer, 0, &[viewport]);
+                .cmd_set_viewport(self.buffer, 0, &[viewport]);
             self.device
                 .device
-                .cmd_set_scissor(*self.buffer, 0, &[scissor]);
+                .cmd_set_scissor(self.buffer, 0, &[scissor]);
         }
 
-        RenderPass { encoder: self }
+        RenderPass {
+            encoder: self,
+            _marker: PhantomData,
+        }
     }
 
     pub fn emit_pipeline_barrier(
@@ -1080,7 +1137,7 @@ impl<'a> CommandEncoder<'a> {
 
         unsafe {
             self.device.device.cmd_pipeline_barrier(
-                *self.buffer,
+                self.buffer,
                 src,
                 dst,
                 DependencyFlags::empty(),
@@ -1093,7 +1150,7 @@ impl<'a> CommandEncoder<'a> {
 
     pub fn finish(self) -> CommandBuffer<'a> {
         unsafe {
-            self.device.device.end_command_buffer(*self.buffer).unwrap();
+            self.device.device.end_command_buffer(self.buffer).unwrap();
         }
 
         CommandBuffer {
@@ -1103,19 +1160,24 @@ impl<'a> CommandEncoder<'a> {
     }
 }
 
-impl<'a> Drop for CommandEncoder<'a> {
-    fn drop(&mut self) {}
+pub struct RenderPass<'encoder, 'resources> {
+    encoder: &'encoder CommandEncoder<'encoder>,
+    // Marker to indicate that all resources that this render pass
+    // may access must not be dropped while this render pass exists.
+    _marker: PhantomData<fn() -> &'resources ()>,
 }
 
-pub struct RenderPass<'a> {
-    encoder: &'a CommandEncoder<'a>,
-}
-
-impl<'a> RenderPass<'a> {
+impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
     pub fn bind_pipeline(&mut self, pipeline: &Pipeline<'_>) {
+        // Bind the pipeline.
+        // https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdBindPipeline.html
+        // Safety:
+        // - Since we are using `GRAPHICS`, the pipeline must be a graphics pipeline.
+        // - Since we are using `GRAPHICS`, the command buffer must support graphics
+        // operations.
         unsafe {
             self.encoder.device.device.cmd_bind_pipeline(
-                *self.encoder.buffer,
+                self.encoder.buffer,
                 PipelineBindPoint::GRAPHICS,
                 pipeline.pipeline,
             );
@@ -1125,7 +1187,7 @@ impl<'a> RenderPass<'a> {
     pub fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {
         unsafe {
             self.encoder.device.device.cmd_draw(
-                *self.encoder.buffer,
+                self.encoder.buffer,
                 vertices.len() as u32,
                 instances.len() as u32,
                 vertices.start,
@@ -1135,20 +1197,20 @@ impl<'a> RenderPass<'a> {
     }
 }
 
-impl<'a> Drop for RenderPass<'a> {
+impl<'encoder, 'resources> Drop for RenderPass<'encoder, 'resources> {
     fn drop(&mut self) {
         unsafe {
             self.encoder
                 .device
                 .device
-                .cmd_end_rendering(*self.encoder.buffer);
+                .cmd_end_rendering(self.encoder.buffer);
         }
     }
 }
 
 pub struct CommandBuffer<'a> {
     device: &'a Device<'a>,
-    buffer: &'a vk::CommandBuffer,
+    buffer: vk::CommandBuffer,
 }
 
 pub struct Semaphore<'a> {

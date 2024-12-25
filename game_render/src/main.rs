@@ -62,7 +62,7 @@ fn vk_main(state: WindowState) {
                 let mut swapchain = surface.create_swapchain(
                     &device,
                     SwapchainConfig {
-                        format: game_render::backend::TextureFormat::R8G8B8A8UnormSrgb,
+                        format: caps.formats[0],
                         present_mode: game_render::backend::PresentMode::Fifo,
                         image_count: 4,
                         extent: state.inner_size(),
@@ -149,11 +149,10 @@ fn vk_main(state: WindowState) {
                     }
 
                     if img.suboptimal {
-                        dbg!(state.inner_size());
                         swapchain = surface.create_swapchain(
                             &device,
                             SwapchainConfig {
-                                format: game_render::backend::TextureFormat::R8G8B8A8UnormSrgb,
+                                format: caps.formats[0],
                                 present_mode: game_render::backend::PresentMode::Fifo,
                                 image_count: 4,
                                 extent: state.inner_size(),
