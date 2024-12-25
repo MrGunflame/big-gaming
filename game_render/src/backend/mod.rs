@@ -75,7 +75,27 @@ pub struct SwapchainConfig {
 }
 
 pub struct PipelineDescriptor<'a> {
+    pub topology: PrimitiveTopology,
+    pub front_face: FrontFace,
+    pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PrimitiveTopology {
+    TriangleList,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FrontFace {
+    Cw,
+    Ccw,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Face {
+    Front,
+    Back,
 }
 
 pub enum PipelineStage<'a> {
@@ -89,6 +109,7 @@ pub struct VertexStage<'a> {
 
 pub struct FragmentStage<'a> {
     pub shader: &'a ShaderModule<'a>,
+    pub targets: &'a [TextureFormat],
 }
 
 pub struct RenderPassDescriptor<'a, 'res> {

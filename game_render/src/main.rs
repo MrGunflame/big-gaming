@@ -86,9 +86,15 @@ fn vk_main(state: WindowState) {
                 let mut pool = device.create_command_pool();
 
                 let pipeline = device.create_pipeline(&PipelineDescriptor {
+                    topology: game_render::backend::PrimitiveTopology::TriangleList,
+                    cull_mode: None,
+                    front_face: game_render::backend::FrontFace::Ccw,
                     stages: &[
                         PipelineStage::Vertex(VertexStage { shader: &vert }),
-                        PipelineStage::Fragment(FragmentStage { shader: &frag }),
+                        PipelineStage::Fragment(FragmentStage {
+                            shader: &frag,
+                            targets: &[caps.formats[0]],
+                        }),
                     ],
                 });
 

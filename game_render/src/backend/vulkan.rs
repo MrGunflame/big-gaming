@@ -38,7 +38,7 @@ use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use super::{
-    AdapterKind, AdapterProperties, LoadOp, PipelineDescriptor, PipelineStage, PresentMode,
+    AdapterKind, AdapterProperties, Face, LoadOp, PipelineDescriptor, PipelineStage, PresentMode,
     QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, StoreOp,
     SwapchainCapabilities, SwapchainConfig, TextureFormat,
 };
@@ -399,16 +399,22 @@ impl<'a> Device<'a> {
 
     pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline<'_> {
         let mut stages = Vec::new();
+        let mut color_attchment_formats: Vec<Format> = Vec::new();
+
         for stage in descriptor.stages {
             let vk_stage = match stage {
                 PipelineStage::Vertex(stage) => PipelineShaderStageCreateInfo::default()
                     .stage(ShaderStageFlags::VERTEX)
                     .module(stage.shader.shader)
                     .name(c"main"),
-                PipelineStage::Fragment(stage) => PipelineShaderStageCreateInfo::default()
-                    .stage(ShaderStageFlags::FRAGMENT)
-                    .module(stage.shader.shader)
-                    .name(c"main"),
+                PipelineStage::Fragment(stage) => {
+                    color_attchment_formats.extend(stage.targets.iter().copied().map(Format::from));
+
+                    PipelineShaderStageCreateInfo::default()
+                        .stage(ShaderStageFlags::FRAGMENT)
+                        .module(stage.shader.shader)
+                        .name(c"main")
+                }
             };
 
             stages.push(vk_stage);
@@ -417,38 +423,35 @@ impl<'a> Device<'a> {
         let vertex_input_state = PipelineVertexInputStateCreateInfo::default();
 
         let input_assembly_state = PipelineInputAssemblyStateCreateInfo::default()
-            .topology(PrimitiveTopology::TRIANGLE_LIST)
+            .topology(descriptor.topology.into())
             .primitive_restart_enable(false);
 
-        let viewport = Viewport::default()
-            .x(0.0)
-            .y(0.0)
-            .width(4096.0)
-            .height(4096.0)
-            .min_depth(0.0)
-            .max_depth(1.0);
-
-        let scissor = Rect2D::default()
-            .offset(Offset2D::default())
-            .extent(Extent2D {
-                width: 4096,
-                height: 4096,
-            });
-
-        let viewports = [viewport];
-        let scissors = [scissor];
-
+        // We use dynamic viewport and scissors, so the actual viewport and scissors
+        // pointers are ignored. We still have to enter the correct count of viewport/
+        // scissors.
         let viewport_state = PipelineViewportStateCreateInfo::default()
-            .viewports(&viewports)
-            .scissors(&scissors);
+            // - `viewportCount` must be less than or equal to `VkPhysicalDeviceLimits::maxViewports`.
+            // - `viewportCount` must not be greater than 1. (If `multiViewport` feature is not enabled.)
+            // - `viewportCount` must be greater than 0. (If `VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT` not set.)
+            .viewport_count(1)
+            // - `scissorCount` must be less than or eual to `VkPhysicalDeviceLimits::maxViewports`.
+            // - `scissorCount` must not be greater than 1. (If `multiViewport` feature is not enabled.)
+            // - `scissorCount` must be greater than 0. (If `VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT` not set.)
+            .scissor_count(1);
+
+        let cull_mode = match descriptor.cull_mode {
+            Some(Face::Front) => CullModeFlags::FRONT,
+            Some(Face::Back) => CullModeFlags::BACK,
+            None => CullModeFlags::NONE,
+        };
 
         let rasterization_state = PipelineRasterizationStateCreateInfo::default()
             .depth_bias_enable(true)
             .rasterizer_discard_enable(false)
             .polygon_mode(PolygonMode::FILL)
             .line_width(1.0)
-            .cull_mode(CullModeFlags::empty())
-            .front_face(FrontFace::CLOCKWISE);
+            .cull_mode(cull_mode)
+            .front_face(descriptor.front_face.into());
 
         let multisample_state = PipelineMultisampleStateCreateInfo::default()
             .sample_shading_enable(false)
@@ -482,7 +485,8 @@ impl<'a> Device<'a> {
         };
 
         let mut rendering_info = PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(&[Format::B8G8R8A8_SRGB]);
+            // - `colorAttachmentCount` must be less than `VkPhysicalDeviceLimits::maxColorAttachments`.
+            .color_attachment_formats(&color_attchment_formats);
 
         let info = GraphicsPipelineCreateInfo::default()
             .stages(&stages)
@@ -933,6 +937,34 @@ impl From<TextureFormat> for Format {
             TextureFormat::R8G8B8A8UnormSrgb => Self::R8G8B8A8_SRGB,
             TextureFormat::B8G8R8A8Unorm => Self::B8G8R8A8_SNORM,
             TextureFormat::B8G8R8A8UnormSrgb => Self::B8G8R8A8_SRGB,
+        }
+    }
+}
+
+impl TryFrom<PrimitiveTopology> for super::PrimitiveTopology {
+    type Error = UnknownEnumValue;
+
+    fn try_from(value: PrimitiveTopology) -> Result<Self, Self::Error> {
+        match value {
+            PrimitiveTopology::TRIANGLE_LIST => Ok(Self::TriangleList),
+            _ => Err(UnknownEnumValue),
+        }
+    }
+}
+
+impl From<super::PrimitiveTopology> for PrimitiveTopology {
+    fn from(value: super::PrimitiveTopology) -> Self {
+        match value {
+            super::PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
+        }
+    }
+}
+
+impl From<super::FrontFace> for FrontFace {
+    fn from(value: super::FrontFace) -> Self {
+        match value {
+            super::FrontFace::Cw => Self::CLOCKWISE,
+            super::FrontFace::Ccw => Self::COUNTER_CLOCKWISE,
         }
     }
 }
