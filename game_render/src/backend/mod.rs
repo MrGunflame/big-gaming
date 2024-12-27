@@ -1,10 +1,11 @@
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroU64};
 
 use ash::vk;
 use bitflags::bitflags;
 use glam::UVec2;
 use vulkan::{ShaderModule, TextureView};
 
+pub mod allocator;
 pub mod vulkan;
 
 #[derive(Clone, Debug)]
@@ -18,6 +19,37 @@ pub enum AdapterKind {
     DiscreteGpu,
     IntegratedGpu,
     Other,
+}
+
+#[derive(Clone, Debug)]
+pub struct AdapterMemoryProperties {
+    pub heaps: Vec<MemoryHeap>,
+    pub types: Vec<MemoryType>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MemoryHeap {
+    pub id: u32,
+    pub size: u64,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MemoryType {
+    pub id: u32,
+    pub heap: u32,
+    pub flags: MemoryTypeFlags,
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct MemoryTypeFlags: u32 {
+        /// Memory that is local the GPU.
+        const DEVICE_LOCAL = 1 << 0;
+        /// Memory that can be accessed by the CPU after mapping.
+        const HOST_VISIBLE = 1 << 1;
+        /// If not set the CPU needs to flush the host cache.
+        const HOST_COHERENT = 1 << 2;
+    }
 }
 
 bitflags! {
@@ -132,4 +164,36 @@ pub enum LoadOp {
 pub enum StoreOp {
     Discard,
     Store,
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct BufferUsage: u32 {
+        const TRANSFER_SRC = 1 << 0;
+        const TRANSFER_DST = 1 << 1;
+        const UNIFORM = 1 << 2;
+        const STORAGE = 1 << 3;
+        const VERTEX = 1 << 4;
+        const INDEX = 1 << 5;
+        const INDIRECT = 1 << 6;
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MemoryRequirements {
+    pub size: NonZeroU64,
+    pub align: NonZeroU64,
+    pub memory_types: Vec<u32>,
+}
+
+impl MemoryRequirements {
+    pub fn padding_needed(&self) -> u64 {
+        let size = self.size.get();
+        let align = self.align.get();
+        if size % align == 0 {
+            0
+        } else {
+            align - (size % align)
+        }
+    }
 }

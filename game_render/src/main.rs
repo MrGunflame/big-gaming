@@ -1,10 +1,12 @@
+use bytemuck::{Pod, Zeroable};
 use game_render::backend::{
-    FragmentStage, LoadOp, PipelineDescriptor, PipelineStage, QueueCapabilities,
-    RenderPassColorAttachment, RenderPassDescriptor, StoreOp, SwapchainConfig, VertexStage,
+    BufferUsage, FragmentStage, LoadOp, MemoryTypeFlags, PipelineDescriptor, PipelineStage,
+    QueueCapabilities, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, SwapchainConfig,
+    VertexStage,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
-use glam::UVec2;
+use glam::{vec2, vec3, UVec2, Vec2, Vec3};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 fn main() {
@@ -33,6 +35,25 @@ impl App for MyApp {
     fn update(&mut self, ctx: game_window::WindowManagerContext<'_>) {}
 }
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+struct Vertex {
+    pos: Vec2,
+    color: Vec3,
+}
+
+impl Vertex {
+    const fn new(pos: Vec2, color: Vec3) -> Self {
+        Self { pos, color }
+    }
+}
+
+static VERTICES: [Vertex; 3] = [
+    Vertex::new(vec2(0.0, -0.5), vec3(1.0, 1.0, 1.0)),
+    Vertex::new(vec2(0.5, 0.5), vec3(0.0, 1.0, 0.0)),
+    Vertex::new(vec2(-0.5, 0.5), vec3(0.0, 0.0, 1.0)),
+];
+
 fn vk_main(state: WindowState) {
     let instance = game_render::backend::vulkan::Instance::new().unwrap();
 
@@ -42,6 +63,7 @@ fn vk_main(state: WindowState) {
     for adapter in instance.adapters() {
         dbg!(adapter.properties());
         dbg!(&adapter.queue_families());
+        let mem_props = adapter.memory_properties();
 
         for queue_family in adapter.queue_families() {
             if queue_family
@@ -55,6 +77,33 @@ fn vk_main(state: WindowState) {
                     state.raw_display_handle().unwrap(),
                     state.raw_window_handle().unwrap(),
                 );
+
+                let mut buffer = device.create_buffer(
+                    (size_of::<Vertex>() as u64 * VERTICES.len() as u64)
+                        .try_into()
+                        .unwrap(),
+                    BufferUsage::STORAGE | BufferUsage::TRANSFER_DST,
+                );
+                let reqs = device.buffer_memory_requirements(&buffer);
+
+                let pad = reqs.padding_needed();
+
+                let host_mem_typ = mem_props
+                    .types
+                    .iter()
+                    .find(|t| {
+                        reqs.memory_types.contains(&t.id)
+                            && t.flags.contains(MemoryTypeFlags::HOST_VISIBLE)
+                            && t.flags.contains(MemoryTypeFlags::DEVICE_LOCAL)
+                    })
+                    .unwrap();
+
+                let mem = device.allocate_memory(reqs.size.try_into().unwrap(), host_mem_typ.id);
+                let mapped_mem = unsafe { device.map_memory(&mem) };
+                device.bind_buffer_memory(&mut buffer, mem);
+
+                mapped_mem[..VERTICES.len() * size_of::<Vertex>()]
+                    .copy_from_slice(bytemuck::cast_slice(&VERTICES));
 
                 let caps = surface.get_capabilities(&device);
                 dbg!(&caps);

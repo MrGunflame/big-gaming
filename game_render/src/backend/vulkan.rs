@@ -3,27 +3,29 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
-use std::ptr::null_mut;
+use std::ptr::{null_mut, NonNull};
 
 use ash::ext::debug_utils;
 use ash::vk::{
     self, AccessFlags, AcquireNextImageInfoKHR, ApplicationInfo, AttachmentDescription,
-    AttachmentLoadOp, AttachmentReference, AttachmentStoreOp, BlendFactor, BlendOp, Bool32,
-    ClearColorValue, ClearValue, ColorComponentFlags, ColorSpaceKHR, CommandBufferAllocateInfo,
-    CommandBufferBeginInfo, CommandBufferInheritanceInfo, CommandBufferLevel,
-    CommandBufferUsageFlags, CommandPoolCreateFlags, CommandPoolCreateInfo, CommandPoolResetFlags,
-    ComponentMapping, ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags,
-    DebugUtilsMessageSeverityFlagsEXT, DebugUtilsMessageTypeFlagsEXT,
-    DebugUtilsMessengerCallbackDataEXT, DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT,
-    DependencyFlags, DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState,
-    Extent2D, Format, FrontFace, GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout,
-    ImageMemoryBarrier, ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType,
-    InstanceCreateInfo, LogicOp, Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
-    PhysicalDeviceFeatures, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
-    PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
-    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    AttachmentLoadOp, AttachmentReference, AttachmentStoreOp, BindBufferMemoryInfo, BlendFactor,
+    BlendOp, Bool32, BufferCreateInfo, BufferUsageFlags, ClearColorValue, ClearValue,
+    ColorComponentFlags, ColorSpaceKHR, CommandBufferAllocateInfo, CommandBufferBeginInfo,
+    CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags,
+    CommandPoolCreateFlags, CommandPoolCreateInfo, CommandPoolResetFlags, ComponentMapping,
+    ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
+    DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
+    DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags, DeviceCreateInfo,
+    DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D, Format, FrontFace,
+    GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
+    ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
+    LogicOp, MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, Offset2D, PhysicalDevice,
+    PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures, PhysicalDeviceType,
+    PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+    PipelineColorBlendStateCreateInfo, PipelineDynamicStateCreateInfo,
+    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
     PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
     PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
@@ -31,16 +33,18 @@ use ash::vk::{
     RenderingFlags, RenderingInfo, ResolveModeFlags, SampleCountFlags, SemaphoreCreateInfo,
     ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo, SubpassDependency,
     SubpassDescription, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR, SwapchainKHR,
-    Viewport, FALSE,
+    Viewport, FALSE, WHOLE_SIZE,
 };
 use ash::Entry;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use wgpu::hal::auxil::db;
 
 use super::{
-    AdapterKind, AdapterProperties, Face, LoadOp, PipelineDescriptor, PipelineStage, PresentMode,
-    QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, StoreOp,
-    SwapchainCapabilities, SwapchainConfig, TextureFormat,
+    AdapterKind, AdapterMemoryProperties, AdapterProperties, BufferUsage, Face, LoadOp, MemoryHeap,
+    MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineDescriptor, PipelineStage,
+    PresentMode, QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor,
+    StoreOp, SwapchainCapabilities, SwapchainConfig, TextureFormat,
 };
 
 /// The highest version of Vulkan that we support.
@@ -285,6 +289,60 @@ impl<'a> Adapter<'a> {
         AdapterProperties { name, kind }
     }
 
+    pub fn memory_properties(&self) -> AdapterMemoryProperties {
+        let props = unsafe {
+            self.instance
+                .instance
+                .get_physical_device_memory_properties(self.physical_device)
+        };
+
+        let heaps = props
+            .memory_heaps
+            .iter()
+            .take(props.memory_heap_count as usize)
+            .enumerate()
+            .map(|(id, heap)| MemoryHeap {
+                id: id as u32,
+                size: heap.size,
+            })
+            .collect();
+        let types = props
+            .memory_types
+            .iter()
+            .take(props.memory_type_count as usize)
+            .enumerate()
+            .map(|(id, typ)| {
+                let mut flags = MemoryTypeFlags::empty();
+                if typ
+                    .property_flags
+                    .contains(MemoryPropertyFlags::DEVICE_LOCAL)
+                {
+                    flags |= MemoryTypeFlags::DEVICE_LOCAL;
+                }
+                if typ
+                    .property_flags
+                    .contains(MemoryPropertyFlags::HOST_VISIBLE)
+                {
+                    flags |= MemoryTypeFlags::HOST_VISIBLE;
+                }
+                if typ
+                    .property_flags
+                    .contains(MemoryPropertyFlags::HOST_COHERENT)
+                {
+                    flags |= MemoryTypeFlags::HOST_COHERENT;
+                }
+
+                MemoryType {
+                    id: id as u32,
+                    heap: typ.heap_index,
+                    flags,
+                }
+            })
+            .collect();
+
+        AdapterMemoryProperties { heaps, types }
+    }
+
     pub fn queue_families(&self) -> Vec<QueueFamily> {
         let queue_families = unsafe {
             self.instance
@@ -382,6 +440,111 @@ impl<'a> Device<'a> {
             device: self,
             queue,
         }
+    }
+
+    pub fn create_buffer(&self, size: NonZeroU64, usage: BufferUsage) -> Buffer<'_> {
+        let mut buffer_usage_flags = BufferUsageFlags::empty();
+        if usage.contains(BufferUsage::TRANSFER_SRC) {
+            buffer_usage_flags |= BufferUsageFlags::TRANSFER_SRC;
+        }
+        if usage.contains(BufferUsage::TRANSFER_DST) {
+            buffer_usage_flags |= BufferUsageFlags::TRANSFER_DST;
+        }
+        if usage.contains(BufferUsage::UNIFORM) {
+            buffer_usage_flags |= BufferUsageFlags::UNIFORM_BUFFER;
+        }
+        if usage.contains(BufferUsage::STORAGE) {
+            buffer_usage_flags |= BufferUsageFlags::STORAGE_BUFFER;
+        }
+        if usage.contains(BufferUsage::VERTEX) {
+            buffer_usage_flags |= BufferUsageFlags::VERTEX_BUFFER;
+        }
+        if usage.contains(BufferUsage::INDEX) {
+            buffer_usage_flags |= BufferUsageFlags::INDEX_BUFFER;
+        }
+        if usage.contains(BufferUsage::INDIRECT) {
+            buffer_usage_flags |= BufferUsageFlags::INDIRECT_BUFFER;
+        }
+
+        assert!(!buffer_usage_flags.is_empty());
+
+        let info = BufferCreateInfo::default()
+            // - `size` must be greater than 0.
+            .size(size.get())
+            // - `usage` must not be 0. (Unless `VkBufferUsageFlags2CreateInfo` is used.)
+            // Checked above.
+            .usage(buffer_usage_flags)
+            .sharing_mode(SharingMode::EXCLUSIVE);
+
+        let buffer = unsafe { self.device.create_buffer(&info, None).unwrap() };
+        Buffer {
+            buffer,
+            device: &self.device,
+            memory: None,
+        }
+    }
+
+    pub fn allocate_memory(&self, size: NonZeroU64, memory_type_index: u32) -> DeviceMemory<'_> {
+        // TODO: If the protectedMemory feature is not enabled, the VkMemoryAllocateInfo::memoryTypeIndex must not indicate a memory type that reports VK_MEMORY_PROPERTY_PROTECTED_BIT.
+        let info = MemoryAllocateInfo::default()
+            // - `allocationSize` must be greater than 0.
+            .allocation_size(size.get())
+            .memory_type_index(memory_type_index);
+
+        let memory = unsafe { self.device.allocate_memory(&info, None).unwrap() };
+        DeviceMemory {
+            memory,
+            device: &self.device,
+            size,
+        }
+    }
+
+    pub fn buffer_memory_requirements(&self, buffer: &Buffer<'_>) -> MemoryRequirements {
+        let req = unsafe { self.device.get_buffer_memory_requirements(buffer.buffer) };
+
+        // Bit `i` is set iff the memory type at index `i` is
+        // supported for this buffer.
+        let mut memory_types = Vec::new();
+        let mut bits = req.memory_type_bits;
+        while bits != 0 {
+            let index = bits.trailing_zeros();
+            memory_types.push(index);
+            bits &= !(1 << index);
+        }
+
+        // Since buffer with size 0 are forbidden, the size/align
+        // of any buffer is not 0.
+        debug_assert!(req.size > 0);
+        debug_assert!(req.alignment > 0);
+
+        MemoryRequirements {
+            size: unsafe { NonZeroU64::new_unchecked(req.size) },
+            align: unsafe { NonZeroU64::new_unchecked(req.alignment) },
+            memory_types,
+        }
+    }
+
+    pub fn bind_buffer_memory<'mem>(&self, buffer: &mut Buffer<'mem>, memory: DeviceMemory<'mem>) {
+        let info = BindBufferMemoryInfo::default()
+            .buffer(buffer.buffer)
+            .memory(memory.memory);
+
+        unsafe {
+            self.device.bind_buffer_memory2(&[info]).unwrap();
+        }
+
+        buffer.memory = Some(memory);
+    }
+
+    pub unsafe fn map_memory(&self, memory: &DeviceMemory<'_>) -> &mut [u8] {
+        let data = unsafe {
+            self.device
+                .map_memory(memory.memory, 0, memory.size.get(), MemoryMapFlags::empty())
+                .unwrap()
+        };
+
+        let len = memory.size.get() as usize;
+        unsafe { core::slice::from_raw_parts_mut(data.cast::<u8>(), len) }
     }
 
     pub unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule<'_> {
@@ -1387,6 +1550,36 @@ impl<'a> Drop for TextureView<'a> {
     fn drop(&mut self) {
         unsafe {
             self.device.device.destroy_image_view(self.view, None);
+        }
+    }
+}
+
+pub struct Buffer<'a> {
+    buffer: vk::Buffer,
+    device: &'a ash::Device,
+    memory: Option<DeviceMemory<'a>>,
+}
+
+impl<'a> Buffer<'a> {}
+
+impl<'a> Drop for Buffer<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_buffer(self.buffer, None);
+        }
+    }
+}
+
+pub struct DeviceMemory<'a> {
+    memory: vk::DeviceMemory,
+    device: &'a ash::Device,
+    size: NonZeroU64,
+}
+
+impl<'a> Drop for DeviceMemory<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.free_memory(self.memory, None);
         }
     }
 }
