@@ -145,6 +145,7 @@ fn vk_main(state: WindowState) {
                             targets: &[caps.formats[0]],
                         }),
                     ],
+                    descriptors: &[],
                 });
 
                 let image_avail = device.create_semaphore();

@@ -111,6 +111,7 @@ pub struct PipelineDescriptor<'a> {
     pub front_face: FrontFace,
     pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
+    pub descriptors: &'a [DescriptorSetLayout],
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -164,6 +165,17 @@ pub enum LoadOp {
 pub enum StoreOp {
     Discard,
     Store,
+}
+
+pub struct DescriptorSetLayout {
+    pub binding: u32,
+    pub descriptor_type: DescriptorType,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DescriptorType {
+    Uniform,
+    Storage,
 }
 
 bitflags! {

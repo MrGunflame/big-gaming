@@ -17,7 +17,8 @@ use ash::vk::{
     CommandPoolCreateFlags, CommandPoolCreateInfo, CommandPoolResetFlags, ComponentMapping,
     ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
     DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
-    DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags, DeviceCreateInfo,
+    DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DeviceCreateInfo,
     DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D, Format, FrontFace,
     GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
     ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
@@ -561,6 +562,31 @@ impl<'a> Device<'a> {
     }
 
     pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline<'_> {
+        let mut bindings = Vec::new();
+        for set in descriptor.descriptors {
+            let binding = DescriptorSetLayoutBinding::default()
+                .binding(set.binding)
+                .descriptor_count(1)
+                .descriptor_type(set.descriptor_type.into());
+            bindings.push(binding);
+        }
+
+        let descriptor_set_layout = DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+        let descriptor_set_layout = unsafe {
+            self.device
+                .create_descriptor_set_layout(&descriptor_set_layout, None)
+                .unwrap()
+        };
+        let descriptor_set_layouts = [descriptor_set_layout];
+
+        let pipeline_layout_info =
+            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
+        let pipeline_layout = unsafe {
+            self.device
+                .create_pipeline_layout(&pipeline_layout_info, None)
+                .unwrap()
+        };
+
         let mut stages = Vec::new();
         let mut color_attchment_formats: Vec<Format> = Vec::new();
 
@@ -639,13 +665,6 @@ impl<'a> Device<'a> {
 
         let dynamic_state = PipelineDynamicStateCreateInfo::default()
             .dynamic_states(&[DynamicState::VIEWPORT, DynamicState::SCISSOR]);
-
-        let pipeline_layout_info = PipelineLayoutCreateInfo::default();
-        let pipeline_layout = unsafe {
-            self.device
-                .create_pipeline_layout(&pipeline_layout_info, None)
-                .unwrap()
-        };
 
         let mut rendering_info = PipelineRenderingCreateInfo::default()
             // - `colorAttachmentCount` must be less than `VkPhysicalDeviceLimits::maxColorAttachments`.
@@ -1128,6 +1147,15 @@ impl From<super::FrontFace> for FrontFace {
         match value {
             super::FrontFace::Cw => Self::CLOCKWISE,
             super::FrontFace::Ccw => Self::COUNTER_CLOCKWISE,
+        }
+    }
+}
+
+impl From<super::DescriptorType> for vk::DescriptorType {
+    fn from(value: super::DescriptorType) -> Self {
+        match value {
+            super::DescriptorType::Uniform => Self::UNIFORM_BUFFER,
+            super::DescriptorType::Storage => Self::STORAGE_BUFFER,
         }
     }
 }
