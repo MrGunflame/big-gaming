@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::ops::Range;
+use std::ops::{Bound, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
 
 use ash::ext::debug_utils;
@@ -18,9 +18,10 @@ use ash::vk::{
     ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
     DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
     DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo, DeviceCreateInfo,
-    DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D, Format, FrontFace,
-    GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
+    DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
+    DescriptorSetAllocateInfo, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+    DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D, Format,
+    FrontFace, GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
     ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
     LogicOp, MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, Offset2D, PhysicalDevice,
     PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures, PhysicalDeviceType,
@@ -34,7 +35,7 @@ use ash::vk::{
     RenderingFlags, RenderingInfo, ResolveModeFlags, SampleCountFlags, SemaphoreCreateInfo,
     ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo, SubpassDependency,
     SubpassDescription, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR, SwapchainKHR,
-    Viewport, FALSE, WHOLE_SIZE,
+    Viewport, WriteDescriptorSet, FALSE, WHOLE_SIZE,
 };
 use ash::Entry;
 use glam::UVec2;
@@ -42,10 +43,12 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use wgpu::hal::auxil::db;
 
 use super::{
-    AdapterKind, AdapterMemoryProperties, AdapterProperties, BufferUsage, Face, LoadOp, MemoryHeap,
-    MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineDescriptor, PipelineStage,
-    PresentMode, QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor,
-    StoreOp, SwapchainCapabilities, SwapchainConfig, TextureFormat,
+    AdapterKind, AdapterMemoryProperties, AdapterProperties, BufferUsage, DescriptorPoolDescriptor,
+    DescriptorSetDescriptor, Face, LoadOp, MemoryHeap, MemoryRequirements, MemoryType,
+    MemoryTypeFlags, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
+    QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp,
+    SwapchainCapabilities, SwapchainConfig, TextureFormat, WriteDescriptorResource,
+    WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -64,8 +67,8 @@ const EXTENSIONS: &[&CStr] = &[
     // Required to create any surface.
     ash::vk::KHR_SURFACE_NAME,
     // Wayland
-    #[cfg(target_os = "linux")]
-    ash::vk::KHR_WAYLAND_SURFACE_NAME,
+    // #[cfg(target_os = "linux")]
+    // ash::vk::KHR_WAYLAND_SURFACE_NAME,
     // X11
     #[cfg(target_os = "linux")]
     ash::vk::KHR_XCB_SURFACE_NAME,
@@ -482,6 +485,7 @@ impl<'a> Device<'a> {
             buffer,
             device: &self.device,
             memory: None,
+            size: size.get(),
         }
     }
 
@@ -561,26 +565,43 @@ impl<'a> Device<'a> {
         }
     }
 
-    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline<'_> {
+    pub fn create_descriptor_layout(
+        &self,
+        descriptor: &DescriptorSetDescriptor<'_>,
+    ) -> DescriptorSetLayout<'_> {
         let mut bindings = Vec::new();
-        for set in descriptor.descriptors {
-            let binding = DescriptorSetLayoutBinding::default()
-                .binding(set.binding)
+        for binding in descriptor.bindings {
+            let info = DescriptorSetLayoutBinding::default()
+                .binding(binding.binding)
+                .stage_flags(binding.visibility.into())
                 .descriptor_count(1)
-                .descriptor_type(set.descriptor_type.into());
-            bindings.push(binding);
+                .descriptor_type(binding.kind.into());
+
+            bindings.push(info);
         }
 
-        let descriptor_set_layout = DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
-        let descriptor_set_layout = unsafe {
+        let info = DescriptorSetLayoutCreateInfo::default().bindings(&bindings);
+        let layout = unsafe {
             self.device
-                .create_descriptor_set_layout(&descriptor_set_layout, None)
+                .create_descriptor_set_layout(&info, None)
                 .unwrap()
         };
-        let descriptor_set_layouts = [descriptor_set_layout];
 
-        let pipeline_layout_info =
-            PipelineLayoutCreateInfo::default().set_layouts(&descriptor_set_layouts);
+        DescriptorSetLayout {
+            device: &self.device,
+            layout,
+            bindings: descriptor.bindings.to_vec(),
+        }
+    }
+
+    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline<'_> {
+        let descriptors = descriptor
+            .descriptors
+            .iter()
+            .map(|layout| layout.layout)
+            .collect::<Vec<_>>();
+
+        let pipeline_layout_info = PipelineLayoutCreateInfo::default().set_layouts(&descriptors);
         let pipeline_layout = unsafe {
             self.device
                 .create_pipeline_layout(&pipeline_layout_info, None)
@@ -727,6 +748,45 @@ impl<'a> Device<'a> {
         Semaphore {
             device: self,
             semaphore,
+        }
+    }
+
+    pub fn create_descriptor_pool(
+        &self,
+        descriptor: &DescriptorPoolDescriptor,
+    ) -> DescriptorPool<'_> {
+        let mut sizes = Vec::new();
+
+        for (ty, count) in [
+            (
+                vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor.max_uniform_buffers,
+            ),
+            (
+                vk::DescriptorType::STORAGE_BUFFER,
+                descriptor.max_storage_buffers,
+            ),
+        ] {
+            if count == 0 {
+                continue;
+            }
+
+            // - `descriptorCount` must be greater than 0.
+            let size = DescriptorPoolSize::default().ty(ty).descriptor_count(count);
+
+            sizes.push(size);
+        }
+
+        let info = DescriptorPoolCreateInfo::default()
+            .pool_sizes(&sizes)
+            // - `maxSets` must be greater than 0.
+            .max_sets(descriptor.max_sets.get());
+
+        let pool = unsafe { self.device.create_descriptor_pool(&info, None).unwrap() };
+
+        DescriptorPool {
+            device: &self.device,
+            pool,
         }
     }
 }
@@ -1160,6 +1220,21 @@ impl From<super::DescriptorType> for vk::DescriptorType {
     }
 }
 
+impl From<ShaderStages> for ShaderStageFlags {
+    fn from(value: ShaderStages) -> Self {
+        let mut flags = ShaderStageFlags::empty();
+
+        if value.contains(ShaderStages::VERTEX) {
+            flags |= ShaderStageFlags::VERTEX;
+        }
+        if value.contains(ShaderStages::FRAGMENT) {
+            flags |= ShaderStageFlags::FRAGMENT;
+        }
+
+        flags
+    }
+}
+
 pub struct ShaderModule<'a> {
     device: &'a Device<'a>,
     shader: vk::ShaderModule,
@@ -1373,6 +1448,7 @@ impl<'a> CommandEncoder<'a> {
         RenderPass {
             encoder: self,
             _marker: PhantomData,
+            pipeline: None,
         }
     }
 
@@ -1431,10 +1507,11 @@ pub struct RenderPass<'encoder, 'resources> {
     // Marker to indicate that all resources that this render pass
     // may access must not be dropped while this render pass exists.
     _marker: PhantomData<fn() -> &'resources ()>,
+    pipeline: Option<&'resources Pipeline<'resources>>,
 }
 
 impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
-    pub fn bind_pipeline(&mut self, pipeline: &Pipeline<'_>) {
+    pub fn bind_pipeline(&mut self, pipeline: &'resources Pipeline<'resources>) {
         // Bind the pipeline.
         // https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdBindPipeline.html
         // Safety:
@@ -1446,6 +1523,23 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
                 self.encoder.buffer,
                 PipelineBindPoint::GRAPHICS,
                 pipeline.pipeline,
+            );
+        }
+
+        self.pipeline = Some(&pipeline);
+    }
+
+    pub fn bind_descriptor_set(&mut self, slot: u32, descriptor_set: &DescriptorSet<'_>) {
+        let pipeline = self.pipeline.as_ref().unwrap();
+
+        unsafe {
+            self.encoder.device.device.cmd_bind_descriptor_sets(
+                self.encoder.buffer,
+                PipelineBindPoint::GRAPHICS,
+                pipeline.pipeline_layout,
+                slot,
+                &[descriptor_set.set],
+                &[],
             );
         }
     }
@@ -1586,9 +1680,32 @@ pub struct Buffer<'a> {
     buffer: vk::Buffer,
     device: &'a ash::Device,
     memory: Option<DeviceMemory<'a>>,
+    size: u64,
 }
 
-impl<'a> Buffer<'a> {}
+impl<'a> Buffer<'a> {
+    pub fn slice<R>(&self, range: R) -> super::BufferView<'_>
+    where
+        R: RangeBounds<u64>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(start) => *start,
+            Bound::Excluded(start) => *start - 1,
+            Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+            Bound::Included(end) => *end + 1,
+            Bound::Excluded(end) => *end,
+            Bound::Unbounded => self.size,
+        };
+
+        super::BufferView {
+            buffer: self,
+            view: start..end,
+        }
+    }
+}
 
 impl<'a> Drop for Buffer<'a> {
     fn drop(&mut self) {
@@ -1608,6 +1725,113 @@ impl<'a> Drop for DeviceMemory<'a> {
     fn drop(&mut self) {
         unsafe {
             self.device.free_memory(self.memory, None);
+        }
+    }
+}
+
+pub struct DescriptorSetLayout<'a> {
+    device: &'a ash::Device,
+    layout: vk::DescriptorSetLayout,
+    bindings: Vec<super::DescriptorBinding>,
+}
+
+impl<'a> DescriptorSetLayout<'a> {
+    pub(crate) fn bindings(&self) -> &[super::DescriptorBinding] {
+        &self.bindings
+    }
+}
+
+impl<'a> Drop for DescriptorSetLayout<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_descriptor_set_layout(self.layout, None);
+        }
+    }
+}
+
+pub struct DescriptorPool<'a> {
+    device: &'a ash::Device,
+    pool: vk::DescriptorPool,
+}
+
+impl<'a> DescriptorPool<'a> {
+    pub fn create_descriptor_set(&mut self, layout: &DescriptorSetLayout<'_>) -> DescriptorSet<'_> {
+        let layouts = [layout.layout];
+
+        let info = DescriptorSetAllocateInfo::default()
+            .descriptor_pool(self.pool)
+            // - `descriptorSetCount` must be greater than 0.
+            .set_layouts(&layouts);
+
+        let sets = unsafe { self.device.allocate_descriptor_sets(&info).unwrap() };
+        DescriptorSet {
+            pool: self,
+            set: sets[0],
+        }
+    }
+
+    pub unsafe fn reset(&mut self) {
+        unsafe {
+            // - `flags` must be 0.
+            self.device
+                .reset_descriptor_pool(self.pool, DescriptorPoolResetFlags::empty())
+                .unwrap();
+        }
+    }
+}
+
+impl<'a> Drop for DescriptorPool<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_descriptor_pool(self.pool, None);
+        }
+    }
+}
+
+pub struct DescriptorSet<'a> {
+    pool: &'a DescriptorPool<'a>,
+    set: vk::DescriptorSet,
+}
+
+impl<'a> DescriptorSet<'a> {
+    pub fn update(&mut self, op: &WriteDescriptorResources<'_>) {
+        let mut buffer_infos = Vec::new();
+        for binding in op.bindings {
+            match &binding.resource {
+                WriteDescriptorResource::Buffer(buffer) => {
+                    let buffer_info = vk::DescriptorBufferInfo::default()
+                        .buffer(buffer.buffer().buffer)
+                        .offset(buffer.offset())
+                        .range(buffer.len());
+
+                    buffer_infos.push(buffer_info);
+                }
+            }
+        }
+
+        let mut writes = Vec::new();
+
+        let mut next_buffer = 0;
+        for binding in op.bindings {
+            let mut write = vk::WriteDescriptorSet::default()
+                .dst_set(self.set)
+                .dst_binding(binding.binding)
+                .dst_array_element(0);
+
+            match &binding.resource {
+                WriteDescriptorResource::Buffer(_) => {
+                    write = write
+                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                        .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
+                    next_buffer += 1;
+                }
+            }
+
+            writes.push(write)
+        }
+
+        unsafe {
+            self.pool.device.update_descriptor_sets(&writes, &[]);
         }
     }
 }

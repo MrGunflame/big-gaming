@@ -1,12 +1,14 @@
 use bytemuck::{Pod, Zeroable};
+use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::{
-    BufferUsage, FragmentStage, LoadOp, MemoryTypeFlags, PipelineDescriptor, PipelineStage,
-    QueueCapabilities, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, SwapchainConfig,
-    VertexStage,
+    BufferUsage, DescriptorBinding, DescriptorSetDescriptor, FragmentStage, LoadOp,
+    MemoryTypeFlags, PipelineDescriptor, PipelineStage, QueueCapabilities,
+    RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp, SwapchainConfig,
+    VertexStage, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
-use glam::{vec2, vec3, UVec2, Vec2, Vec3};
+use glam::{vec2, vec3, vec4, UVec2, Vec2, Vec3, Vec4};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 fn main() {
@@ -38,20 +40,20 @@ impl App for MyApp {
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 struct Vertex {
-    pos: Vec2,
-    color: Vec3,
+    pos: Vec4,
+    color: Vec4,
 }
 
 impl Vertex {
-    const fn new(pos: Vec2, color: Vec3) -> Self {
+    const fn new(pos: Vec4, color: Vec4) -> Self {
         Self { pos, color }
     }
 }
 
 static VERTICES: [Vertex; 3] = [
-    Vertex::new(vec2(0.0, -0.5), vec3(1.0, 1.0, 1.0)),
-    Vertex::new(vec2(0.5, 0.5), vec3(0.0, 1.0, 0.0)),
-    Vertex::new(vec2(-0.5, 0.5), vec3(0.0, 0.0, 1.0)),
+    Vertex::new(vec4(0.0, -0.5, 0.0, 0.0), vec4(1.0, 1.0, 1.0, 0.0)),
+    Vertex::new(vec4(0.5, 0.5, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0)),
+    Vertex::new(vec4(-0.5, 0.5, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0)),
 ];
 
 fn vk_main(state: WindowState) {
@@ -82,7 +84,7 @@ fn vk_main(state: WindowState) {
                     (size_of::<Vertex>() as u64 * VERTICES.len() as u64)
                         .try_into()
                         .unwrap(),
-                    BufferUsage::STORAGE | BufferUsage::TRANSFER_DST,
+                    BufferUsage::UNIFORM | BufferUsage::TRANSFER_DST,
                 );
                 let reqs = device.buffer_memory_requirements(&buffer);
 
@@ -134,6 +136,15 @@ fn vk_main(state: WindowState) {
 
                 let mut pool = device.create_command_pool();
 
+                let descriptor_set_layout =
+                    device.create_descriptor_layout(&DescriptorSetDescriptor {
+                        bindings: &[DescriptorBinding {
+                            binding: 0,
+                            visibility: ShaderStages::VERTEX,
+                            kind: game_render::backend::DescriptorType::Uniform,
+                        }],
+                    });
+
                 let pipeline = device.create_pipeline(&PipelineDescriptor {
                     topology: game_render::backend::PrimitiveTopology::TriangleList,
                     cull_mode: None,
@@ -145,11 +156,23 @@ fn vk_main(state: WindowState) {
                             targets: &[caps.formats[0]],
                         }),
                     ],
-                    descriptors: &[],
+                    descriptors: &[&descriptor_set_layout],
                 });
 
                 let image_avail = device.create_semaphore();
                 let render_done = device.create_semaphore();
+
+                let mut descriptor_alloc = DescriptorSetAllocator::new(&device);
+
+                let mut descriptor_set = unsafe { descriptor_alloc.alloc(&descriptor_set_layout) };
+
+                let buffer_view = buffer.slice(..);
+                descriptor_set.raw_mut().update(&WriteDescriptorResources {
+                    bindings: &[WriteDescriptorBinding {
+                        binding: 0,
+                        resource: WriteDescriptorResource::Buffer(&buffer_view),
+                    }],
+                });
 
                 loop {
                     let img = swapchain.acquire_next_image(&image_avail);
@@ -178,6 +201,9 @@ fn vk_main(state: WindowState) {
                         }],
                     });
                     render_pass.bind_pipeline(&pipeline);
+
+                    render_pass.bind_descriptor_set(0, descriptor_set.raw());
+
                     render_pass.draw(0..3, 0..1);
                     drop(render_pass);
 

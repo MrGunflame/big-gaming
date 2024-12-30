@@ -1,12 +1,14 @@
+pub mod allocator;
+pub mod descriptors;
+pub mod vulkan;
+
 use std::num::{NonZeroU32, NonZeroU64};
+use std::ops::Range;
 
 use ash::vk;
 use bitflags::bitflags;
 use glam::UVec2;
-use vulkan::{ShaderModule, TextureView};
-
-pub mod allocator;
-pub mod vulkan;
+use vulkan::{Buffer, DescriptorSetLayout, ShaderModule, TextureView};
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -111,7 +113,7 @@ pub struct PipelineDescriptor<'a> {
     pub front_face: FrontFace,
     pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
-    pub descriptors: &'a [DescriptorSetLayout],
+    pub descriptors: &'a [&'a DescriptorSetLayout<'a>],
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -167,9 +169,25 @@ pub enum StoreOp {
     Store,
 }
 
-pub struct DescriptorSetLayout {
+// FIXME: Maybe not the best name.
+#[derive(Copy, Clone, Debug)]
+pub struct DescriptorSetDescriptor<'a> {
+    pub bindings: &'a [DescriptorBinding],
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct DescriptorBinding {
     pub binding: u32,
-    pub descriptor_type: DescriptorType,
+    pub visibility: ShaderStages,
+    pub kind: DescriptorType,
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct ShaderStages: u32 {
+        const VERTEX = 1 << 0;
+        const FRAGMENT = 1 << 1;
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -207,5 +225,48 @@ impl MemoryRequirements {
         } else {
             align - (size % align)
         }
+    }
+}
+
+// TODO: Naming
+#[derive(Clone, Debug)]
+pub struct DescriptorPoolDescriptor {
+    /// The maximum number of descriptor set that can be allocated from the pool.
+    pub max_sets: NonZeroU32,
+    /// The maximum number of combined uniform buffers that can be created in sets allocated in the
+    /// pool.
+    pub max_uniform_buffers: u32,
+    pub max_storage_buffers: u32,
+}
+
+pub struct WriteDescriptorResources<'a> {
+    pub bindings: &'a [WriteDescriptorBinding<'a>],
+}
+
+pub struct WriteDescriptorBinding<'a> {
+    pub binding: u32,
+    pub resource: WriteDescriptorResource<'a>,
+}
+
+pub enum WriteDescriptorResource<'a> {
+    Buffer(&'a BufferView<'a>),
+}
+
+pub struct BufferView<'a> {
+    buffer: &'a Buffer<'a>,
+    view: Range<u64>,
+}
+
+impl<'a> BufferView<'a> {
+    pub fn buffer(&self) -> &Buffer<'_> {
+        self.buffer
+    }
+
+    pub fn offset(&self) -> u64 {
+        self.view.start
+    }
+
+    pub fn len(&self) -> u64 {
+        self.view.end - self.view.start
     }
 }
