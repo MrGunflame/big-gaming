@@ -1,11 +1,12 @@
-use core::arch;
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
+use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
-use std::ops::{Bound, Range, RangeBounds};
+use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
+use std::sync::Arc;
 
 use ash::ext::debug_utils;
 use ash::vk::{
@@ -20,12 +21,12 @@ use ash::vk::{
     DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags,
     DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
     DescriptorSetAllocateInfo, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-    DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D, Format,
-    FrontFace, GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout, ImageMemoryBarrier,
-    ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
-    LogicOp, MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, Offset2D, PhysicalDevice,
-    PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures, PhysicalDeviceType,
-    PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+    DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D,
+    FenceCreateInfo, Format, FrontFace, GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout,
+    ImageMemoryBarrier, ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType,
+    InstanceCreateInfo, LogicOp, MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, Offset2D,
+    PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures,
+    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
     PipelineColorBlendStateCreateInfo, PipelineDynamicStateCreateInfo,
     PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
@@ -98,9 +99,7 @@ pub enum Error {
 }
 
 pub struct Instance {
-    entry: Entry,
-    instance: ash::Instance,
-    messenger: DebugUtilsMessengerEXT,
+    instance: Arc<InstanceShared>,
 }
 
 impl Instance {
@@ -169,9 +168,11 @@ impl Instance {
         };
 
         Ok(Self {
-            entry,
-            instance,
-            messenger,
+            instance: Arc::new(InstanceShared {
+                entry,
+                instance,
+                messenger,
+            }),
         })
     }
 
@@ -186,81 +187,59 @@ impl Instance {
             .collect()
     }
 
-    pub fn create_surface(
+    pub unsafe fn create_surface(
         &self,
         display: RawDisplayHandle,
         window: RawWindowHandle,
-    ) -> Surface<'_> {
+    ) -> Surface {
         let surface = match (display, window) {
             #[cfg(target_os = "linux")]
             (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(window)) => {
-                let info = ash::vk::WaylandSurfaceCreateInfoKHR::default()
+                let info = vk::WaylandSurfaceCreateInfoKHR::default()
                     .display(display.display.as_ptr())
                     .surface(window.surface.as_ptr());
 
                 let instance =
-                    ash::khr::wayland_surface::Instance::new(&self.entry, &self.instance);
+                    ash::khr::wayland_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_wayland_surface(&info, None).unwrap() }
             }
             #[cfg(target_os = "linux")]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
-                let info = ash::vk::XcbSurfaceCreateInfoKHR::default()
+                let info = vk::XcbSurfaceCreateInfoKHR::default()
                     .connection(display.connection.map(|v| v.as_ptr()).unwrap_or(null_mut()))
                     .window(window.window.get());
 
-                let instance = ash::khr::xcb_surface::Instance::new(&self.entry, &self.instance);
+                let instance =
+                    ash::khr::xcb_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_xcb_surface(&info, None).unwrap() }
             }
             #[cfg(target_os = "linux")]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
-                let info = ash::vk::XlibSurfaceCreateInfoKHR::default()
+                let info = vk::XlibSurfaceCreateInfoKHR::default()
                     .dpy(display.display.map(|v| v.as_ptr()).unwrap_or(null_mut()))
                     .window(window.window);
 
-                let instance = ash::khr::xlib_surface::Instance::new(&self.entry, &self.instance);
+                let instance =
+                    ash::khr::xlib_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_xlib_surface(&info, None).unwrap() }
             }
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
-                let info = ash::vk::Win32SurfaceCreateInfoKHR::default()
+                let info = vk::Win32SurfaceCreateInfoKHR::default()
                     .hinstance(window.hinstance.map(|v| v.get()).unwrap_or_default())
                     .hwnd(window.hwnd.get());
 
-                let instance = ash::khr::win32_surface::Instance::new(&self.entry, &self.instance);
+                let instance =
+                    ash::khr::win32_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_win32_surface(&info, None).unwrap() }
             }
             _ => todo!(),
         };
 
         Surface {
-            instance: self,
+            instance: self.instance.clone(),
             surface,
         }
-    }
-
-    fn destroy(&mut self) {
-        unsafe {
-            self.debug_utils()
-                .destroy_debug_utils_messenger(self.messenger, None);
-        }
-
-        unsafe {
-            self.instance.destroy_instance(None);
-        }
-    }
-
-    fn debug_utils(&self) -> debug_utils::Instance {
-        debug_utils::Instance::new(&self.entry, &self.instance)
-    }
-
-    fn khr_surface(&self) -> ash::khr::surface::Instance {
-        ash::khr::surface::Instance::new(&self.entry, &self.instance)
-    }
-}
-
-impl Drop for Instance {
-    fn drop(&mut self) {
-        self.destroy();
     }
 }
 
@@ -381,7 +360,7 @@ impl<'a> Adapter<'a> {
             .collect()
     }
 
-    pub fn create_device(&self, queue_id: u32) -> Device<'_> {
+    pub fn create_device(&self, queue_id: u32) -> Device {
         let queue_priorities = &[1.0];
         let queue_info = DeviceQueueCreateInfo::default()
             .queue_family_index(queue_id)
@@ -417,20 +396,24 @@ impl<'a> Adapter<'a> {
         };
 
         Device {
-            adapter: self,
-            device,
+            physical_device: self.physical_device,
             queue_family_index: queue_id,
+            device: Arc::new(DeviceShared {
+                instance: self.instance.instance.clone(),
+                device,
+            }),
         }
     }
 }
 
-pub struct Device<'a> {
-    adapter: &'a Adapter<'a>,
-    device: ash::Device,
+#[derive(Clone, Debug)]
+pub struct Device {
+    physical_device: vk::PhysicalDevice,
+    device: Arc<DeviceShared>,
     queue_family_index: u32,
 }
 
-impl<'a> Device<'a> {
+impl Device {
     pub fn queue(&self) -> Queue<'_> {
         let info = DeviceQueueInfo2::default()
             .queue_family_index(self.queue_family_index)
@@ -789,28 +772,30 @@ impl<'a> Device<'a> {
             pool,
         }
     }
-}
 
-impl<'a> Drop for Device<'a> {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.destroy_device(None);
+    pub fn create_fence(&self) -> Fence<'_> {
+        let info = FenceCreateInfo::default();
+
+        let fence = unsafe { self.device.create_fence(&info, None).unwrap() };
+        Fence {
+            device: &self.device,
+            fence,
         }
     }
 }
 
 pub struct Queue<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     queue: vk::Queue,
 }
 
 impl<'a> Queue<'a> {
     pub fn submit(
-        &self,
+        &mut self,
         buffers: &[CommandBuffer<'_>],
-        wait_semaphore: &Semaphore<'_>,
+        wait_semaphore: &mut Semaphore<'_>,
         wait_stages: PipelineStageFlags,
-        signal_semaphore: &Semaphore<'_>,
+        signal_semaphore: &mut Semaphore<'_>,
     ) {
         let buffers: Vec<_> = buffers.iter().map(|buf| buf.buffer).collect();
 
@@ -832,27 +817,28 @@ impl<'a> Queue<'a> {
         }
     }
 
-    pub fn wait_idle(&self) {
+    pub fn wait_idle(&mut self) {
         unsafe {
+            // - Access to `queue` must be externally synchronized.
             self.device.device.queue_wait_idle(self.queue).unwrap();
         }
     }
 }
 
-pub struct Surface<'a> {
-    instance: &'a Instance,
+pub struct Surface {
+    instance: Arc<InstanceShared>,
     surface: SurfaceKHR,
 }
 
-impl<'a> Surface<'a> {
-    pub fn get_capabilities(&self, device: &Device<'_>) -> SwapchainCapabilities {
+impl Surface {
+    pub fn get_capabilities(&self, device: &Device) -> SwapchainCapabilities {
         let instance =
             ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
 
         let is_supported = unsafe {
             instance
                 .get_physical_device_surface_support(
-                    device.adapter.physical_device,
+                    device.physical_device,
                     device.queue_family_index,
                     self.surface,
                 )
@@ -865,23 +851,17 @@ impl<'a> Surface<'a> {
 
         let caps = unsafe {
             instance
-                .get_physical_device_surface_capabilities(
-                    device.adapter.physical_device,
-                    self.surface,
-                )
+                .get_physical_device_surface_capabilities(device.physical_device, self.surface)
                 .unwrap()
         };
         let formats = unsafe {
             instance
-                .get_physical_device_surface_formats(device.adapter.physical_device, self.surface)
+                .get_physical_device_surface_formats(device.physical_device, self.surface)
                 .unwrap()
         };
         let present_modes = unsafe {
             instance
-                .get_physical_device_surface_present_modes(
-                    device.adapter.physical_device,
-                    self.surface,
-                )
+                .get_physical_device_surface_present_modes(device.physical_device, self.surface)
                 .unwrap()
         };
 
@@ -923,19 +903,19 @@ impl<'a> Surface<'a> {
         }
     }
 
-    pub fn create_swapchain<'b>(
-        &'a self,
-        device: &'b Device<'b>,
+    pub fn create_swapchain(
+        &self,
+        device: &Device,
         config: SwapchainConfig,
         caps: &SwapchainCapabilities,
-    ) -> Swapchain<'a, 'b> {
+    ) -> Swapchain<'_> {
         // SAFETY: `old_swapchain` is null.
         let (swapchain, images) =
             unsafe { self.create_swapchain_inner(device, &config, &caps, SwapchainKHR::null()) };
 
         Swapchain {
             surface: self,
-            device: device,
+            device: device.clone(),
             swapchain,
             images,
             format: config.format,
@@ -948,9 +928,9 @@ impl<'a> Surface<'a> {
     /// # Safety
     ///
     /// `old_swapchain` must be either null or a non-retired swapchain created by this `Surface`.
-    unsafe fn create_swapchain_inner<'b>(
-        &'a self,
-        device: &'b Device<'b>,
+    unsafe fn create_swapchain_inner(
+        &self,
+        device: &Device,
         config: &SwapchainConfig,
         caps: &SwapchainCapabilities,
         old_swapchain: SwapchainKHR,
@@ -1026,7 +1006,7 @@ impl<'a> Surface<'a> {
     }
 }
 
-impl<'a> Drop for Surface<'a> {
+impl Drop for Surface {
     fn drop(&mut self) {
         let instance =
             ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
@@ -1037,9 +1017,9 @@ impl<'a> Drop for Surface<'a> {
     }
 }
 
-pub struct Swapchain<'a, 'b> {
-    surface: &'a Surface<'a>,
-    device: &'b Device<'b>,
+pub struct Swapchain<'a> {
+    surface: &'a Surface,
+    device: Device,
     swapchain: SwapchainKHR,
     images: Vec<vk::Image>,
 
@@ -1047,13 +1027,13 @@ pub struct Swapchain<'a, 'b> {
     extent: UVec2,
 }
 
-impl<'a, 'b> Swapchain<'a, 'b> {
+impl<'a> Swapchain<'a> {
     pub fn recreate(&mut self, config: SwapchainConfig, caps: &SwapchainCapabilities) {
         // SAFETY: `self.swapchain` is a valid swapchain created by `self.surface`.
         // Since this function accepts a mutable reference this swapchain is not used.
         let (swapchain, images) = unsafe {
             self.surface
-                .create_swapchain_inner(self.device, &config, caps, self.swapchain)
+                .create_swapchain_inner(&self.device, &config, caps, self.swapchain)
         };
 
         // The swapchain still needs to be destroyed after it has been invalidated.
@@ -1071,11 +1051,10 @@ impl<'a, 'b> Swapchain<'a, 'b> {
         self.extent = config.extent;
     }
 
-    pub fn acquire_next_image(&self, semaphore: &Semaphore<'_>) -> SwapchainTexture<'_> {
-        let device = ash::khr::swapchain::Device::new(
-            &self.device.adapter.instance.instance,
-            &self.device.device,
-        );
+    // FIXME: Should be &mut self.
+    pub fn acquire_next_image(&self, semaphore: &mut Semaphore<'_>) -> SwapchainTexture<'_> {
+        let device =
+            ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
         let (image_index, suboptimal) = unsafe {
             device
@@ -1090,23 +1069,21 @@ impl<'a, 'b> Swapchain<'a, 'b> {
 
         SwapchainTexture {
             texture: Texture {
-                device: self.device,
+                device: &self.device,
                 image: self.images[image_index as usize],
                 format: self.format,
                 size: self.extent,
             },
             suboptimal,
             index: image_index,
-            device: self.device,
+            device: &self.device,
             swapchain: self,
         }
     }
 
     pub fn present(&self, queue: &Queue<'_>, img: u32, wait_semaphore: &Semaphore<'_>) {
-        let device = ash::khr::swapchain::Device::new(
-            &self.device.adapter.instance.instance,
-            &self.device.device,
-        );
+        let device =
+            ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
         let wait_semaphores = &[wait_semaphore.semaphore];
 
@@ -1123,7 +1100,7 @@ impl<'a, 'b> Swapchain<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Drop for Swapchain<'a, 'b> {
+impl<'a> Drop for Swapchain<'a> {
     fn drop(&mut self) {
         let device =
             ash::khr::swapchain::Device::new(&self.surface.instance.instance, &self.device.device);
@@ -1236,7 +1213,7 @@ impl From<ShaderStages> for ShaderStageFlags {
 }
 
 pub struct ShaderModule<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     shader: vk::ShaderModule,
 }
 
@@ -1249,7 +1226,7 @@ impl<'a> Drop for ShaderModule<'a> {
 }
 
 pub struct Pipeline<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
 }
@@ -1266,7 +1243,7 @@ impl<'a> Drop for Pipeline<'a> {
 }
 
 pub struct CommandPool<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     pool: vk::CommandPool,
     buffers: Vec<vk::CommandBuffer>,
     /// Index of the next buffer.
@@ -1358,7 +1335,7 @@ impl<'a> Drop for CommandPool<'a> {
 }
 
 pub struct CommandEncoder<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     pool: &'a CommandPool<'a>,
     buffer: vk::CommandBuffer,
 }
@@ -1569,12 +1546,12 @@ impl<'encoder, 'resources> Drop for RenderPass<'encoder, 'resources> {
 }
 
 pub struct CommandBuffer<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     buffer: vk::CommandBuffer,
 }
 
 pub struct Semaphore<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     semaphore: vk::Semaphore,
 }
 
@@ -1592,16 +1569,14 @@ pub struct SwapchainTexture<'a> {
     pub texture: Texture<'a>,
     pub suboptimal: bool,
     index: u32,
-    device: &'a Device<'a>,
-    swapchain: &'a Swapchain<'a, 'a>,
+    device: &'a Device,
+    swapchain: &'a Swapchain<'a>,
 }
 
 impl<'a> SwapchainTexture<'a> {
     pub fn present(&self, queue: &Queue<'_>, wait_semaphore: &Semaphore<'_>) {
-        let device = ash::khr::swapchain::Device::new(
-            &self.device.adapter.instance.instance,
-            &self.device.device,
-        );
+        let device =
+            ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
         let wait_semaphores = &[wait_semaphore.semaphore];
 
@@ -1619,7 +1594,7 @@ impl<'a> SwapchainTexture<'a> {
 }
 
 pub struct Texture<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     image: vk::Image,
     format: TextureFormat,
     size: UVec2,
@@ -1664,7 +1639,7 @@ impl<'a> Texture<'a> {
 }
 
 pub struct TextureView<'a> {
-    device: &'a Device<'a>,
+    device: &'a Device,
     view: vk::ImageView,
 }
 
@@ -1836,6 +1811,21 @@ impl<'a> DescriptorSet<'a> {
     }
 }
 
+pub struct Fence<'a> {
+    device: &'a ash::Device,
+    fence: vk::Fence,
+}
+
+impl<'a> Fence<'a> {}
+
+impl<'a> Drop for Fence<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_fence(self.fence, None);
+        }
+    }
+}
+
 const fn cstr_to_fixed_array<const N: usize>(s: &CStr) -> [i8; N] {
     assert!(s.count_bytes() < N);
 
@@ -1881,3 +1871,67 @@ extern "system" fn debug_callback(
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UnknownEnumValue;
+
+#[derive(Clone)]
+struct InstanceShared {
+    entry: ash::Entry,
+    instance: ash::Instance,
+    messenger: DebugUtilsMessengerEXT,
+}
+
+impl Debug for InstanceShared {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct(stringify!(InstanceShared))
+            .finish_non_exhaustive()
+    }
+}
+
+impl Deref for InstanceShared {
+    type Target = ash::Instance;
+
+    fn deref(&self) -> &Self::Target {
+        &self.instance
+    }
+}
+
+impl Drop for InstanceShared {
+    fn drop(&mut self) {
+        unsafe {
+            let instance = debug_utils::Instance::new(&self.entry, &self.instance);
+            instance.destroy_debug_utils_messenger(self.messenger, None);
+        }
+
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DeviceShared {
+    instance: Arc<InstanceShared>,
+    device: ash::Device,
+}
+
+impl Debug for DeviceShared {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct(stringify!(DeviceShared))
+            .finish_non_exhaustive()
+    }
+}
+
+impl Deref for DeviceShared {
+    type Target = ash::Device;
+
+    fn deref(&self) -> &Self::Target {
+        &self.device
+    }
+}
+
+impl Drop for DeviceShared {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_device(None);
+        }
+    }
+}

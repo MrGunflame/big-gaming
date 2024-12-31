@@ -27,13 +27,13 @@ impl AllocatedDescriptorSet {
     }
 }
 
-pub struct DescriptorSetAllocator<'a> {
-    device: &'a Device<'a>,
+pub struct DescriptorSetAllocator {
+    device: Device,
     buckets: HashMap<DescriptorSetResourceCount, DescriptorPoolBucket>,
 }
 
-impl<'a> DescriptorSetAllocator<'a> {
-    pub fn new(device: &'a Device<'a>) -> Self {
+impl DescriptorSetAllocator {
+    pub fn new(device: Device) -> Self {
         Self {
             device,
             buckets: HashMap::new(),
@@ -61,7 +61,7 @@ impl<'a> DescriptorSetAllocator<'a> {
             .entry(count)
             .or_insert_with(|| DescriptorPoolBucket::new());
 
-        let (set, pool) = unsafe { bucket.alloc(self.device, &count, layout) };
+        let (set, pool) = unsafe { bucket.alloc(&self.device, &count, layout) };
         let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'static>>(set) };
 
         AllocatedDescriptorSet {
@@ -97,7 +97,7 @@ impl DescriptorPoolBucket {
 
     unsafe fn alloc(
         &mut self,
-        device: &Device<'_>,
+        device: &Device,
         count: &DescriptorSetResourceCount,
         layout: &DescriptorSetLayout<'_>,
     ) -> (DescriptorSet<'_>, usize) {

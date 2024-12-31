@@ -73,12 +73,14 @@ fn vk_main(state: WindowState) {
                 .contains(QueueCapabilities::GRAPHICS)
             {
                 let device = adapter.create_device(queue_family.id);
-                let queue = device.queue();
+                let mut queue = device.queue();
 
-                let surface = instance.create_surface(
-                    state.raw_display_handle().unwrap(),
-                    state.raw_window_handle().unwrap(),
-                );
+                let surface = unsafe {
+                    instance.create_surface(
+                        state.raw_display_handle().unwrap(),
+                        state.raw_window_handle().unwrap(),
+                    )
+                };
 
                 let mut buffer = device.create_buffer(
                     (size_of::<Vertex>() as u64 * VERTICES.len() as u64)
@@ -159,10 +161,10 @@ fn vk_main(state: WindowState) {
                     descriptors: &[&descriptor_set_layout],
                 });
 
-                let image_avail = device.create_semaphore();
-                let render_done = device.create_semaphore();
+                let mut image_avail = device.create_semaphore();
+                let mut render_done = device.create_semaphore();
 
-                let mut descriptor_alloc = DescriptorSetAllocator::new(&device);
+                let mut descriptor_alloc = DescriptorSetAllocator::new(device.clone());
 
                 let mut descriptor_set = unsafe { descriptor_alloc.alloc(&descriptor_set_layout) };
 
@@ -175,7 +177,7 @@ fn vk_main(state: WindowState) {
                 });
 
                 loop {
-                    let img = swapchain.acquire_next_image(&image_avail);
+                    let img = swapchain.acquire_next_image(&mut image_avail);
 
                     let mut encoder = pool.create_encoder().unwrap();
 
@@ -219,9 +221,9 @@ fn vk_main(state: WindowState) {
 
                     queue.submit(
                         &[encoder.finish()],
-                        &image_avail,
+                        &mut image_avail,
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        &render_done,
+                        &mut render_done,
                     );
 
                     img.present(&queue, &render_done);
