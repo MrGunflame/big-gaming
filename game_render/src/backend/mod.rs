@@ -270,3 +270,10 @@ impl<'a> BufferView<'a> {
         self.view.end - self.view.start
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct TextureDescriptor {
+    pub size: UVec2,
+    pub mip_levels: u32,
+    pub format: TextureFormat,
+}

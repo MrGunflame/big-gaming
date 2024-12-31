@@ -182,7 +182,7 @@ fn vk_main(state: WindowState) {
                     let mut encoder = pool.create_encoder().unwrap();
 
                     encoder.emit_pipeline_barrier(
-                        &img.texture,
+                        img.texture(),
                         ash::vk::ImageLayout::UNDEFINED,
                         ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                         ash::vk::PipelineStageFlags::TOP_OF_PIPE,
@@ -191,7 +191,7 @@ fn vk_main(state: WindowState) {
                         ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
                     );
 
-                    let view = img.texture.create_view();
+                    let view = img.texture().create_view();
 
                     let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                         color_attachments: &[RenderPassColorAttachment {
@@ -199,7 +199,7 @@ fn vk_main(state: WindowState) {
                             store_op: StoreOp::Store,
                             view: &view,
                             layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                            size: img.texture.size(),
+                            size: img.texture().size(),
                         }],
                     });
                     render_pass.bind_pipeline(&pipeline);
@@ -210,7 +210,7 @@ fn vk_main(state: WindowState) {
                     drop(render_pass);
 
                     encoder.emit_pipeline_barrier(
-                        &img.texture,
+                        img.texture(),
                         ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                         ash::vk::ImageLayout::PRESENT_SRC_KHR,
                         ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
@@ -234,6 +234,7 @@ fn vk_main(state: WindowState) {
                     }
 
                     if img.suboptimal {
+                        drop(img);
                         let caps = surface.get_capabilities(&device);
                         swapchain.recreate(
                             SwapchainConfig {

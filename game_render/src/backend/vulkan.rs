@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
@@ -48,8 +49,8 @@ use super::{
     DescriptorSetDescriptor, Face, LoadOp, MemoryHeap, MemoryRequirements, MemoryType,
     MemoryTypeFlags, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
     QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp,
-    SwapchainCapabilities, SwapchainConfig, TextureFormat, WriteDescriptorResource,
-    WriteDescriptorResources,
+    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
+    WriteDescriptorResource, WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -533,6 +534,34 @@ impl Device {
 
         let len = memory.size.get() as usize;
         unsafe { core::slice::from_raw_parts_mut(data.cast::<u8>(), len) }
+    }
+
+    pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
+        let extent = vk::Extent3D::default()
+            .width(descriptor.size.x)
+            .height(descriptor.size.y)
+            .depth(1);
+
+        let info = vk::ImageCreateInfo::default()
+            .image_type(vk::ImageType::TYPE_2D)
+            .extent(extent)
+            .mip_levels(1)
+            .array_layers(1)
+            .format(descriptor.format.into())
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .flags(vk::ImageCreateFlags::empty());
+
+        let image = unsafe { self.device.create_image(&info, None).unwrap() };
+        Texture {
+            device: self.clone(),
+            image,
+            format: descriptor.format,
+            size: descriptor.size,
+        }
     }
 
     pub unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule<'_> {
@@ -1068,12 +1097,12 @@ impl<'a> Swapchain<'a> {
         };
 
         SwapchainTexture {
-            texture: Texture {
-                device: &self.device,
+            texture: ManuallyDrop::new(Texture {
+                device: self.device.clone(),
                 image: self.images[image_index as usize],
                 format: self.format,
                 size: self.extent,
-            },
+            }),
             suboptimal,
             index: image_index,
             device: &self.device,
@@ -1341,6 +1370,91 @@ pub struct CommandEncoder<'a> {
 }
 
 impl<'a> CommandEncoder<'a> {
+    /// Copy `count` bytes from `src` to `dst`.
+    pub fn copy_buffer_to_buffer(
+        &mut self,
+        src: &Buffer,
+        src_offset: u64,
+        dst: &Buffer,
+        dst_offset: u64,
+        count: u64,
+    ) {
+        if count == 0 {
+            return;
+        }
+
+        if src_offset > src.size || src.size - src_offset < count {
+            panic!(
+                "invalid copy_buffer op: bad access of {:?} for src buffer {:?}",
+                src_offset..src_offset + count,
+                0..src.size,
+            );
+        }
+
+        if dst_offset > dst.size || dst.size - dst_offset < count {
+            panic!(
+                "invalid copy_buffer op: bad access of {:?} for dst buffer {:?}",
+                dst_offset..dst_offset + count,
+                0..dst.size,
+            );
+        }
+
+        // Overlapping values are undefined.
+        if src.buffer == dst.buffer {
+            let src_end = src_offset + count;
+            let dst_end = dst_offset + count;
+            if src_offset < dst_end && dst_offset < src_end {
+                panic!(
+                    "invalid copy_buffer op: overlapping ranges (src={:?}, dst={:?})",
+                    src_offset..src_end,
+                    dst_offset..dst_end,
+                );
+            }
+        }
+
+        let region = vk::BufferCopy::default()
+            .src_offset(src_offset)
+            .dst_offset(dst_offset)
+            // - `size` must be greater than 0.
+            .size(count);
+
+        unsafe {
+            self.device
+                .device
+                .cmd_copy_buffer(self.buffer, src.buffer, dst.buffer, &[region]);
+        }
+    }
+
+    pub fn copy_buffer_to_texture(&mut self, src: &Buffer, src_offset: u64, dst: &Texture) {
+        let subresource = vk::ImageSubresourceLayers::default()
+            .aspect_mask(ImageAspectFlags::COLOR)
+            .mip_level(0)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let region = vk::BufferImageCopy::default()
+            .buffer_offset(src_offset)
+            .buffer_row_length(0)
+            .buffer_image_height(0)
+            .image_subresource(subresource)
+            .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+            .image_extent(vk::Extent3D {
+                width: dst.size.x,
+                height: dst.size.y,
+                depth: 1,
+            });
+
+        unsafe {
+            self.device.device.cmd_copy_buffer_to_image(
+                self.buffer,
+                src.buffer,
+                dst.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[region],
+            );
+        }
+    }
+
     pub fn begin_render_pass<'res>(
         &mut self,
         descriptor: &RenderPassDescriptor<'_, 'res>,
@@ -1431,7 +1545,7 @@ impl<'a> CommandEncoder<'a> {
 
     pub fn emit_pipeline_barrier(
         &mut self,
-        image: &Texture<'_>,
+        image: &Texture,
         old_layout: vk::ImageLayout,
         new_layout: vk::ImageLayout,
         src: PipelineStageFlags,
@@ -1566,7 +1680,7 @@ impl<'a> Drop for Semaphore<'a> {
 }
 
 pub struct SwapchainTexture<'a> {
-    pub texture: Texture<'a>,
+    texture: ManuallyDrop<Texture>,
     pub suboptimal: bool,
     index: u32,
     device: &'a Device,
@@ -1574,6 +1688,10 @@ pub struct SwapchainTexture<'a> {
 }
 
 impl<'a> SwapchainTexture<'a> {
+    pub fn texture(&self) -> &Texture {
+        &self.texture
+    }
+
     pub fn present(&self, queue: &Queue<'_>, wait_semaphore: &Semaphore<'_>) {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
@@ -1593,14 +1711,29 @@ impl<'a> SwapchainTexture<'a> {
     }
 }
 
-pub struct Texture<'a> {
-    device: &'a Device,
+impl<'a> Drop for SwapchainTexture<'a> {
+    fn drop(&mut self) {
+        unsafe {
+            // Manually drop Texture without running its destructor.
+            // The descructor would destroy the image handle, which
+            // is not valid for swapchain images.
+            // We still need to decrement the refcount of the device
+            // handle stored in the texture.
+            let texture = ManuallyDrop::take(&mut self.texture);
+            Arc::decrement_strong_count(&texture.device.device);
+            core::mem::forget(texture);
+        }
+    }
+}
+
+pub struct Texture {
+    device: Device,
     image: vk::Image,
     format: TextureFormat,
     size: UVec2,
 }
 
-impl<'a> Texture<'a> {
+impl Texture {
     pub fn size(&self) -> UVec2 {
         self.size
     }
@@ -1632,8 +1765,16 @@ impl<'a> Texture<'a> {
 
         let view = unsafe { self.device.device.create_image_view(&info, None).unwrap() };
         TextureView {
-            device: self.device,
+            device: &self.device,
             view,
+        }
+    }
+}
+
+impl Drop for Texture {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.device.destroy_image(self.image, None);
         }
     }
 }
