@@ -42,7 +42,6 @@ use ash::vk::{
 use ash::Entry;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-use wgpu::hal::auxil::db;
 
 use super::{
     AdapterKind, AdapterMemoryProperties, AdapterProperties, BufferUsage, DescriptorPoolDescriptor,
@@ -65,22 +64,43 @@ const ENGINE_VERSION: u32 = 0;
 
 const VULKAN_VALIDATION_LAYERS: &CStr = c"VK_LAYER_KHRONOS_validation";
 
-const EXTENSIONS: &[&CStr] = &[
-    // Required to create any surface.
-    ash::vk::KHR_SURFACE_NAME,
-    // Wayland
-    // #[cfg(target_os = "linux")]
-    // ash::vk::KHR_WAYLAND_SURFACE_NAME,
-    // X11
-    #[cfg(target_os = "linux")]
-    ash::vk::KHR_XCB_SURFACE_NAME,
-    #[cfg(target_os = "linux")]
-    ash::vk::KHR_XLIB_SURFACE_NAME,
-    // Windows
-    #[cfg(target_os = "windows")]
-    ash::vk::KHR_WIN32_SURFACE_NAME,
-    ash::vk::EXT_DEBUG_UTILS_NAME,
-];
+#[derive(Copy, Clone, Debug, Default)]
+struct InstanceExtensions {
+    /// `VK_KHR_surface`
+    surface: bool,
+    /// `VK_KHR_wayland_surface`
+    surface_wayland: bool,
+    /// `VK_KHR_xcb_surface`
+    surface_xcb: bool,
+    /// `VK_KHR_xlib_surface`
+    surface_xlib: bool,
+    /// `VK_KHR_win32_surface`
+    surface_win32: bool,
+    /// `VK_EXT_debug_utils`
+    debug_utils: bool,
+}
+
+impl InstanceExtensions {
+    /// Returns the names of all supported extensions.
+    fn names(&self) -> Vec<&'static CStr> {
+        let mut names = Vec::new();
+
+        for (enabled, name) in [
+            (self.surface, vk::KHR_SURFACE_NAME),
+            (self.surface_wayland, vk::KHR_WAYLAND_SURFACE_NAME),
+            (self.surface_xcb, vk::KHR_XCB_SURFACE_NAME),
+            (self.surface_xlib, vk::KHR_XLIB_SURFACE_NAME),
+            (self.surface_win32, vk::KHR_WIN32_SURFACE_NAME),
+            (self.debug_utils, vk::EXT_DEBUG_UTILS_NAME),
+        ] {
+            if enabled {
+                names.push(name);
+            }
+        }
+
+        names
+    }
+}
 
 const DEVICE_EXTENSIONS: &[&CStr] = &[
     // VK_KHR_swapchain
@@ -101,6 +121,7 @@ pub enum Error {
 
 pub struct Instance {
     instance: Arc<InstanceShared>,
+    extensions: InstanceExtensions,
 }
 
 impl Instance {
@@ -133,11 +154,17 @@ impl Instance {
             return Err(Error::MissingLayer(VULKAN_VALIDATION_LAYERS));
         }
 
+        let supported_extensions = Self::get_supported_extensions(&entry);
+        assert!(supported_extensions.debug_utils);
+
         let mut layers = Vec::new();
         layers.push(VULKAN_VALIDATION_LAYERS.as_ptr());
 
-        let mut extensions = Vec::new();
-        extensions.extend(EXTENSIONS.iter().map(|v| v.as_ptr()));
+        let extensions = supported_extensions
+            .names()
+            .iter()
+            .map(|v| v.as_ptr())
+            .collect::<Vec<_>>();
 
         let mut info = InstanceCreateInfo::default()
             .application_info(&app)
@@ -174,6 +201,7 @@ impl Instance {
                 instance,
                 messenger,
             }),
+            extensions: supported_extensions,
         })
     }
 
@@ -193,9 +221,13 @@ impl Instance {
         display: RawDisplayHandle,
         window: RawWindowHandle,
     ) -> Surface {
+        assert!(self.extensions.surface);
+
         let surface = match (display, window) {
             #[cfg(target_os = "linux")]
             (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(window)) => {
+                assert!(self.extensions.surface_wayland);
+
                 let info = vk::WaylandSurfaceCreateInfoKHR::default()
                     .display(display.display.as_ptr())
                     .surface(window.surface.as_ptr());
@@ -206,6 +238,8 @@ impl Instance {
             }
             #[cfg(target_os = "linux")]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
+                assert!(self.extensions.surface_xcb);
+
                 let info = vk::XcbSurfaceCreateInfoKHR::default()
                     .connection(display.connection.map(|v| v.as_ptr()).unwrap_or(null_mut()))
                     .window(window.window.get());
@@ -216,6 +250,8 @@ impl Instance {
             }
             #[cfg(target_os = "linux")]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
+                assert!(self.extensions.surface_xlib);
+
                 let info = vk::XlibSurfaceCreateInfoKHR::default()
                     .dpy(display.display.map(|v| v.as_ptr()).unwrap_or(null_mut()))
                     .window(window.window);
@@ -226,6 +262,8 @@ impl Instance {
             }
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
+                assert!(self.extensions.surface_win32);
+
                 let info = vk::Win32SurfaceCreateInfoKHR::default()
                     .hinstance(window.hinstance.map(|v| v.get()).unwrap_or_default())
                     .hwnd(window.hwnd.get());
@@ -241,6 +279,28 @@ impl Instance {
             instance: self.instance.clone(),
             surface,
         }
+    }
+
+    fn get_supported_extensions(entry: &Entry) -> InstanceExtensions {
+        let mut extensions = InstanceExtensions::default();
+
+        let ext_props = unsafe { entry.enumerate_instance_extension_properties(None).unwrap() };
+        for props in ext_props {
+            let name =
+                CStr::from_bytes_until_nul(bytemuck::bytes_of(&props.extension_name)).unwrap();
+
+            match name {
+                name if name == vk::KHR_SURFACE_NAME => extensions.surface = true,
+                name if name == vk::KHR_WAYLAND_SURFACE_NAME => extensions.surface_wayland = true,
+                name if name == vk::KHR_XCB_SURFACE_NAME => extensions.surface_xcb = true,
+                name if name == vk::KHR_XLIB_SURFACE_NAME => extensions.surface_xlib = true,
+                name if name == vk::KHR_WIN32_SURFACE_NAME => extensions.surface_win32 = true,
+                name if name == vk::EXT_DEBUG_UTILS_NAME => extensions.debug_utils = true,
+                _ => (),
+            }
+        }
+
+        extensions
     }
 }
 
