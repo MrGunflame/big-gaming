@@ -119,6 +119,7 @@ pub enum Error {
     MissingLayer(&'static CStr),
 }
 
+#[derive(Clone, Debug)]
 pub struct Instance {
     instance: Arc<InstanceShared>,
     extensions: InstanceExtensions,
@@ -224,7 +225,7 @@ impl Instance {
         assert!(self.extensions.surface);
 
         let surface = match (display, window) {
-            #[cfg(target_os = "linux")]
+            #[cfg(all(unix, feature = "wayland"))]
             (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(window)) => {
                 assert!(self.extensions.surface_wayland);
 
@@ -236,7 +237,7 @@ impl Instance {
                     ash::khr::wayland_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_wayland_surface(&info, None).unwrap() }
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
                 assert!(self.extensions.surface_xcb);
 
@@ -248,7 +249,7 @@ impl Instance {
                     ash::khr::xcb_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_xcb_surface(&info, None).unwrap() }
             }
-            #[cfg(target_os = "linux")]
+            #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
                 assert!(self.extensions.surface_xlib);
 
