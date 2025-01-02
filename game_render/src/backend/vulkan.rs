@@ -48,13 +48,13 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use crate::backend::TextureLayout;
 
 use super::{
-    AdapterKind, AdapterMemoryProperties, AdapterProperties, BufferUsage, CopyBuffer,
-    DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, LoadOp, MemoryHeap,
+    AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage, CopyBuffer,
+    DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode, LoadOp, MemoryHeap,
     MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
     PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
-    RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp, SwapchainCapabilities,
-    SwapchainConfig, TextureDescriptor, TextureFormat, WriteDescriptorResource,
-    WriteDescriptorResources,
+    RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp,
+    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
+    WriteDescriptorResource, WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -935,6 +935,24 @@ impl Device {
             fence,
         }
     }
+
+    pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Sampler {
+        let info = vk::SamplerCreateInfo::default()
+            .min_filter(descriptor.min_filter.into())
+            .mag_filter(descriptor.mag_filter.into())
+            .address_mode_u(descriptor.address_mode_u.into())
+            .address_mode_v(descriptor.address_mode_v.into())
+            .address_mode_w(descriptor.address_mode_w.into())
+            // TODO: Add API for this
+            .anisotropy_enable(false)
+            .max_anisotropy(1.0);
+
+        let sampler = unsafe { self.device.create_sampler(&info, None).unwrap() };
+        Sampler {
+            device: self.device.clone(),
+            sampler,
+        }
+    }
 }
 
 pub struct Queue {
@@ -1352,6 +1370,7 @@ impl From<super::DescriptorType> for vk::DescriptorType {
         match value {
             super::DescriptorType::Uniform => Self::UNIFORM_BUFFER,
             super::DescriptorType::Storage => Self::STORAGE_BUFFER,
+            super::DescriptorType::Sampler => Self::SAMPLER,
         }
     }
 }
@@ -1379,6 +1398,26 @@ impl From<TextureLayout> for vk::ImageLayout {
             TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
             TextureLayout::TransferDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             TextureLayout::ShaderRead => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        }
+    }
+}
+
+impl From<FilterMode> for vk::Filter {
+    fn from(value: FilterMode) -> Self {
+        match value {
+            FilterMode::Nearest => vk::Filter::NEAREST,
+            FilterMode::Linear => vk::Filter::LINEAR,
+        }
+    }
+}
+
+impl From<AddressMode> for vk::SamplerAddressMode {
+    fn from(value: AddressMode) -> Self {
+        match value {
+            AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
+            AddressMode::MirrorRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
+            AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            AddressMode::ClampToBorder => vk::SamplerAddressMode::CLAMP_TO_BORDER,
         }
     }
 }
@@ -1591,7 +1630,7 @@ impl<'a> CommandEncoder<'a> {
             //.buffer_row_length(0)
             // - `bufferImageHeight` must be 0, or greater than or equal to `height` of `imageExtent`.
             .buffer_image_height(dst.size.y)
-            .buffer_image_height(0)
+            //.buffer_image_height(0)
             .image_subresource(subresource)
             .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
             .image_extent(vk::Extent3D {
@@ -2097,6 +2136,7 @@ pub struct DescriptorSet<'a> {
 impl<'a> DescriptorSet<'a> {
     pub fn update(&mut self, op: &WriteDescriptorResources<'_>) {
         let mut buffer_infos = Vec::new();
+        let mut sampler_infos = Vec::new();
         for binding in op.bindings {
             match &binding.resource {
                 WriteDescriptorResource::Buffer(buffer) => {
@@ -2107,17 +2147,26 @@ impl<'a> DescriptorSet<'a> {
 
                     buffer_infos.push(buffer_info);
                 }
+                WriteDescriptorResource::Sampler(sampler) => {
+                    let info = vk::DescriptorImageInfo::default()
+                        .sampler(sampler.sampler)
+                        .image_view(vk::ImageView::null());
+
+                    sampler_infos.push(info);
+                }
             }
         }
 
         let mut writes = Vec::new();
 
         let mut next_buffer = 0;
+        let mut next_sampler = 0;
         for binding in op.bindings {
             let mut write = vk::WriteDescriptorSet::default()
                 .dst_set(self.set)
                 .dst_binding(binding.binding)
-                .dst_array_element(0);
+                .dst_array_element(0)
+                .descriptor_count(1);
 
             match &binding.resource {
                 WriteDescriptorResource::Buffer(_) => {
@@ -2125,6 +2174,12 @@ impl<'a> DescriptorSet<'a> {
                         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                         .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
                     next_buffer += 1;
+                }
+                WriteDescriptorResource::Sampler(_) => {
+                    write = write
+                        .descriptor_type(vk::DescriptorType::SAMPLER)
+                        .image_info(core::slice::from_ref(&sampler_infos[next_sampler]));
+                    next_sampler += 1;
                 }
             }
 
@@ -2163,6 +2218,20 @@ impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_fence(self.fence, None);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Sampler {
+    device: Arc<DeviceShared>,
+    sampler: vk::Sampler,
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self) {
+        unsafe {
+            self.device.destroy_sampler(self.sampler, None);
         }
     }
 }

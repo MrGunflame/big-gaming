@@ -2,11 +2,12 @@ use ash::vk::PipelineStageFlags;
 use bytemuck::{Pod, Zeroable};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::{
-    BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor, FragmentStage,
-    ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage,
-    QueueCapabilities, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor, ShaderStages,
-    StoreOp, SwapchainConfig, TextureBarrier, TextureDescriptor, TextureFormat, TextureLayout,
-    VertexStage, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
+    AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor, FilterMode,
+    FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
+    PipelineStage, QueueCapabilities, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor,
+    SamplerDescriptor, ShaderStages, StoreOp, SwapchainConfig, TextureBarrier, TextureDescriptor,
+    TextureFormat, TextureLayout, VertexStage, WriteDescriptorBinding, WriteDescriptorResource,
+    WriteDescriptorResources,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
@@ -224,6 +225,14 @@ fn vk_main(state: WindowState) {
                     &caps,
                 );
 
+                let sampler = device.create_sampler(&SamplerDescriptor {
+                    min_filter: FilterMode::Linear,
+                    mag_filter: FilterMode::Linear,
+                    address_mode_u: AddressMode::Repeat,
+                    address_mode_v: AddressMode::Repeat,
+                    address_mode_w: AddressMode::Repeat,
+                });
+
                 let vert = unsafe {
                     let data = vert_spv.to_vec();
                     let (prefix, spv, suffix) = data.align_to::<u32>();
@@ -239,11 +248,18 @@ fn vk_main(state: WindowState) {
 
                 let descriptor_set_layout =
                     device.create_descriptor_layout(&DescriptorSetDescriptor {
-                        bindings: &[DescriptorBinding {
-                            binding: 0,
-                            visibility: ShaderStages::VERTEX,
-                            kind: game_render::backend::DescriptorType::Uniform,
-                        }],
+                        bindings: &[
+                            DescriptorBinding {
+                                binding: 0,
+                                visibility: ShaderStages::VERTEX,
+                                kind: game_render::backend::DescriptorType::Uniform,
+                            },
+                            DescriptorBinding {
+                                binding: 1,
+                                visibility: ShaderStages::FRAGMENT,
+                                kind: game_render::backend::DescriptorType::Sampler,
+                            },
+                        ],
                     });
 
                 let pipeline = device.create_pipeline(&PipelineDescriptor {
@@ -269,10 +285,16 @@ fn vk_main(state: WindowState) {
 
                 let buffer_view = buffer.slice(..);
                 descriptor_set.raw_mut().update(&WriteDescriptorResources {
-                    bindings: &[WriteDescriptorBinding {
-                        binding: 0,
-                        resource: WriteDescriptorResource::Buffer(&buffer_view),
-                    }],
+                    bindings: &[
+                        WriteDescriptorBinding {
+                            binding: 0,
+                            resource: WriteDescriptorResource::Buffer(&buffer_view),
+                        },
+                        WriteDescriptorBinding {
+                            binding: 1,
+                            resource: WriteDescriptorResource::Sampler(&sampler),
+                        },
+                    ],
                 });
 
                 loop {

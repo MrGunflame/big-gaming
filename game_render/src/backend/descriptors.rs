@@ -53,6 +53,9 @@ impl DescriptorSetAllocator {
                 DescriptorType::Storage => {
                     count.storage_buffers += 1;
                 }
+                DescriptorType::Sampler => {
+                    count.samplers += 1;
+                }
             }
         }
 
@@ -151,6 +154,7 @@ impl DescriptorPoolBucket {
 struct DescriptorSetResourceCount {
     uniform_buffers: u32,
     storage_buffers: u32,
+    samplers: u32,
 }
 
 struct Pool {

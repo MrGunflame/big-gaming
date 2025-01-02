@@ -8,7 +8,7 @@ use std::ops::Range;
 use ash::vk::{self, PipelineStageFlags};
 use bitflags::bitflags;
 use glam::UVec2;
-use vulkan::{Buffer, DescriptorSetLayout, Semaphore, ShaderModule, TextureView};
+use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, ShaderModule, TextureView};
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -194,6 +194,7 @@ bitflags! {
 pub enum DescriptorType {
     Uniform,
     Storage,
+    Sampler,
 }
 
 bitflags! {
@@ -250,6 +251,7 @@ pub struct WriteDescriptorBinding<'a> {
 
 pub enum WriteDescriptorResource<'a> {
     Buffer(&'a BufferView<'a>),
+    Sampler(&'a Sampler),
 }
 
 pub struct BufferView<'a> {
@@ -320,4 +322,26 @@ pub struct QueueSubmit<'a> {
     pub wait: &'a mut [&'a mut Semaphore],
     pub wait_stage: PipelineStageFlags,
     pub signal: &'a mut [&'a mut Semaphore],
+}
+
+pub struct SamplerDescriptor {
+    pub min_filter: FilterMode,
+    pub mag_filter: FilterMode,
+    pub address_mode_u: AddressMode,
+    pub address_mode_v: AddressMode,
+    pub address_mode_w: AddressMode,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum FilterMode {
+    Nearest,
+    Linear,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum AddressMode {
+    Repeat,
+    MirrorRepeat,
+    ClampToEdge,
+    ClampToBorder,
 }
