@@ -253,12 +253,12 @@ pub enum WriteDescriptorResource<'a> {
 }
 
 pub struct BufferView<'a> {
-    buffer: &'a Buffer<'a>,
+    buffer: &'a Buffer,
     view: Range<u64>,
 }
 
 impl<'a> BufferView<'a> {
-    pub fn buffer(&self) -> &Buffer<'_> {
+    pub fn buffer(&self) -> &Buffer {
         self.buffer
     }
 
@@ -276,4 +276,26 @@ pub struct TextureDescriptor {
     pub size: UVec2,
     pub mip_levels: u32,
     pub format: TextureFormat,
+}
+
+pub struct PipelineBarriers<'a> {
+    pub buffer: &'a [BufferBarrier],
+    pub texutre: &'a [TextureBarrier<'a>],
+}
+
+pub struct BufferBarrier {}
+
+pub struct TextureBarrier<'a> {
+    pub texture: &'a vulkan::Texture,
+    pub old_layout: TextureLayout,
+    pub new_layout: TextureLayout,
+    pub src_access_flags: ash::vk::AccessFlags2,
+    pub dst_access_flags: ash::vk::AccessFlags2,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum TextureLayout {
+    Undefined,
+    Present,
+    ColorAttachment,
 }

@@ -2,9 +2,10 @@ use bytemuck::{Pod, Zeroable};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorSetDescriptor, FragmentStage, LoadOp,
-    MemoryTypeFlags, PipelineDescriptor, PipelineStage, QueueCapabilities,
+    MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage, QueueCapabilities,
     RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp, SwapchainConfig,
-    VertexStage, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
+    TextureBarrier, TextureLayout, VertexStage, WriteDescriptorBinding, WriteDescriptorResource,
+    WriteDescriptorResources,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
@@ -181,15 +182,16 @@ fn vk_main(state: WindowState) {
 
                     let mut encoder = pool.create_encoder().unwrap();
 
-                    encoder.emit_pipeline_barrier(
-                        img.texture(),
-                        ash::vk::ImageLayout::UNDEFINED,
-                        ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        ash::vk::PipelineStageFlags::TOP_OF_PIPE,
-                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        ash::vk::AccessFlags::empty(),
-                        ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    );
+                    encoder.insert_pipeline_barriers(&PipelineBarriers {
+                        buffer: &[],
+                        texutre: &[TextureBarrier {
+                            texture: img.texture(),
+                            src_access_flags: ash::vk::AccessFlags2::empty(),
+                            dst_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                            old_layout: TextureLayout::Undefined,
+                            new_layout: TextureLayout::ColorAttachment,
+                        }],
+                    });
 
                     let view = img.texture().create_view();
 
@@ -209,15 +211,16 @@ fn vk_main(state: WindowState) {
                     render_pass.draw(0..3, 0..1);
                     drop(render_pass);
 
-                    encoder.emit_pipeline_barrier(
-                        img.texture(),
-                        ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        ash::vk::ImageLayout::PRESENT_SRC_KHR,
-                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        ash::vk::PipelineStageFlags::TOP_OF_PIPE,
-                        ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        ash::vk::AccessFlags::empty(),
-                    );
+                    encoder.insert_pipeline_barriers(&PipelineBarriers {
+                        buffer: &[],
+                        texutre: &[TextureBarrier {
+                            texture: img.texture(),
+                            src_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                            dst_access_flags: ash::vk::AccessFlags2::empty(),
+                            old_layout: TextureLayout::ColorAttachment,
+                            new_layout: TextureLayout::Present,
+                        }],
+                    });
 
                     queue.submit(
                         &[encoder.finish()],

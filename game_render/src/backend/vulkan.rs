@@ -8,6 +8,7 @@ use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
 use std::sync::Arc;
+use std::time::Duration;
 
 use ash::ext::debug_utils;
 use ash::vk::{
@@ -43,12 +44,14 @@ use ash::Entry;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
+use crate::backend::TextureLayout;
+
 use super::{
     AdapterKind, AdapterMemoryProperties, AdapterProperties, BufferUsage, DescriptorPoolDescriptor,
     DescriptorSetDescriptor, Face, LoadOp, MemoryHeap, MemoryRequirements, MemoryType,
-    MemoryTypeFlags, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
-    QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp,
-    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
+    MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode,
+    QueueCapabilities, QueueFamily, RenderPassColorAttachment, RenderPassDescriptor, ShaderStages,
+    StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
     WriteDescriptorResource, WriteDescriptorResources,
 };
 
@@ -108,6 +111,9 @@ const DEVICE_EXTENSIONS: &[&CStr] = &[
     // VK_KHR_dynamic_rendering
     // Core in Vulkan 1.3
     ash::khr::dynamic_rendering::NAME,
+    // `VK_KHR_synchronization2`
+    // Core in Vulkan 1.3
+    ash::khr::synchronization2::NAME,
 ];
 
 const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
@@ -440,6 +446,9 @@ impl<'a> Adapter<'a> {
         let mut dynamic_rendering =
             PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
 
+        let mut synchronization2 =
+            vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
+
         let create_info = DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             // Device layers are deprecated, but the Vulkan spec still recommends
@@ -448,7 +457,8 @@ impl<'a> Adapter<'a> {
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions)
             .enabled_features(&features)
-            .push_next(&mut dynamic_rendering);
+            .push_next(&mut dynamic_rendering)
+            .push_next(&mut synchronization2);
 
         let device = unsafe {
             self.instance
@@ -476,7 +486,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn queue(&self) -> Queue<'_> {
+    pub fn queue(&self) -> Queue {
         let info = DeviceQueueInfo2::default()
             .queue_family_index(self.queue_family_index)
             // Index is always 0 since we only create
@@ -486,12 +496,12 @@ impl Device {
         let queue = unsafe { self.device.get_device_queue2(&info) };
 
         Queue {
-            device: self,
+            device: self.device.clone(),
             queue,
         }
     }
 
-    pub fn create_buffer(&self, size: NonZeroU64, usage: BufferUsage) -> Buffer<'_> {
+    pub fn create_buffer(&self, size: NonZeroU64, usage: BufferUsage) -> Buffer {
         let mut buffer_usage_flags = BufferUsageFlags::empty();
         if usage.contains(BufferUsage::TRANSFER_SRC) {
             buffer_usage_flags |= BufferUsageFlags::TRANSFER_SRC;
@@ -528,13 +538,13 @@ impl Device {
         let buffer = unsafe { self.device.create_buffer(&info, None).unwrap() };
         Buffer {
             buffer,
-            device: &self.device,
+            device: self.device.clone(),
             memory: None,
             size: size.get(),
         }
     }
 
-    pub fn allocate_memory(&self, size: NonZeroU64, memory_type_index: u32) -> DeviceMemory<'_> {
+    pub fn allocate_memory(&self, size: NonZeroU64, memory_type_index: u32) -> DeviceMemory {
         // TODO: If the protectedMemory feature is not enabled, the VkMemoryAllocateInfo::memoryTypeIndex must not indicate a memory type that reports VK_MEMORY_PROPERTY_PROTECTED_BIT.
         let info = MemoryAllocateInfo::default()
             // - `allocationSize` must be greater than 0.
@@ -544,12 +554,12 @@ impl Device {
         let memory = unsafe { self.device.allocate_memory(&info, None).unwrap() };
         DeviceMemory {
             memory,
-            device: &self.device,
+            device: self.device.clone(),
             size,
         }
     }
 
-    pub fn buffer_memory_requirements(&self, buffer: &Buffer<'_>) -> MemoryRequirements {
+    pub fn buffer_memory_requirements(&self, buffer: &Buffer) -> MemoryRequirements {
         let req = unsafe { self.device.get_buffer_memory_requirements(buffer.buffer) };
 
         // Bit `i` is set iff the memory type at index `i` is
@@ -574,7 +584,30 @@ impl Device {
         }
     }
 
-    pub fn bind_buffer_memory<'mem>(&self, buffer: &mut Buffer<'mem>, memory: DeviceMemory<'mem>) {
+    pub fn image_memory_requirements(&self, texture: &Texture) -> MemoryRequirements {
+        let req = unsafe { self.device.get_image_memory_requirements(texture.image) };
+
+        // Bit `i` is set iff the memory type at index `i` is
+        // supported for this buffer.
+        let mut memory_types = Vec::new();
+        let mut bits = req.memory_type_bits;
+        while bits != 0 {
+            let index = bits.trailing_zeros();
+            memory_types.push(index);
+            bits &= !(1 << index);
+        }
+
+        debug_assert!(req.size > 0);
+        debug_assert!(req.alignment > 0);
+
+        MemoryRequirements {
+            size: unsafe { NonZeroU64::new_unchecked(req.size) },
+            align: unsafe { NonZeroU64::new_unchecked(req.alignment) },
+            memory_types,
+        }
+    }
+
+    pub fn bind_buffer_memory(&self, buffer: &mut Buffer, memory: DeviceMemory) {
         let info = BindBufferMemoryInfo::default()
             .buffer(buffer.buffer)
             .memory(memory.memory);
@@ -586,7 +619,7 @@ impl Device {
         buffer.memory = Some(memory);
     }
 
-    pub unsafe fn map_memory(&self, memory: &DeviceMemory<'_>) -> &mut [u8] {
+    pub unsafe fn map_memory(&self, memory: &DeviceMemory) -> &mut [u8] {
         let data = unsafe {
             self.device
                 .map_memory(memory.memory, 0, memory.size.get(), MemoryMapFlags::empty())
@@ -863,23 +896,23 @@ impl Device {
         }
     }
 
-    pub fn create_fence(&self) -> Fence<'_> {
+    pub fn create_fence(&self) -> Fence {
         let info = FenceCreateInfo::default();
 
         let fence = unsafe { self.device.create_fence(&info, None).unwrap() };
         Fence {
-            device: &self.device,
+            device: self.device.clone(),
             fence,
         }
     }
 }
 
-pub struct Queue<'a> {
-    device: &'a Device,
+pub struct Queue {
+    device: Arc<DeviceShared>,
     queue: vk::Queue,
 }
 
-impl<'a> Queue<'a> {
+impl Queue {
     pub fn submit(
         &mut self,
         buffers: &[CommandBuffer<'_>],
@@ -1171,7 +1204,7 @@ impl<'a> Swapchain<'a> {
         }
     }
 
-    pub fn present(&self, queue: &Queue<'_>, img: u32, wait_semaphore: &Semaphore<'_>) {
+    pub fn present(&self, queue: &Queue, img: u32, wait_semaphore: &Semaphore<'_>) {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
@@ -1299,6 +1332,16 @@ impl From<ShaderStages> for ShaderStageFlags {
         }
 
         flags
+    }
+}
+
+impl From<TextureLayout> for vk::ImageLayout {
+    fn from(value: TextureLayout) -> Self {
+        match value {
+            TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
+            TextureLayout::ColorAttachment => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
+        }
     }
 }
 
@@ -1604,41 +1647,41 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
-    pub fn emit_pipeline_barrier(
-        &mut self,
-        image: &Texture,
-        old_layout: vk::ImageLayout,
-        new_layout: vk::ImageLayout,
-        src: PipelineStageFlags,
-        dst: PipelineStageFlags,
-        src_mask: AccessFlags,
-        dst_mask: AccessFlags,
-    ) {
-        let subresource_range = ImageSubresourceRange::default()
-            .aspect_mask(ImageAspectFlags::COLOR)
-            .base_mip_level(0)
-            .level_count(1)
-            .base_array_layer(0)
-            .layer_count(1);
+    pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
+        let mut image_barriers = Vec::new();
+        for barrier in barriers.texutre {
+            // Images cannot be transitioned into `UNDEFINED`.
+            assert_ne!(barrier.new_layout, TextureLayout::Undefined);
 
-        let barrier = ImageMemoryBarrier::default()
-            .src_access_mask(src_mask)
-            .dst_access_mask(dst_mask)
-            .old_layout(old_layout)
-            .new_layout(new_layout)
-            .image(image.image)
-            .subresource_range(subresource_range);
+            let subresource_range = ImageSubresourceRange::default()
+                .aspect_mask(ImageAspectFlags::COLOR)
+                .base_mip_level(0)
+                .level_count(1)
+                .base_array_layer(0)
+                .layer_count(1);
+
+            let barrier = vk::ImageMemoryBarrier2::default()
+                // FIXME: More control over these flags.
+                .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+                .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+                .src_access_mask(barrier.src_access_flags)
+                .dst_access_mask(barrier.dst_access_flags)
+                .old_layout(barrier.old_layout.into())
+                .new_layout(barrier.new_layout.into())
+                // Do not transfer between queues.
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .image(barrier.texture.image)
+                .subresource_range(subresource_range);
+            image_barriers.push(barrier);
+        }
+
+        let info = vk::DependencyInfo::default()
+            .dependency_flags(DependencyFlags::empty())
+            .image_memory_barriers(&image_barriers);
 
         unsafe {
-            self.device.device.cmd_pipeline_barrier(
-                self.buffer,
-                src,
-                dst,
-                DependencyFlags::empty(),
-                &[],
-                &[],
-                &[barrier],
-            );
+            self.device.device.cmd_pipeline_barrier2(self.buffer, &info);
         }
     }
 
@@ -1753,7 +1796,7 @@ impl<'a> SwapchainTexture<'a> {
         &self.texture
     }
 
-    pub fn present(&self, queue: &Queue<'_>, wait_semaphore: &Semaphore<'_>) {
+    pub fn present(&self, queue: &Queue, wait_semaphore: &Semaphore<'_>) {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
@@ -1853,14 +1896,15 @@ impl<'a> Drop for TextureView<'a> {
     }
 }
 
-pub struct Buffer<'a> {
+#[derive(Debug)]
+pub struct Buffer {
+    device: Arc<DeviceShared>,
     buffer: vk::Buffer,
-    device: &'a ash::Device,
-    memory: Option<DeviceMemory<'a>>,
+    memory: Option<DeviceMemory>,
     size: u64,
 }
 
-impl<'a> Buffer<'a> {
+impl Buffer {
     pub fn slice<R>(&self, range: R) -> super::BufferView<'_>
     where
         R: RangeBounds<u64>,
@@ -1884,7 +1928,7 @@ impl<'a> Buffer<'a> {
     }
 }
 
-impl<'a> Drop for Buffer<'a> {
+impl Drop for Buffer {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_buffer(self.buffer, None);
@@ -1892,13 +1936,14 @@ impl<'a> Drop for Buffer<'a> {
     }
 }
 
-pub struct DeviceMemory<'a> {
+#[derive(Debug)]
+pub struct DeviceMemory {
+    device: Arc<DeviceShared>,
     memory: vk::DeviceMemory,
-    device: &'a ash::Device,
     size: NonZeroU64,
 }
 
-impl<'a> Drop for DeviceMemory<'a> {
+impl Drop for DeviceMemory {
     fn drop(&mut self) {
         unsafe {
             self.device.free_memory(self.memory, None);
@@ -2013,14 +2058,29 @@ impl<'a> DescriptorSet<'a> {
     }
 }
 
-pub struct Fence<'a> {
-    device: &'a ash::Device,
+#[derive(Debug)]
+pub struct Fence {
+    device: Arc<DeviceShared>,
     fence: vk::Fence,
 }
 
-impl<'a> Fence<'a> {}
+impl Fence {
+    pub fn wait(&mut self, timeout: Option<Duration>) {
+        let timeout = match timeout {
+            Some(timeout) => timeout.as_nanos().try_into().unwrap(),
+            None => u64::MAX,
+        };
 
-impl<'a> Drop for Fence<'a> {
+        let res = unsafe { self.device.wait_for_fences(&[self.fence], true, timeout) };
+        match res {
+            Ok(()) => (),
+            Err(vk::Result::TIMEOUT) => (),
+            Err(err) => todo!(),
+        }
+    }
+}
+
+impl Drop for Fence {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_fence(self.fence, None);
