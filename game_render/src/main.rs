@@ -127,10 +127,10 @@ fn vk_main(state: WindowState) {
                         .unwrap();
 
                     let tex_mem = device.allocate_memory(texture_reqs.size, host_mem_typ_tex.id);
-                    let buf_mem = device.allocate_memory(buffer_reqs.size, host_mem_typ_buf.id);
+                    let mut buf_mem = device.allocate_memory(buffer_reqs.size, host_mem_typ_buf.id);
 
                     unsafe {
-                        device.map_memory(&buf_mem).copy_from_slice(&texture_data);
+                        buf_mem.map(..).copy_from_slice(&texture_data);
                     }
 
                     device.bind_buffer_memory(&mut staging_buffer, buf_mem);
@@ -206,12 +206,12 @@ fn vk_main(state: WindowState) {
                     })
                     .unwrap();
 
-                let mem = device.allocate_memory(reqs.size.try_into().unwrap(), host_mem_typ.id);
-                let mapped_mem = unsafe { device.map_memory(&mem) };
-                device.bind_buffer_memory(&mut buffer, mem);
-
+                let mut mem =
+                    device.allocate_memory(reqs.size.try_into().unwrap(), host_mem_typ.id);
+                let mapped_mem = unsafe { mem.map(..) };
                 mapped_mem[..VERTICES.len() * size_of::<Vertex>()]
                     .copy_from_slice(bytemuck::cast_slice(&VERTICES));
+                device.bind_buffer_memory(&mut buffer, mem);
 
                 let caps = surface.get_capabilities(&device);
                 dbg!(&caps);

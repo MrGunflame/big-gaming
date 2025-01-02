@@ -477,6 +477,7 @@ impl<'a> Adapter<'a> {
                 device,
             }),
             limits: self.device_limits(),
+            memory_properties: self.memory_properties(),
         }
     }
 
@@ -499,6 +500,7 @@ pub struct Device {
     device: Arc<DeviceShared>,
     queue_family_index: u32,
     limits: DeviceLimits,
+    memory_properties: AdapterMemoryProperties,
 }
 
 impl Device {
@@ -572,6 +574,8 @@ impl Device {
             memory,
             device: self.device.clone(),
             size,
+            flags: self.memory_properties.types[memory_type_index as usize].flags,
+            mapped_range: None,
         }
     }
 
@@ -645,17 +649,6 @@ impl Device {
         }
 
         texture.memory = Some(memory);
-    }
-
-    pub unsafe fn map_memory(&self, memory: &DeviceMemory) -> &mut [u8] {
-        let data = unsafe {
-            self.device
-                .map_memory(memory.memory, 0, memory.size.get(), MemoryMapFlags::empty())
-                .unwrap()
-        };
-
-        let len = memory.size.get() as usize;
-        unsafe { core::slice::from_raw_parts_mut(data.cast::<u8>(), len) }
     }
 
     pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
@@ -2065,6 +2058,89 @@ pub struct DeviceMemory {
     device: Arc<DeviceShared>,
     memory: vk::DeviceMemory,
     size: NonZeroU64,
+    flags: MemoryTypeFlags,
+    mapped_range: Option<(u64, u64)>,
+}
+
+impl DeviceMemory {
+    /// Maps the given range of `DeviceMemory` into host memory.
+    pub unsafe fn map<R>(&mut self, range: R) -> &mut [u8]
+    where
+        R: RangeBounds<u64>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(start) => *start,
+            Bound::Excluded(start) => *start + 1,
+            Bound::Unbounded => 0,
+        };
+
+        let end = match range.end_bound() {
+            Bound::Included(end) => *end + 1,
+            Bound::Excluded(end) => *end,
+            Bound::Unbounded => self.size.get(),
+        };
+
+        let offset = start;
+        let size = end - start;
+
+        // - `memory` must not be currently host mapped.
+        // - `offset` must be less than the size of `memory`.
+        // - `size` must be greater than 0.
+        // - `size` must be less than or equal to the size of `memory` minus `offset`.
+        // - `memory` must have been created with a memory type that reports `VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT`.
+        assert!(self.size.get() > offset);
+        assert!(self.size.get() - start >= size);
+        assert_ne!(size, 0);
+        assert!(self.flags.contains(MemoryTypeFlags::HOST_VISIBLE));
+
+        let res = unsafe {
+            self.device
+                .map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty())
+        };
+        match res {
+            Ok(ptr) => unsafe { core::slice::from_raw_parts_mut(ptr.cast::<u8>(), size as usize) },
+            Err(err) => {
+                todo!()
+            }
+        }
+    }
+
+    /// Invalidates a region of host mapped memory.
+    pub fn invalidate<R>(&mut self, range: R)
+    where
+        R: RangeBounds<u64>,
+    {
+        let (offset, size) = range.into_offset_size(self.size.get());
+
+        let Some((mapped_offset, mapped_size)) = self.mapped_range else {
+            panic!("cannot invalidate on non-mapped memory");
+        };
+
+        if offset < mapped_offset || mapped_offset + mapped_size < offset + size {
+            panic!(
+                "Cannot invalidate non-mapped {:?} (Mapped {:?})",
+                offset..offset + size,
+                mapped_offset..mapped_offset + mapped_size,
+            );
+        }
+
+        if cfg!(debug_assertions) {
+            if self.flags.contains(MemoryTypeFlags::HOST_COHERENT) {
+                tracing::warn!("Redundant call to vkInvalidateMappedMemoryRanges, memory is already HOST_COHERENT");
+            }
+        }
+
+        let range = vk::MappedMemoryRange::default()
+            .memory(self.memory)
+            .offset(offset)
+            .size(size);
+
+        unsafe {
+            self.device
+                .invalidate_mapped_memory_ranges(&[range])
+                .unwrap();
+        }
+    }
 }
 
 impl Drop for DeviceMemory {
@@ -2370,4 +2446,29 @@ impl Drop for DeviceShared {
 #[derive(Copy, Clone, Debug)]
 struct DeviceLimits {
     max_push_constants_size: u32,
+}
+
+trait RangeBoundsExt {
+    fn into_offset_size(self, upper_bound: u64) -> (u64, u64);
+}
+
+impl<T> RangeBoundsExt for T
+where
+    T: RangeBounds<u64>,
+{
+    fn into_offset_size(self, upper_bound: u64) -> (u64, u64) {
+        let start = match self.start_bound() {
+            Bound::Included(start) => *start,
+            Bound::Excluded(start) => *start + 1,
+            Bound::Unbounded => 0,
+        };
+
+        let end = match self.end_bound() {
+            Bound::Included(end) => *end + 1,
+            Bound::Excluded(end) => *end,
+            Bound::Unbounded => upper_bound,
+        };
+
+        (start, end - start)
+    }
 }
