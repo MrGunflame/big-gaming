@@ -1,11 +1,12 @@
+use ash::vk::PipelineStageFlags;
 use bytemuck::{Pod, Zeroable};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::{
-    BufferUsage, DescriptorBinding, DescriptorSetDescriptor, FragmentStage, LoadOp,
-    MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage, QueueCapabilities,
-    RenderPassColorAttachment, RenderPassDescriptor, ShaderStages, StoreOp, SwapchainConfig,
-    TextureBarrier, TextureLayout, VertexStage, WriteDescriptorBinding, WriteDescriptorResource,
-    WriteDescriptorResources,
+    BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor, FragmentStage,
+    ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage,
+    QueueCapabilities, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor, ShaderStages,
+    StoreOp, SwapchainConfig, TextureBarrier, TextureDescriptor, TextureFormat, TextureLayout,
+    VertexStage, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
@@ -60,6 +61,10 @@ static VERTICES: [Vertex; 3] = [
 fn vk_main(state: WindowState) {
     let instance = game_render::backend::vulkan::Instance::new().unwrap();
 
+    let texture_data = image::load_from_memory(include_bytes!("../../assets/diffuse.png"))
+        .unwrap()
+        .to_rgba8();
+
     let vert_spv = include_bytes!("../vert.spv");
     let frag_spv = include_bytes!("../frag.spv");
 
@@ -82,6 +87,101 @@ fn vk_main(state: WindowState) {
                         state.raw_window_handle().unwrap(),
                     )
                 };
+
+                let mut pool = device.create_command_pool();
+
+                let mut texture = device.create_texture(&TextureDescriptor {
+                    size: UVec2::new(texture_data.width(), texture_data.height()),
+                    format: TextureFormat::R8G8B8A8UnormSrgb,
+                    mip_levels: 1,
+                });
+                {
+                    let mut encoder = pool.create_encoder().unwrap();
+
+                    let mut staging_buffer = device.create_buffer(
+                        ((texture_data.height() * texture_data.width() * 4) as u64)
+                            .try_into()
+                            .unwrap(),
+                        BufferUsage::TRANSFER_DST | BufferUsage::TRANSFER_SRC,
+                    );
+                    let texture_reqs = device.image_memory_requirements(&texture);
+                    let buffer_reqs = device.buffer_memory_requirements(&staging_buffer);
+
+                    let host_mem_typ_tex = mem_props
+                        .types
+                        .iter()
+                        .find(|t| {
+                            texture_reqs.memory_types.contains(&t.id)
+                                && t.flags.contains(MemoryTypeFlags::DEVICE_LOCAL)
+                        })
+                        .unwrap();
+                    let host_mem_typ_buf = mem_props
+                        .types
+                        .iter()
+                        .find(|t| {
+                            buffer_reqs.memory_types.contains(&t.id)
+                                && t.flags.contains(MemoryTypeFlags::HOST_VISIBLE)
+                                && t.flags.contains(MemoryTypeFlags::HOST_COHERENT)
+                        })
+                        .unwrap();
+
+                    let tex_mem = device.allocate_memory(texture_reqs.size, host_mem_typ_tex.id);
+                    let buf_mem = device.allocate_memory(buffer_reqs.size, host_mem_typ_buf.id);
+
+                    unsafe {
+                        device.map_memory(&buf_mem).copy_from_slice(&texture_data);
+                    }
+
+                    device.bind_buffer_memory(&mut staging_buffer, buf_mem);
+                    device.bind_texture_memory(&mut texture, tex_mem);
+
+                    encoder.insert_pipeline_barriers(&PipelineBarriers {
+                        texture: &[TextureBarrier {
+                            texture: &texture,
+                            old_layout: TextureLayout::Undefined,
+                            new_layout: TextureLayout::TransferDst,
+                            src_access_flags: ash::vk::AccessFlags2::empty(),
+                            dst_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
+                        }],
+                        buffer: &[],
+                    });
+
+                    encoder.copy_buffer_to_texture(
+                        CopyBuffer {
+                            buffer: &staging_buffer,
+                            offset: 0,
+                            layout: ImageDataLayout {
+                                bytes_per_row: 4 * texture_data.width(),
+                                rows_per_image: texture_data.height(),
+                            },
+                        },
+                        &texture,
+                    );
+
+                    encoder.insert_pipeline_barriers(&PipelineBarriers {
+                        buffer: &[],
+                        texture: &[TextureBarrier {
+                            texture: &texture,
+                            old_layout: TextureLayout::TransferDst,
+                            new_layout: TextureLayout::ShaderRead,
+                            src_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
+                            dst_access_flags: ash::vk::AccessFlags2::SHADER_READ,
+                        }],
+                    });
+
+                    queue.submit(
+                        std::iter::once(encoder.finish()),
+                        QueueSubmit {
+                            wait: &mut [],
+                            wait_stage: PipelineStageFlags::empty(),
+                            signal: &mut [],
+                        },
+                    );
+                    queue.wait_idle();
+                    unsafe {
+                        pool.reset();
+                    }
+                }
 
                 let mut buffer = device.create_buffer(
                     (size_of::<Vertex>() as u64 * VERTICES.len() as u64)
@@ -137,8 +237,6 @@ fn vk_main(state: WindowState) {
                     device.create_shader(spv)
                 };
 
-                let mut pool = device.create_command_pool();
-
                 let descriptor_set_layout =
                     device.create_descriptor_layout(&DescriptorSetDescriptor {
                         bindings: &[DescriptorBinding {
@@ -184,7 +282,7 @@ fn vk_main(state: WindowState) {
 
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         buffer: &[],
-                        texutre: &[TextureBarrier {
+                        texture: &[TextureBarrier {
                             texture: img.texture(),
                             src_access_flags: ash::vk::AccessFlags2::empty(),
                             dst_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
@@ -213,7 +311,7 @@ fn vk_main(state: WindowState) {
 
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         buffer: &[],
-                        texutre: &[TextureBarrier {
+                        texture: &[TextureBarrier {
                             texture: img.texture(),
                             src_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
                             dst_access_flags: ash::vk::AccessFlags2::empty(),
@@ -223,10 +321,12 @@ fn vk_main(state: WindowState) {
                     });
 
                     queue.submit(
-                        &[encoder.finish()],
-                        &mut image_avail,
-                        ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        &mut render_done,
+                        std::iter::once(encoder.finish()),
+                        QueueSubmit {
+                            wait: &mut [&mut image_avail],
+                            wait_stage: PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                            signal: &mut [&mut render_done],
+                        },
                     );
 
                     img.present(&queue, &render_done);

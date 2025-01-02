@@ -5,10 +5,10 @@ pub mod vulkan;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
 
-use ash::vk;
+use ash::vk::{self, PipelineStageFlags};
 use bitflags::bitflags;
 use glam::UVec2;
-use vulkan::{Buffer, DescriptorSetLayout, ShaderModule, TextureView};
+use vulkan::{Buffer, DescriptorSetLayout, Semaphore, ShaderModule, TextureView};
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -280,7 +280,7 @@ pub struct TextureDescriptor {
 
 pub struct PipelineBarriers<'a> {
     pub buffer: &'a [BufferBarrier],
-    pub texutre: &'a [TextureBarrier<'a>],
+    pub texture: &'a [TextureBarrier<'a>],
 }
 
 pub struct BufferBarrier {}
@@ -298,4 +298,26 @@ pub enum TextureLayout {
     Undefined,
     Present,
     ColorAttachment,
+    TransferDst,
+    ShaderRead,
+}
+
+#[derive(Debug)]
+pub struct CopyBuffer<'a> {
+    pub buffer: &'a Buffer,
+    pub offset: u64,
+    pub layout: ImageDataLayout,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ImageDataLayout {
+    pub bytes_per_row: u32,
+    pub rows_per_image: u32,
+}
+
+#[derive(Debug)]
+pub struct QueueSubmit<'a> {
+    pub wait: &'a mut [&'a mut Semaphore],
+    pub wait_stage: PipelineStageFlags,
+    pub signal: &'a mut [&'a mut Semaphore],
 }
