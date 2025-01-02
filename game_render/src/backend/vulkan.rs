@@ -902,6 +902,11 @@ impl Device {
                 vk::DescriptorType::STORAGE_BUFFER,
                 descriptor.max_storage_buffers,
             ),
+            (vk::DescriptorType::SAMPLER, descriptor.max_samplers),
+            (
+                vk::DescriptorType::SAMPLED_IMAGE,
+                descriptor.max_sampled_images,
+            ),
         ] {
             if count == 0 {
                 continue;
@@ -1371,6 +1376,7 @@ impl From<super::DescriptorType> for vk::DescriptorType {
             super::DescriptorType::Uniform => Self::UNIFORM_BUFFER,
             super::DescriptorType::Storage => Self::STORAGE_BUFFER,
             super::DescriptorType::Sampler => Self::SAMPLER,
+            super::DescriptorType::Texture => Self::SAMPLED_IMAGE,
         }
     }
 }
@@ -2136,6 +2142,7 @@ pub struct DescriptorSet<'a> {
 impl<'a> DescriptorSet<'a> {
     pub fn update(&mut self, op: &WriteDescriptorResources<'_>) {
         let mut buffer_infos = Vec::new();
+        let mut image_infos = Vec::new();
         let mut sampler_infos = Vec::new();
         for binding in op.bindings {
             match &binding.resource {
@@ -2146,6 +2153,13 @@ impl<'a> DescriptorSet<'a> {
                         .range(buffer.len());
 
                     buffer_infos.push(buffer_info);
+                }
+                WriteDescriptorResource::Texture(texture) => {
+                    let info = vk::DescriptorImageInfo::default()
+                        .image_view(texture.view)
+                        .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .sampler(vk::Sampler::null());
+                    image_infos.push(info);
                 }
                 WriteDescriptorResource::Sampler(sampler) => {
                     let info = vk::DescriptorImageInfo::default()
@@ -2160,6 +2174,7 @@ impl<'a> DescriptorSet<'a> {
         let mut writes = Vec::new();
 
         let mut next_buffer = 0;
+        let mut next_image = 0;
         let mut next_sampler = 0;
         for binding in op.bindings {
             let mut write = vk::WriteDescriptorSet::default()
@@ -2174,6 +2189,12 @@ impl<'a> DescriptorSet<'a> {
                         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                         .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
                     next_buffer += 1;
+                }
+                WriteDescriptorResource::Texture(_) => {
+                    write = write
+                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                        .image_info(core::slice::from_ref(&image_infos[next_image]));
+                    next_image += 1;
                 }
                 WriteDescriptorResource::Sampler(_) => {
                     write = write

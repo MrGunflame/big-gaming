@@ -195,6 +195,7 @@ pub enum DescriptorType {
     Uniform,
     Storage,
     Sampler,
+    Texture,
 }
 
 bitflags! {
@@ -238,6 +239,8 @@ pub struct DescriptorPoolDescriptor {
     /// pool.
     pub max_uniform_buffers: u32,
     pub max_storage_buffers: u32,
+    pub max_samplers: u32,
+    pub max_sampled_images: u32,
 }
 
 pub struct WriteDescriptorResources<'a> {
@@ -251,6 +254,7 @@ pub struct WriteDescriptorBinding<'a> {
 
 pub enum WriteDescriptorResource<'a> {
     Buffer(&'a BufferView<'a>),
+    Texture(&'a TextureView<'a>),
     Sampler(&'a Sampler),
 }
 

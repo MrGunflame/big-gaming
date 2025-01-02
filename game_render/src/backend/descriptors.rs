@@ -56,6 +56,9 @@ impl DescriptorSetAllocator {
                 DescriptorType::Sampler => {
                     count.samplers += 1;
                 }
+                DescriptorType::Texture => {
+                    count.textures += 1;
+                }
             }
         }
 
@@ -123,6 +126,8 @@ impl DescriptorPoolBucket {
             max_sets: pool_size,
             max_uniform_buffers: count.uniform_buffers * pool_size.get(),
             max_storage_buffers: count.storage_buffers * pool_size.get(),
+            max_samplers: count.samplers * pool_size.get(),
+            max_sampled_images: count.textures * pool_size.get(),
         });
         // Drop the lifetime of the pool. The caller guarantees that `self` outlives
         // the passed `device` handle.
@@ -155,6 +160,7 @@ struct DescriptorSetResourceCount {
     uniform_buffers: u32,
     storage_buffers: u32,
     samplers: u32,
+    textures: u32,
 }
 
 struct Pool {

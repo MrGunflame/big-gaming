@@ -184,6 +184,8 @@ fn vk_main(state: WindowState) {
                     }
                 }
 
+                let texture_view = texture.create_view();
+
                 let mut buffer = device.create_buffer(
                     (size_of::<Vertex>() as u64 * VERTICES.len() as u64)
                         .try_into()
@@ -259,6 +261,11 @@ fn vk_main(state: WindowState) {
                                 visibility: ShaderStages::FRAGMENT,
                                 kind: game_render::backend::DescriptorType::Sampler,
                             },
+                            DescriptorBinding {
+                                binding: 2,
+                                visibility: ShaderStages::FRAGMENT,
+                                kind: game_render::backend::DescriptorType::Texture,
+                            },
                         ],
                     });
 
@@ -293,6 +300,10 @@ fn vk_main(state: WindowState) {
                         WriteDescriptorBinding {
                             binding: 1,
                             resource: WriteDescriptorResource::Sampler(&sampler),
+                        },
+                        WriteDescriptorBinding {
+                            binding: 2,
+                            resource: WriteDescriptorResource::Texture(&texture_view),
                         },
                     ],
                 });
