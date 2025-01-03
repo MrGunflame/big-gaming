@@ -1,5 +1,6 @@
 use ash::vk::PipelineStageFlags;
 use bytemuck::{Pod, Zeroable};
+use game_render::backend::allocator::{GeneralPurposeAllocator, UsageFlags};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::shader::glsl_to_spirv;
 use game_render::backend::{
@@ -96,58 +97,34 @@ fn vk_main(state: WindowState) {
 
                 let mut pool = device.create_command_pool();
 
-                let mut texture = device.create_texture(&TextureDescriptor {
-                    size: UVec2::new(texture_data.width(), texture_data.height()),
-                    format: TextureFormat::R8G8B8A8UnormSrgb,
-                    mip_levels: 1,
-                });
+                let allocator = GeneralPurposeAllocator::new(device.clone(), mem_props);
+
+                let texture = allocator.create_texture(
+                    &TextureDescriptor {
+                        size: UVec2::new(texture_data.width(), texture_data.height()),
+                        format: TextureFormat::R8G8B8A8UnormSrgb,
+                        mip_levels: 1,
+                    },
+                    UsageFlags::empty(),
+                );
                 {
                     let mut encoder = pool.create_encoder().unwrap();
 
-                    let mut staging_buffer = device.create_buffer(
+                    let mut staging_buffer = allocator.create_buffer(
                         ((texture_data.height() * texture_data.width() * 4) as u64)
                             .try_into()
                             .unwrap(),
                         BufferUsage::TRANSFER_DST | BufferUsage::TRANSFER_SRC,
+                        UsageFlags::HOST_VISIBLE,
                     );
-                    let texture_reqs = device.image_memory_requirements(&texture);
-                    let buffer_reqs = device.buffer_memory_requirements(&staging_buffer);
-
-                    let host_mem_typ_tex = mem_props
-                        .types
-                        .iter()
-                        .find(|t| {
-                            texture_reqs.memory_types.contains(&t.id)
-                                && t.flags.contains(MemoryTypeFlags::DEVICE_LOCAL)
-                        })
-                        .unwrap();
-                    let host_mem_typ_buf = mem_props
-                        .types
-                        .iter()
-                        .find(|t| {
-                            buffer_reqs.memory_types.contains(&t.id)
-                                && t.flags.contains(MemoryTypeFlags::HOST_VISIBLE)
-                                && t.flags.contains(MemoryTypeFlags::HOST_COHERENT)
-                        })
-                        .unwrap();
-
-                    let tex_mem = device.allocate_memory(texture_reqs.size, host_mem_typ_tex.id);
-                    let mut buf_mem = device.allocate_memory(buffer_reqs.size, host_mem_typ_buf.id);
 
                     unsafe {
-                        buf_mem.map(..).copy_from_slice(&texture_data);
-                    }
-
-                    unsafe {
-                        device.bind_buffer_memory(&mut staging_buffer, buf_mem.slice(..));
-                    }
-                    unsafe {
-                        device.bind_texture_memory(&mut texture, tex_mem.slice(..));
+                        staging_buffer.map().copy_from_slice(&texture_data);
                     }
 
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         texture: &[TextureBarrier {
-                            texture: &texture,
+                            texture: texture.texture(),
                             // old_layout: TextureLayout::Undefined,
                             // new_layout: TextureLayout::TransferDst,
                             // src_access_flags: ash::vk::AccessFlags2::empty(),
@@ -160,20 +137,20 @@ fn vk_main(state: WindowState) {
 
                     encoder.copy_buffer_to_texture(
                         CopyBuffer {
-                            buffer: &staging_buffer,
+                            buffer: staging_buffer.buffer(),
                             offset: 0,
                             layout: ImageDataLayout {
                                 bytes_per_row: 4 * texture_data.width(),
                                 rows_per_image: texture_data.height(),
                             },
                         },
-                        &texture,
+                        texture.texture(),
                     );
 
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         buffer: &[],
                         texture: &[TextureBarrier {
-                            texture: &mut texture,
+                            texture: texture.texture(),
                             // old_layout: TextureLayout::TransferDst,
                             // new_layout: TextureLayout::ShaderRead,
                             // src_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
@@ -197,35 +174,20 @@ fn vk_main(state: WindowState) {
                     }
                 }
 
-                let texture_view = texture.create_view();
+                let texture_view = texture.texture().create_view();
 
-                let mut buffer = device.create_buffer(
+                let mut buffer = allocator.create_buffer(
                     (size_of::<Vertex>() as u64 * VERTICES.len() as u64)
                         .try_into()
                         .unwrap(),
                     BufferUsage::UNIFORM | BufferUsage::TRANSFER_DST,
+                    UsageFlags::HOST_VISIBLE,
                 );
-                let reqs = device.buffer_memory_requirements(&buffer);
 
-                let pad = reqs.padding_needed();
-
-                let host_mem_typ = mem_props
-                    .types
-                    .iter()
-                    .find(|t| {
-                        reqs.memory_types.contains(&t.id)
-                            && t.flags.contains(MemoryTypeFlags::HOST_VISIBLE)
-                            && t.flags.contains(MemoryTypeFlags::DEVICE_LOCAL)
-                    })
-                    .unwrap();
-
-                let mut mem =
-                    device.allocate_memory(reqs.size.try_into().unwrap(), host_mem_typ.id);
-                let mapped_mem = unsafe { mem.map(..) };
-                mapped_mem[..VERTICES.len() * size_of::<Vertex>()]
-                    .copy_from_slice(bytemuck::cast_slice(&VERTICES));
                 unsafe {
-                    device.bind_buffer_memory(&mut buffer, mem.slice(..));
+                    buffer
+                        .map()
+                        .copy_from_slice(bytemuck::cast_slice(&VERTICES));
                 }
 
                 let caps = surface.get_capabilities(&device);
@@ -305,7 +267,7 @@ fn vk_main(state: WindowState) {
 
                 let mut descriptor_set = unsafe { descriptor_alloc.alloc(&descriptor_set_layout) };
 
-                let buffer_view = buffer.slice(..);
+                let buffer_view = buffer.buffer().slice(..);
                 descriptor_set.raw_mut().update(&WriteDescriptorResources {
                     bindings: &[
                         WriteDescriptorBinding {
