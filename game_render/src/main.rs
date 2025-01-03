@@ -2,12 +2,12 @@ use ash::vk::PipelineStageFlags;
 use bytemuck::{Pod, Zeroable};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::{
-    AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor, FilterMode,
-    FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
-    PipelineStage, QueueCapabilities, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor,
-    SamplerDescriptor, ShaderStages, StoreOp, SwapchainConfig, TextureBarrier, TextureDescriptor,
-    TextureFormat, TextureLayout, VertexStage, WriteDescriptorBinding, WriteDescriptorResource,
-    WriteDescriptorResources,
+    AccessFlags, AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor,
+    FilterMode, FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers,
+    PipelineDescriptor, PipelineStage, QueueCapabilities, QueueSubmit, RenderPassColorAttachment,
+    RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp, SwapchainConfig,
+    TextureBarrier, TextureDescriptor, TextureFormat, TextureLayout, VertexStage,
+    WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
@@ -139,10 +139,12 @@ fn vk_main(state: WindowState) {
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         texture: &[TextureBarrier {
                             texture: &texture,
-                            old_layout: TextureLayout::Undefined,
-                            new_layout: TextureLayout::TransferDst,
-                            src_access_flags: ash::vk::AccessFlags2::empty(),
-                            dst_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
+                            // old_layout: TextureLayout::Undefined,
+                            // new_layout: TextureLayout::TransferDst,
+                            // src_access_flags: ash::vk::AccessFlags2::empty(),
+                            // dst_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
+                            src_access: AccessFlags::empty(),
+                            dst_access: AccessFlags::TRANSFER_WRITE,
                         }],
                         buffer: &[],
                     });
@@ -162,11 +164,13 @@ fn vk_main(state: WindowState) {
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         buffer: &[],
                         texture: &[TextureBarrier {
-                            texture: &texture,
-                            old_layout: TextureLayout::TransferDst,
-                            new_layout: TextureLayout::ShaderRead,
-                            src_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
-                            dst_access_flags: ash::vk::AccessFlags2::SHADER_READ,
+                            texture: &mut texture,
+                            // old_layout: TextureLayout::TransferDst,
+                            // new_layout: TextureLayout::ShaderRead,
+                            // src_access_flags: ash::vk::AccessFlags2::TRANSFER_WRITE,
+                            // dst_access_flags: ash::vk::AccessFlags2::SHADER_READ,
+                            src_access: AccessFlags::TRANSFER_WRITE,
+                            dst_access: AccessFlags::SHADER_READ,
                         }],
                     });
 
@@ -317,10 +321,12 @@ fn vk_main(state: WindowState) {
                         buffer: &[],
                         texture: &[TextureBarrier {
                             texture: img.texture(),
-                            src_access_flags: ash::vk::AccessFlags2::empty(),
-                            dst_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                            old_layout: TextureLayout::Undefined,
-                            new_layout: TextureLayout::ColorAttachment,
+                            // src_access_flags: ash::vk::AccessFlags2::empty(),
+                            // dst_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                            // old_layout: TextureLayout::Undefined,
+                            // new_layout: TextureLayout::ColorAttachment,
+                            src_access: AccessFlags::empty(),
+                            dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
                         }],
                     });
 
@@ -346,10 +352,12 @@ fn vk_main(state: WindowState) {
                         buffer: &[],
                         texture: &[TextureBarrier {
                             texture: img.texture(),
-                            src_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-                            dst_access_flags: ash::vk::AccessFlags2::empty(),
-                            old_layout: TextureLayout::ColorAttachment,
-                            new_layout: TextureLayout::Present,
+                            // src_access_flags: ash::vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+                            // dst_access_flags: ash::vk::AccessFlags2::empty(),
+                            // old_layout: TextureLayout::ColorAttachment,
+                            // new_layout: TextureLayout::Present,
+                            src_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                            dst_access: AccessFlags::PRESENT,
                         }],
                     });
 

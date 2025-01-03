@@ -44,6 +44,7 @@ use ash::Entry;
 use bitflags::bitflags;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use tracing::instrument::WithSubscriber;
 
 use crate::backend::TextureLayout;
 
@@ -1745,10 +1746,37 @@ impl<'a> CommandEncoder<'a> {
     }
 
     pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
+        let mut buffer_barriers = Vec::new();
+        for barrier in barriers.buffer {
+            let (_, src_access_flags) = convert_access_flags(barrier.src_access);
+            let (_, dst_access_flags) = convert_access_flags(barrier.dst_access);
+
+            // - `offset` must be less than the size of `buffer`.
+            // - `size` must not be 0.
+            // - `size` must be less than or equal to the size of `buffer` minus `offset`.
+            assert_ne!(barrier.size, 0);
+            assert!(barrier.offset < barrier.buffer.size);
+            assert!(barrier.size <= barrier.buffer.size - barrier.offset);
+
+            let barrier = vk::BufferMemoryBarrier2::default()
+                .buffer(barrier.buffer.buffer)
+                .offset(barrier.offset)
+                .size(barrier.size)
+                .src_access_mask(src_access_flags)
+                .dst_access_mask(dst_access_flags)
+                // Do not transfer between queues.
+                .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
+                .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
+            buffer_barriers.push(barrier);
+        }
+
         let mut image_barriers = Vec::new();
         for barrier in barriers.texture {
+            let (old_layout, src_access_flags) = convert_access_flags(barrier.src_access);
+            let (new_layout, dst_access_flags) = convert_access_flags(barrier.dst_access);
+
             // Images cannot be transitioned into `UNDEFINED`.
-            assert_ne!(barrier.new_layout, TextureLayout::Undefined);
+            assert_ne!(new_layout, ImageLayout::UNDEFINED);
 
             let subresource_range = ImageSubresourceRange::default()
                 .aspect_mask(ImageAspectFlags::COLOR)
@@ -1761,10 +1789,10 @@ impl<'a> CommandEncoder<'a> {
                 // FIXME: More control over these flags.
                 .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
                 .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
-                .src_access_mask(barrier.src_access_flags)
-                .dst_access_mask(barrier.dst_access_flags)
-                .old_layout(barrier.old_layout.into())
-                .new_layout(barrier.new_layout.into())
+                .src_access_mask(src_access_flags)
+                .dst_access_mask(dst_access_flags)
+                .old_layout(old_layout.into())
+                .new_layout(new_layout.into())
                 // Do not transfer between queues.
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
@@ -1775,6 +1803,7 @@ impl<'a> CommandEncoder<'a> {
 
         let info = vk::DependencyInfo::default()
             .dependency_flags(DependencyFlags::empty())
+            .buffer_memory_barriers(&buffer_barriers)
             .image_memory_barriers(&image_barriers);
 
         unsafe {
@@ -2470,5 +2499,46 @@ where
         };
 
         (start, end - start)
+    }
+}
+
+fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFlags2) {
+    let transfer_write = flags.contains(super::AccessFlags::TRANSFER_WRITE);
+    let shader_read = flags.contains(super::AccessFlags::SHADER_READ);
+    let color_attachment_write = flags.contains(super::AccessFlags::COLOR_ATTACHMENT_WRITE);
+    let present = flags.contains(super::AccessFlags::PRESENT);
+
+    match (transfer_write, shader_read, color_attachment_write, present) {
+        (false, false, false, false) => (ImageLayout::UNDEFINED, vk::AccessFlags2::empty()),
+        (true, false, false, false) => (
+            ImageLayout::TRANSFER_DST_OPTIMAL,
+            vk::AccessFlags2::TRANSFER_WRITE,
+        ),
+        (false, true, false, false) => (
+            ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            vk::AccessFlags2::SHADER_READ,
+        ),
+        (false, false, true, false) => (
+            ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+        ),
+        (false, false, false, true) => (ImageLayout::PRESENT_SRC_KHR, vk::AccessFlags2::empty()),
+        (_, _, _, true) => {
+            panic!("AccessFlags::PRESENT is mutually exclusive with all other flags")
+        }
+        _ => {
+            let mut flags = vk::AccessFlags2::empty();
+            if transfer_write {
+                flags |= vk::AccessFlags2::TRANSFER_WRITE;
+            }
+            if shader_read {
+                flags |= vk::AccessFlags2::SHADER_READ;
+            }
+            if color_attachment_write {
+                flags |= vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
+            }
+
+            (ImageLayout::GENERAL, flags)
+        }
     }
 }

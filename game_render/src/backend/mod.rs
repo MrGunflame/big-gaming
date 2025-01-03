@@ -285,18 +285,38 @@ pub struct TextureDescriptor {
 }
 
 pub struct PipelineBarriers<'a> {
-    pub buffer: &'a [BufferBarrier],
+    pub buffer: &'a [BufferBarrier<'a>],
     pub texture: &'a [TextureBarrier<'a>],
 }
 
-pub struct BufferBarrier {}
+#[derive(Debug)]
+pub struct BufferBarrier<'a> {
+    pub buffer: &'a Buffer,
+    pub offset: u64,
+    pub size: u64,
+    pub src_access: AccessFlags,
+    pub dst_access: AccessFlags,
+}
 
+#[derive(Debug)]
 pub struct TextureBarrier<'a> {
     pub texture: &'a vulkan::Texture,
-    pub old_layout: TextureLayout,
-    pub new_layout: TextureLayout,
-    pub src_access_flags: ash::vk::AccessFlags2,
-    pub dst_access_flags: ash::vk::AccessFlags2,
+    pub src_access: AccessFlags,
+    pub dst_access: AccessFlags,
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct AccessFlags: u32 {
+        /// Resource can be used as a destination for transfer operations.
+        const TRANSFER_WRITE = 1 << 0;
+        /// Resource can be bound as readable in a shader module.
+        const SHADER_READ = 1 << 1;
+        /// Resource can be bound as a writable color attachment.
+        const COLOR_ATTACHMENT_WRITE = 1 << 2;
+        /// Resource can be used to present to the swapchain.
+        const PRESENT = 1 << 3;
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
