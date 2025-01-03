@@ -67,12 +67,12 @@ fn vk_main(state: WindowState) {
         .unwrap()
         .to_rgba8();
 
-    let vert_glsl = include_str!("../shader.vert");
-    let frag_glsl = include_str!("../shader.frag");
-    // let vert_spv = include_bytes!("../vert.spv");
-    // let frag_spv = include_bytes!("../frag.spv");
-    let vert_spv = glsl_to_spirv(&vert_glsl, naga::ShaderStage::Vertex);
-    let frag_spv = glsl_to_spirv(&frag_glsl, naga::ShaderStage::Fragment);
+    // let vert_glsl = include_str!("../shader.vert");
+    // let frag_glsl = include_str!("../shader.frag");
+    let vert_spv = include_bytes!("../vert.spv");
+    let frag_spv = include_bytes!("../frag.spv");
+    // let vert_spv = glsl_to_spirv(&vert_glsl, naga::ShaderStage::Vertex);
+    // let frag_spv = glsl_to_spirv(&frag_glsl, naga::ShaderStage::Fragment);
 
     for adapter in instance.adapters() {
         dbg!(adapter.properties());
@@ -138,8 +138,12 @@ fn vk_main(state: WindowState) {
                         buf_mem.map(..).copy_from_slice(&texture_data);
                     }
 
-                    device.bind_buffer_memory(&mut staging_buffer, buf_mem);
-                    device.bind_texture_memory(&mut texture, tex_mem);
+                    unsafe {
+                        device.bind_buffer_memory(&mut staging_buffer, buf_mem.slice(..));
+                    }
+                    unsafe {
+                        device.bind_texture_memory(&mut texture, tex_mem.slice(..));
+                    }
 
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         texture: &[TextureBarrier {
@@ -220,7 +224,9 @@ fn vk_main(state: WindowState) {
                 let mapped_mem = unsafe { mem.map(..) };
                 mapped_mem[..VERTICES.len() * size_of::<Vertex>()]
                     .copy_from_slice(bytemuck::cast_slice(&VERTICES));
-                device.bind_buffer_memory(&mut buffer, mem);
+                unsafe {
+                    device.bind_buffer_memory(&mut buffer, mem.slice(..));
+                }
 
                 let caps = surface.get_capabilities(&device);
                 dbg!(&caps);

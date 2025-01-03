@@ -558,7 +558,6 @@ impl Device {
         Buffer {
             buffer,
             device: self.device.clone(),
-            memory: None,
             size: size.get(),
         }
     }
@@ -628,28 +627,33 @@ impl Device {
         }
     }
 
-    pub fn bind_buffer_memory(&self, buffer: &mut Buffer, memory: DeviceMemory) {
+    /// Binds memory to a [`Buffer`] object.
+    ///
+    /// # Safety
+    ///
+    /// - The memory range bound to the [`Buffer`] must not be bound to any other resource for the
+    /// entire lifetime of the [`Buffer`] object.
+    /// - The same memory range must not be bound to any other resource.
+    pub unsafe fn bind_buffer_memory(&self, buffer: &mut Buffer, memory: DeviceMemorySlice<'_>) {
         let info = BindBufferMemoryInfo::default()
             .buffer(buffer.buffer)
-            .memory(memory.memory);
+            .memory(memory.memory.memory)
+            .memory_offset(memory.offset);
 
         unsafe {
             self.device.bind_buffer_memory2(&[info]).unwrap();
         }
-
-        buffer.memory = Some(memory);
     }
 
-    pub fn bind_texture_memory(&self, texture: &mut Texture, memory: DeviceMemory) {
+    pub unsafe fn bind_texture_memory(&self, texture: &mut Texture, memory: DeviceMemorySlice<'_>) {
         let info = vk::BindImageMemoryInfo::default()
             .image(texture.image)
-            .memory(memory.memory);
+            .memory(memory.memory.memory)
+            .memory_offset(memory.offset);
 
         unsafe {
             self.device.bind_image_memory2(&[info]).unwrap();
         }
-
-        texture.memory = Some(memory);
     }
 
     pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
@@ -677,7 +681,6 @@ impl Device {
             image,
             format: descriptor.format,
             size: descriptor.size,
-            memory: None,
             destroy_on_drop: true,
         }
     }
@@ -1247,7 +1250,6 @@ impl<'a> Swapchain<'a> {
                 image: self.images[image_index as usize],
                 format: self.format,
                 size: self.extent,
-                memory: None,
                 destroy_on_drop: false,
             },
             suboptimal,
@@ -1618,9 +1620,6 @@ impl<'a> CommandEncoder<'a> {
     pub fn copy_buffer_to_texture(&mut self, src: CopyBuffer<'_>, dst: &Texture) {
         assert_ne!(dst.size.x, 0);
         assert_ne!(dst.size.y, 0);
-
-        assert!(src.buffer.memory.is_some());
-        assert!(dst.memory.is_some());
 
         let bytes_to_copy = src.layout.bytes_per_row as u64 * src.layout.rows_per_image as u64;
         assert!(src.buffer.size > src.offset);
@@ -2008,7 +2007,6 @@ pub struct Texture {
     image: vk::Image,
     format: TextureFormat,
     size: UVec2,
-    memory: Option<DeviceMemory>,
     /// Whether to destroy the texture on drop.
     /// This is only used for swapchain textures.
     destroy_on_drop: bool,
@@ -2079,7 +2077,6 @@ impl<'a> Drop for TextureView<'a> {
 pub struct Buffer {
     device: Arc<DeviceShared>,
     buffer: vk::Buffer,
-    memory: Option<DeviceMemory>,
     size: u64,
 }
 
@@ -2125,6 +2122,22 @@ pub struct DeviceMemory {
 }
 
 impl DeviceMemory {
+    pub fn slice<R>(&self, range: R) -> DeviceMemorySlice<'_>
+    where
+        R: RangeBounds<u64>,
+    {
+        let (offset, size) = range.into_offset_size(self.size.get());
+
+        assert!(self.size.get() > offset);
+        assert!(self.size.get() - offset >= size);
+
+        DeviceMemorySlice {
+            memory: self,
+            offset,
+            size,
+        }
+    }
+
     /// Maps the given range of `DeviceMemory` into host memory.
     pub unsafe fn map<R>(&mut self, range: R) -> &mut [u8]
     where
@@ -2212,6 +2225,14 @@ impl Drop for DeviceMemory {
         }
     }
 }
+
+pub struct DeviceMemorySlice<'a> {
+    memory: &'a DeviceMemory,
+    offset: u64,
+    size: u64,
+}
+
+impl<'a> DeviceMemorySlice<'a> {}
 
 pub struct DescriptorSetLayout<'a> {
     device: &'a ash::Device,
