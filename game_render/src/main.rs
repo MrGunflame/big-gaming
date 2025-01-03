@@ -1,6 +1,7 @@
 use ash::vk::PipelineStageFlags;
 use bytemuck::{Pod, Zeroable};
 use game_render::backend::descriptors::DescriptorSetAllocator;
+use game_render::backend::shader::glsl_to_spirv;
 use game_render::backend::{
     AccessFlags, AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor,
     FilterMode, FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers,
@@ -66,8 +67,12 @@ fn vk_main(state: WindowState) {
         .unwrap()
         .to_rgba8();
 
-    let vert_spv = include_bytes!("../vert.spv");
-    let frag_spv = include_bytes!("../frag.spv");
+    let vert_glsl = include_str!("../shader.vert");
+    let frag_glsl = include_str!("../shader.frag");
+    // let vert_spv = include_bytes!("../vert.spv");
+    // let frag_spv = include_bytes!("../frag.spv");
+    let vert_spv = glsl_to_spirv(&vert_glsl, naga::ShaderStage::Vertex);
+    let frag_spv = glsl_to_spirv(&frag_glsl, naga::ShaderStage::Fragment);
 
     for adapter in instance.adapters() {
         dbg!(adapter.properties());

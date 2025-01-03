@@ -1,5 +1,6 @@
 pub mod allocator;
 pub mod descriptors;
+pub mod shader;
 pub mod vulkan;
 
 use std::num::{NonZeroU32, NonZeroU64};
@@ -182,6 +183,12 @@ pub struct DescriptorBinding {
     pub kind: DescriptorType,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ShaderStage {
+    Vertex,
+    Fragment,
+}
+
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     pub struct ShaderStages: u32 {
@@ -258,6 +265,7 @@ pub enum WriteDescriptorResource<'a> {
     Sampler(&'a Sampler),
 }
 
+#[derive(Clone, Debug)]
 pub struct BufferView<'a> {
     buffer: &'a Buffer,
     view: Range<u64>,
@@ -368,4 +376,10 @@ pub enum AddressMode {
     MirrorRepeat,
     ClampToEdge,
     ClampToBorder,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum IndexFormat {
+    U16,
+    U32,
 }

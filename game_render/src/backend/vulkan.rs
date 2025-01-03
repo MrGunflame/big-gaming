@@ -49,10 +49,10 @@ use tracing::instrument::WithSubscriber;
 use crate::backend::TextureLayout;
 
 use super::{
-    AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage, CopyBuffer,
-    DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode, LoadOp, MemoryHeap,
-    MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
-    PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
+    AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage, BufferView,
+    CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode, IndexFormat,
+    LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
+    PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
     RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp,
     SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
     WriteDescriptorResource, WriteDescriptorResources,
@@ -1422,6 +1422,15 @@ impl From<AddressMode> for vk::SamplerAddressMode {
     }
 }
 
+impl From<IndexFormat> for vk::IndexType {
+    fn from(value: IndexFormat) -> Self {
+        match value {
+            IndexFormat::U16 => vk::IndexType::UINT16,
+            IndexFormat::U32 => vk::IndexType::UINT32,
+        }
+    }
+}
+
 pub struct ShaderModule<'a> {
     device: &'a Device,
     shader: vk::ShaderModule,
@@ -1865,6 +1874,17 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         }
     }
 
+    pub fn bind_index_buffer(&mut self, buffer: BufferView<'_>, format: IndexFormat) {
+        unsafe {
+            self.encoder.device.device.cmd_bind_index_buffer(
+                self.encoder.buffer,
+                buffer.buffer.buffer,
+                buffer.view.start,
+                format.into(),
+            );
+        }
+    }
+
     pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
         // `offset` must be a multiple of 4.
         assert_eq!(offset % 4, 0);
@@ -1899,6 +1919,19 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
                 vertices.len() as u32,
                 instances.len() as u32,
                 vertices.start,
+                instances.start,
+            );
+        }
+    }
+
+    pub fn draw_indexed(&mut self, indices: Range<u32>, vertex_offset: i32, instances: Range<u32>) {
+        unsafe {
+            self.encoder.device.device.cmd_draw_indexed(
+                self.encoder.buffer,
+                indices.len() as u32,
+                instances.len() as u32,
+                indices.start,
+                vertex_offset,
                 instances.start,
             );
         }
