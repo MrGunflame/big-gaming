@@ -9,6 +9,7 @@ use std::ops::Range;
 use ash::vk::{self, PipelineStageFlags};
 use bitflags::bitflags;
 use glam::UVec2;
+use thiserror::Error;
 use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, ShaderModule, TextureView};
 
 #[derive(Clone, Debug)]
@@ -114,7 +115,7 @@ pub struct PipelineDescriptor<'a> {
     pub front_face: FrontFace,
     pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
-    pub descriptors: &'a [&'a DescriptorSetLayout<'a>],
+    pub descriptors: &'a [&'a DescriptorSetLayout],
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -140,11 +141,11 @@ pub enum PipelineStage<'a> {
 }
 
 pub struct VertexStage<'a> {
-    pub shader: &'a ShaderModule<'a>,
+    pub shader: &'a ShaderModule,
 }
 
 pub struct FragmentStage<'a> {
-    pub shader: &'a ShaderModule<'a>,
+    pub shader: &'a ShaderModule,
     pub targets: &'a [TextureFormat],
 }
 
@@ -160,11 +161,13 @@ pub struct RenderPassColorAttachment<'res> {
     pub store_op: StoreOp,
 }
 
+#[derive(Copy, Clone, Debug)]
 pub enum LoadOp {
     Clear([f32; 4]),
     Load,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum StoreOp {
     Discard,
     Store,
@@ -290,6 +293,25 @@ pub struct TextureDescriptor {
     pub size: UVec2,
     pub mip_levels: u32,
     pub format: TextureFormat,
+}
+
+impl TextureDescriptor {
+    pub fn compute_size(&self) -> u64 {
+        // TODO: Implement mips > 1
+        assert_eq!(
+            self.mip_levels, 1,
+            "compute_size is not yet implemented for mips > 1"
+        );
+
+        let bytes_per_texel = match self.format {
+            TextureFormat::R8G8B8A8Unorm => 4,
+            TextureFormat::R8G8B8A8UnormSrgb => 4,
+            TextureFormat::B8G8R8A8Unorm => 4,
+            TextureFormat::B8G8R8A8UnormSrgb => 4,
+        };
+
+        bytes_per_texel * u64::from(self.size.x) * u64::from(self.size.y)
+    }
 }
 
 pub struct PipelineBarriers<'a> {

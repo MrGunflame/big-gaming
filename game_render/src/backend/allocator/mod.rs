@@ -18,7 +18,9 @@ use slab::Slab;
 use crate::backend::MemoryTypeFlags;
 
 use super::vulkan::{Buffer, Device, DeviceMemory, DeviceMemorySlice, Texture};
-use super::{AdapterMemoryProperties, BufferUsage, MemoryRequirements, TextureDescriptor};
+use super::{
+    AdapterMemoryProperties, BufferUsage, BufferView, MemoryRequirements, TextureDescriptor,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AllocationError {
@@ -111,7 +113,14 @@ impl GeneralPurposeAllocator {
                 .bind_texture_memory(&mut texture, memory.memory());
         }
 
-        TextureAlloc { texture, memory }
+        let size = descriptor.compute_size();
+        debug_assert!(memory.region.size >= size as usize);
+
+        TextureAlloc {
+            texture,
+            memory,
+            size: size as usize,
+        }
     }
 
     pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
@@ -343,6 +352,14 @@ impl BufferAlloc {
         &self.buffer
     }
 
+    pub fn size(&self) -> u64 {
+        self.size as u64
+    }
+
+    pub fn buffer_view(&self) -> BufferView<'_> {
+        self.buffer.slice(..)
+    }
+
     pub unsafe fn map(&mut self) -> &mut [u8] {
         assert!(!self.memory.memory_host_ptr.is_null());
 
@@ -357,6 +374,7 @@ impl BufferAlloc {
 pub struct TextureAlloc {
     texture: Texture,
     memory: DeviceMemoryRegion,
+    size: usize,
 }
 
 impl TextureAlloc {

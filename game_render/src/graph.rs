@@ -22,6 +22,8 @@
 //! [`add_node_dependency`]: RenderGraph::add_node_dependency
 //! [`add_slot_dependency`]: RenderGraph::add_slot_dependency
 
+pub mod ctx;
+pub(crate) mod executor;
 pub(crate) mod scheduler;
 
 use std::collections::HashMap;

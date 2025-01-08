@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 use game_tracing::trace_span;
 use slab::Slab;
 
-use super::vulkan::{DescriptorPool, DescriptorSet, DescriptorSetLayout, Device};
+use super::vulkan::{DescriptorPool, DescriptorSet, DescriptorSetLayout, Device, Error};
 use super::{DescriptorPoolDescriptor, DescriptorType};
 
 const MIN_POOL_SIZE: NonZeroU32 = NonZeroU32::new(1).unwrap();
@@ -40,7 +40,7 @@ impl DescriptorSetAllocator {
         }
     }
 
-    pub unsafe fn alloc(&mut self, layout: &DescriptorSetLayout<'_>) -> AllocatedDescriptorSet {
+    pub unsafe fn alloc(&mut self, layout: &DescriptorSetLayout) -> AllocatedDescriptorSet {
         let _span = trace_span!("DescriptorSetAllocator::alloc").entered();
 
         let mut count = DescriptorSetResourceCount::default();
@@ -105,11 +105,17 @@ impl DescriptorPoolBucket {
         &mut self,
         device: &Device,
         count: &DescriptorSetResourceCount,
-        layout: &DescriptorSetLayout<'_>,
+        layout: &DescriptorSetLayout,
     ) -> (DescriptorSet<'_>, usize) {
         {
             for (key, pool) in self.pools.iter_mut() {
-                let set = pool.pool.create_descriptor_set(layout);
+                let set = match pool.pool.create_descriptor_set(layout) {
+                    Ok(set) => set,
+                    Err(Error::OutOfPoolMemory) => continue,
+                    // TODO: Error handling
+                    Err(err) => panic!("{:?}", err),
+                };
+
                 pool.count += 1;
                 // Drop the lifetime.
                 let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'_>>(set) };
@@ -140,7 +146,8 @@ impl DescriptorPoolBucket {
             .get_mut(key)
             .unwrap()
             .pool
-            .create_descriptor_set(layout);
+            .create_descriptor_set(layout)
+            .unwrap();
         (set, key)
     }
 

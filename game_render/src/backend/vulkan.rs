@@ -44,6 +44,7 @@ use ash::Entry;
 use bitflags::bitflags;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
+use thiserror::Error;
 use tracing::instrument::WithSubscriber;
 
 use crate::backend::TextureLayout;
@@ -123,9 +124,32 @@ const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Error)]
 pub enum Error {
+    #[error("device lost")]
+    DeviceLost,
+    #[error("out of host memory")]
+    OutOfHostMemory,
+    #[error("out of device memory")]
+    OutOfDeviceMemory,
+    #[error("out of pool memory")]
+    OutOfPoolMemory,
+    #[error("missing layer: {0:?}")]
     MissingLayer(&'static CStr),
+    #[error(transparent)]
+    Other(vk::Result),
+}
+
+impl From<vk::Result> for Error {
+    fn from(res: vk::Result) -> Self {
+        match res {
+            vk::Result::ERROR_DEVICE_LOST => Self::DeviceLost,
+            vk::Result::ERROR_OUT_OF_HOST_MEMORY => Self::OutOfHostMemory,
+            vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => Self::OutOfDeviceMemory,
+            vk::Result::ERROR_OUT_OF_POOL_MEMORY => Self::OutOfPoolMemory,
+            _ => Self::Other(res),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -230,7 +254,7 @@ impl Instance {
         &self,
         display: RawDisplayHandle,
         window: RawWindowHandle,
-    ) -> Surface {
+    ) -> Result<Surface, Error> {
         assert!(self.extensions.surface);
 
         let surface = match (display, window) {
@@ -244,7 +268,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::wayland_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_wayland_surface(&info, None).unwrap() }
+                unsafe { instance.create_wayland_surface(&info, None)? }
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
@@ -256,7 +280,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::xcb_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_xcb_surface(&info, None).unwrap() }
+                unsafe { instance.create_xcb_surface(&info, None)? }
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
@@ -268,7 +292,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::xlib_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_xlib_surface(&info, None).unwrap() }
+                unsafe { instance.create_xlib_surface(&info, None)? }
             }
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
@@ -280,15 +304,15 @@ impl Instance {
 
                 let instance =
                     ash::khr::win32_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_win32_surface(&info, None).unwrap() }
+                unsafe { instance.create_win32_surface(&info, None)? }
             }
             _ => todo!(),
         };
 
-        Surface {
+        Ok(Surface {
             instance: self.instance.clone(),
             surface,
-        }
+        })
     }
 
     fn get_supported_extensions(entry: &Entry) -> InstanceExtensions {
@@ -685,7 +709,7 @@ impl Device {
         }
     }
 
-    pub unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule<'_> {
+    pub unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule {
         // Code size must be greater than 0.
         assert!(code.len() != 0);
 
@@ -693,7 +717,7 @@ impl Device {
 
         let shader = unsafe { self.device.create_shader_module(&info, None).unwrap() };
         ShaderModule {
-            device: self,
+            device: self.device.clone(),
             shader,
         }
     }
@@ -701,7 +725,7 @@ impl Device {
     pub fn create_descriptor_layout(
         &self,
         descriptor: &DescriptorSetDescriptor<'_>,
-    ) -> DescriptorSetLayout<'_> {
+    ) -> DescriptorSetLayout {
         let mut bindings = Vec::new();
         for binding in descriptor.bindings {
             let info = DescriptorSetLayoutBinding::default()
@@ -721,13 +745,13 @@ impl Device {
         };
 
         DescriptorSetLayout {
-            device: &self.device,
+            device: self.device.clone(),
             layout,
             bindings: descriptor.bindings.to_vec(),
         }
     }
 
-    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline<'_> {
+    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
         let descriptors = descriptor
             .descriptors
             .iter()
@@ -846,7 +870,7 @@ impl Device {
         };
 
         Pipeline {
-            device: self,
+            device: self.device.clone(),
             pipeline: pipelines[0],
             pipeline_layout,
         }
@@ -1433,12 +1457,12 @@ impl From<IndexFormat> for vk::IndexType {
     }
 }
 
-pub struct ShaderModule<'a> {
-    device: &'a Device,
+pub struct ShaderModule {
+    device: Arc<DeviceShared>,
     shader: vk::ShaderModule,
 }
 
-impl<'a> Drop for ShaderModule<'a> {
+impl Drop for ShaderModule {
     fn drop(&mut self) {
         unsafe {
             self.device.device.destroy_shader_module(self.shader, None);
@@ -1446,13 +1470,14 @@ impl<'a> Drop for ShaderModule<'a> {
     }
 }
 
-pub struct Pipeline<'a> {
-    device: &'a Device,
+#[derive(Debug)]
+pub struct Pipeline {
+    device: Arc<DeviceShared>,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
 }
 
-impl<'a> Drop for Pipeline<'a> {
+impl Drop for Pipeline {
     fn drop(&mut self) {
         unsafe {
             self.device.device.destroy_pipeline(self.pipeline, None);
@@ -1675,7 +1700,7 @@ impl<'a> CommandEncoder<'a> {
         for attachment in descriptor.color_attachments {
             let load_op = match attachment.load_op {
                 LoadOp::Load => AttachmentLoadOp::LOAD,
-                LoadOp::Clear(color) => AttachmentLoadOp::CLEAR,
+                LoadOp::Clear(_) => AttachmentLoadOp::CLEAR,
             };
 
             let store_op = match attachment.store_op {
@@ -1701,6 +1726,9 @@ impl<'a> CommandEncoder<'a> {
             color_attachments.push(info);
             extent = UVec2::max(extent, attachment.size);
         }
+
+        assert_ne!(extent.x, 0);
+        assert_ne!(extent.y, 0);
 
         let info = RenderingInfo::default()
             .flags(RenderingFlags::empty())
@@ -1772,6 +1800,9 @@ impl<'a> CommandEncoder<'a> {
                 .size(barrier.size)
                 .src_access_mask(src_access_flags)
                 .dst_access_mask(dst_access_flags)
+                // FIXME: More control over these flags.
+                .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+                .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
                 // Do not transfer between queues.
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
@@ -1836,11 +1867,11 @@ pub struct RenderPass<'encoder, 'resources> {
     // Marker to indicate that all resources that this render pass
     // may access must not be dropped while this render pass exists.
     _marker: PhantomData<fn() -> &'resources ()>,
-    pipeline: Option<&'resources Pipeline<'resources>>,
+    pipeline: Option<&'resources Pipeline>,
 }
 
 impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
-    pub fn bind_pipeline(&mut self, pipeline: &'resources Pipeline<'resources>) {
+    pub fn bind_pipeline(&mut self, pipeline: &'resources Pipeline) {
         // Bind the pipeline.
         // https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdBindPipeline.html
         // Safety:
@@ -2081,7 +2112,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn slice<R>(&self, range: R) -> super::BufferView<'_>
+    pub fn slice<R>(&self, range: R) -> BufferView<'_>
     where
         R: RangeBounds<u64>,
     {
@@ -2097,7 +2128,7 @@ impl Buffer {
             Bound::Unbounded => self.size,
         };
 
-        super::BufferView {
+        BufferView {
             buffer: self,
             view: start..end,
         }
@@ -2234,19 +2265,20 @@ pub struct DeviceMemorySlice<'a> {
 
 impl<'a> DeviceMemorySlice<'a> {}
 
-pub struct DescriptorSetLayout<'a> {
-    device: &'a ash::Device,
+#[derive(Debug)]
+pub struct DescriptorSetLayout {
+    device: Arc<DeviceShared>,
     layout: vk::DescriptorSetLayout,
     bindings: Vec<super::DescriptorBinding>,
 }
 
-impl<'a> DescriptorSetLayout<'a> {
+impl DescriptorSetLayout {
     pub(crate) fn bindings(&self) -> &[super::DescriptorBinding] {
         &self.bindings
     }
 }
 
-impl<'a> Drop for DescriptorSetLayout<'a> {
+impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_descriptor_set_layout(self.layout, None);
@@ -2260,7 +2292,10 @@ pub struct DescriptorPool<'a> {
 }
 
 impl<'a> DescriptorPool<'a> {
-    pub fn create_descriptor_set(&mut self, layout: &DescriptorSetLayout<'_>) -> DescriptorSet<'_> {
+    pub fn create_descriptor_set(
+        &mut self,
+        layout: &DescriptorSetLayout,
+    ) -> Result<DescriptorSet<'_>, Error> {
         let layouts = [layout.layout];
 
         let info = DescriptorSetAllocateInfo::default()
@@ -2268,11 +2303,11 @@ impl<'a> DescriptorPool<'a> {
             // - `descriptorSetCount` must be greater than 0.
             .set_layouts(&layouts);
 
-        let sets = unsafe { self.device.allocate_descriptor_sets(&info).unwrap() };
-        DescriptorSet {
+        let sets = unsafe { self.device.allocate_descriptor_sets(&info)? };
+        Ok(DescriptorSet {
             pool: self,
             set: sets[0],
-        }
+        })
     }
 
     pub unsafe fn reset(&mut self) {
