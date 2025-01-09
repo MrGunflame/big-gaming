@@ -26,9 +26,10 @@ use ash::vk::{
     DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D,
     FenceCreateInfo, Format, FrontFace, GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout,
     ImageMemoryBarrier, ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType,
-    InstanceCreateInfo, LogicOp, MemoryAllocateInfo, MemoryMapFlags, MemoryPropertyFlags, Offset2D,
-    PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures,
-    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
+    InstanceCreateInfo, LayerSettingEXT, LayerSettingsCreateInfoEXT, LogicOp, MemoryAllocateInfo,
+    MemoryMapFlags, MemoryPropertyFlags, Offset2D, PhysicalDevice,
+    PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures, PhysicalDeviceType,
+    PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
     PipelineColorBlendStateCreateInfo, PipelineDynamicStateCreateInfo,
     PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
@@ -241,6 +242,37 @@ impl Instance {
             )
             .pfn_user_callback(Some(debug_callback));
 
+        const TRUE: &[u8] = &vk::TRUE.to_ne_bytes();
+
+        // Refer to VkLayer_khronos_validation.json for list of
+        // options.
+        let mut settings = Vec::new();
+        for (key, value) in [
+            (c"validate_core", TRUE),
+            (c"check_image_layout", TRUE),
+            (c"check_command_buffer", TRUE),
+            (c"check_object_in_use", TRUE),
+            (c"check_query", TRUE),
+            (c"check_shaders", TRUE),
+            (c"check_shaders_caching", TRUE),
+            (c"unique_handles", TRUE),
+            (c"object_lifetime", TRUE),
+            (c"stateless_param", TRUE),
+            (c"thread_safety", TRUE),
+            (c"validate_sync", TRUE),
+            (c"validate_best_practices", TRUE),
+        ] {
+            settings.push(
+                LayerSettingEXT::default()
+                    .layer_name(InstanceLayers::VALIDATION)
+                    .setting_name(&key)
+                    .ty(vk::LayerSettingTypeEXT::BOOL32)
+                    .values(value),
+            );
+        }
+
+        let mut layer_settings = LayerSettingsCreateInfoEXT::default().settings(&settings);
+
         let mut info = InstanceCreateInfo::default()
             .application_info(&app)
             .enabled_layer_names(&enabled_layers)
@@ -248,6 +280,7 @@ impl Instance {
 
         if config.validation {
             info = info.push_next(&mut debug_info);
+            info = info.push_next(&mut layer_settings);
         }
 
         // FIXME: This will leak the instance if the below code

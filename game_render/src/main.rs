@@ -15,7 +15,7 @@ use game_render::backend::{
     WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 use game_render::graph::ctx::{
-    BindGroupDescriptor, BindGroupEntry, BufferDescriptor, RenderContext, Resources,
+    BindGroupDescriptor, BindGroupEntry, BufferDescriptor, CommandQueue, Resources, Scheduler,
 };
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
@@ -123,24 +123,14 @@ fn vk_main(state: WindowState) {
                 let mut image_avail = device.create_semaphore();
                 let mut render_done = device.create_semaphore();
 
-                let mut res = Resources {
-                    descriptors: DescriptorSetAllocator::new(device.clone()),
-                    allocator: GeneralPurposeAllocator::new(device.clone(), mem_props),
-                    bind_groups: Default::default(),
-                    buffers: Default::default(),
-                    textures: Default::default(),
-                };
-                let mut ctx = RenderContext {
-                    resources: &mut res,
-                    device: &device,
-                    cmds: Vec::new(),
-                };
+                let mut scheduler = Scheduler::new(device.clone(), mem_props);
 
                 let mut node = None;
 
                 loop {
                     let img = swapchain.acquire_next_image(&mut image_avail);
 
+                    let mut ctx = scheduler.queue();
                     let swapchain_id = unsafe {
                         ctx.import_texture(
                             core::mem::transmute(img.texture()),
@@ -162,11 +152,8 @@ fn vk_main(state: WindowState) {
                         }],
                     });
 
-                    let res = game_render::graph::ctx::execute(
-                        &mut ctx.resources,
-                        ctx.cmds.drain(..),
-                        &mut encoder,
-                    );
+                    let cmds = ctx.finish();
+                    let res = scheduler.execute(cmds, &mut encoder);
 
                     encoder.insert_pipeline_barriers(&PipelineBarriers {
                         buffer: &[],
@@ -221,7 +208,7 @@ struct ExampleNode {
 }
 
 impl ExampleNode {
-    fn setup(ctx: &mut game_render::graph::ctx::RenderContext<'_>) -> Self {
+    fn setup(ctx: &mut game_render::graph::ctx::CommandQueue<'_>) -> Self {
         let vert_spv = include_bytes!("../vert.spv");
         let frag_spv = include_bytes!("../frag.spv");
         let vert = unsafe {
@@ -312,7 +299,7 @@ impl ExampleNode {
 
     fn render(
         &self,
-        ctx: &mut game_render::graph::ctx::RenderContext<'_>,
+        ctx: &mut game_render::graph::ctx::CommandQueue<'_>,
         target_view: &game_render::graph::ctx::Texture,
     ) {
         let bg = ctx.create_bind_group(BindGroupDescriptor {

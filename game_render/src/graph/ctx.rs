@@ -5,23 +5,64 @@ use std::sync::Arc;
 use ash::vk;
 use game_common::collections::arena::{Arena, Key};
 use game_common::collections::scratch_buffer::ScratchBuffer;
+use game_tracing::trace_span;
+use parking_lot::Mutex;
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc, UsageFlags};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
 use crate::backend::vulkan::{
-    self, CommandEncoder, DescriptorSet, DescriptorSetLayout, Device, Pipeline, Sampler,
-    ShaderModule, TextureView,
+    self, CommandEncoder, DescriptorSetLayout, Device, Pipeline, Sampler, ShaderModule, TextureView,
 };
 use crate::backend::{
-    AccessFlags, BufferBarrier, BufferUsage, CopyBuffer, DescriptorBinding,
+    AccessFlags, AdapterMemoryProperties, BufferBarrier, BufferUsage, CopyBuffer,
     DescriptorSetDescriptor, ImageDataLayout, LoadOp, PipelineBarriers, PipelineDescriptor,
-    SamplerDescriptor, StoreOp, TextureBarrier, TextureDescriptor, TextureLayout,
-    WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
+    SamplerDescriptor, StoreOp, TextureBarrier, TextureDescriptor, WriteDescriptorBinding,
+    WriteDescriptorResource, WriteDescriptorResources,
 };
 
 type BufferId = Key;
 type TextureId = Key;
 type BindGroupId = Key;
+
+pub struct Scheduler {
+    buffers: Arena<BufferInner>,
+    textures: Arena<TextureInner>,
+    bind_groups: Arena<BindGroupInner>,
+    allocator: GeneralPurposeAllocator,
+    descriptors: DescriptorSetAllocator,
+    cmds: Arc<Mutex<Vec<Command>>>,
+    device: Device,
+}
+
+impl Scheduler {
+    pub fn new(device: Device, memory_props: AdapterMemoryProperties) -> Self {
+        Self {
+            buffers: Arena::new(),
+            textures: Arena::new(),
+            bind_groups: Arena::new(),
+            allocator: GeneralPurposeAllocator::new(device.clone(), memory_props),
+            descriptors: DescriptorSetAllocator::new(device.clone()),
+            cmds: Arc::default(),
+            device,
+        }
+    }
+
+    pub fn queue(&mut self) -> CommandQueue<'_> {
+        CommandQueue {
+            scheduler: self,
+            cmds: Vec::new(),
+        }
+    }
+
+    pub fn execute(
+        &mut self,
+        cmds: Vec<Command>,
+        encoder: &mut CommandEncoder<'_>,
+    ) -> InflightResources<'_> {
+        let _span = trace_span!("Scheduler::execute").entered();
+        execute(self, cmds, encoder)
+    }
+}
 
 pub struct Resources {
     pub buffers: Arena<BufferInner>,
@@ -31,21 +72,20 @@ pub struct Resources {
     pub descriptors: DescriptorSetAllocator,
 }
 
-pub struct RenderContext<'a> {
-    pub device: &'a Device,
-    pub resources: &'a mut Resources,
+pub struct CommandQueue<'a> {
+    scheduler: &'a mut Scheduler,
     pub cmds: Vec<Command>,
 }
 
-impl<'a> RenderContext<'a> {
+impl<'a> CommandQueue<'a> {
     pub fn create_buffer(&mut self, descriptor: BufferDescriptor) -> Buffer {
-        let buffer = self.resources.allocator.create_buffer(
+        let buffer = self.scheduler.allocator.create_buffer(
             descriptor.size.try_into().unwrap(),
             BufferUsage::all(),
             UsageFlags::HOST_VISIBLE,
         );
 
-        let id = self.resources.buffers.insert(BufferInner {
+        let id = self.scheduler.buffers.insert(BufferInner {
             buffer,
             access: AccessFlags::empty(),
             flags: BufferUsage::all(),
@@ -57,7 +97,7 @@ impl<'a> RenderContext<'a> {
 
     pub fn write_buffer(&mut self, buffer: &Buffer, data: &[u8]) {
         {
-            let buffer = self.resources.buffers.get(buffer.id).unwrap();
+            let buffer = self.scheduler.buffers.get(buffer.id).unwrap();
             assert!(buffer.flags.contains(BufferUsage::TRANSFER_DST));
         }
 
@@ -67,11 +107,11 @@ impl<'a> RenderContext<'a> {
 
     pub fn create_texture(&mut self, descriptor: TextureDescriptor) -> Texture {
         let texture = self
-            .resources
+            .scheduler
             .allocator
             .create_texture(&descriptor, UsageFlags::HOST_VISIBLE);
 
-        let id = self.resources.textures.insert(TextureInner {
+        let id = self.scheduler.textures.insert(TextureInner {
             data: TextureData::Virtual(texture),
             access: AccessFlags::empty(),
         });
@@ -85,7 +125,7 @@ impl<'a> RenderContext<'a> {
         texture: &'static vulkan::Texture,
         access: AccessFlags,
     ) -> Texture {
-        let id = self.resources.textures.insert(TextureInner {
+        let id = self.scheduler.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
             access,
         });
@@ -115,7 +155,7 @@ impl<'a> RenderContext<'a> {
             }
         }
 
-        let id = self.resources.bind_groups.insert(BindGroupInner {
+        let id = self.scheduler.bind_groups.insert(BindGroupInner {
             buffers,
             samplers,
             textures,
@@ -126,22 +166,22 @@ impl<'a> RenderContext<'a> {
     }
 
     pub fn create_shader(&mut self, code: &[u32]) -> ShaderModule {
-        unsafe { self.device.create_shader(code) }
+        unsafe { self.scheduler.device.create_shader(code) }
     }
 
     pub fn create_descriptor_set_layout(
         &mut self,
         descriptor: &DescriptorSetDescriptor<'_>,
     ) -> DescriptorSetLayout {
-        self.device.create_descriptor_layout(descriptor)
+        self.scheduler.device.create_descriptor_layout(descriptor)
     }
 
     pub fn create_pipeline(&mut self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
-        self.device.create_pipeline(descriptor)
+        self.scheduler.device.create_pipeline(descriptor)
     }
 
     pub fn create_sampler(&mut self, descriptor: &SamplerDescriptor) -> Sampler {
-        self.device.create_sampler(descriptor)
+        self.scheduler.device.create_sampler(descriptor)
     }
 
     pub fn run_render_pass(&mut self, descriptor: &RenderPassDescriptor<'_>) -> RenderPass<'a, '_> {
@@ -162,6 +202,10 @@ impl<'a> RenderContext<'a> {
             pipeline: None,
             color_attachments,
         }
+    }
+
+    pub fn finish(self) -> Vec<Command> {
+        self.cmds
     }
 }
 
@@ -246,7 +290,7 @@ enum TextureData {
 }
 
 pub struct RenderPass<'a, 'b> {
-    ctx: &'b mut RenderContext<'a>,
+    ctx: &'b mut CommandQueue<'a>,
     pipeline: Option<Arc<Pipeline>>,
     bind_groups: HashMap<u32, BindGroup>,
     draw_calls: Vec<DrawCall>,
@@ -314,7 +358,7 @@ struct DrawCall {
 }
 
 pub fn execute<'a, I>(
-    resources: &'a mut Resources,
+    scheduler: &'a mut Scheduler,
     cmds: I,
     encoder: &mut CommandEncoder<'_>,
 ) -> InflightResources<'a>
@@ -330,7 +374,7 @@ where
                 // Nothing to do
             }
             Command::WriteBuffer(id, data) => {
-                let buffer = resources.buffers.get_mut(id).unwrap();
+                let buffer = scheduler.buffers.get_mut(id).unwrap();
 
                 unsafe {
                     buffer.buffer.map().copy_from_slice(&data);
@@ -340,9 +384,9 @@ where
                 // Nothing to do
             }
             Command::WriteTexture(id, data, layout) => {
-                let texture = resources.textures.get_mut(id).unwrap();
+                let texture = scheduler.textures.get_mut(id).unwrap();
 
-                let mut staging_buffer = resources.allocator.create_buffer(
+                let mut staging_buffer = scheduler.allocator.create_buffer(
                     (data.len() as u64).try_into().unwrap(),
                     BufferUsage::TRANSFER_SRC,
                     UsageFlags::HOST_VISIBLE,
@@ -390,7 +434,7 @@ where
                 let mut sets = Vec::new();
 
                 for (index, bind_group_e) in &cmd.bind_groups {
-                    let bind_group = resources.bind_groups.get_mut(bind_group_e.id).unwrap();
+                    let bind_group = scheduler.bind_groups.get_mut(bind_group_e.id).unwrap();
 
                     bind_group.descriptor_set.get_or_insert_with(|| {
                         let mut physical_bindings = Vec::new();
@@ -400,7 +444,7 @@ where
 
                         for (binding, buffer) in &bind_group.buffers {
                             buffer_transition.push((buffer.id, AccessFlags::SHADER_READ));
-                            let buffer = resources.buffers.get(buffer.id).unwrap();
+                            let buffer = scheduler.buffers.get(buffer.id).unwrap();
 
                             buffer_barriers.push(BufferBarrier {
                                 buffer: buffer.buffer.buffer(),
@@ -420,7 +464,7 @@ where
 
                         for (binding, texture) in &bind_group.textures {
                             texture_transition.push((texture.id, AccessFlags::SHADER_READ));
-                            let texture = resources.textures.get(texture.id).unwrap();
+                            let texture = scheduler.textures.get(texture.id).unwrap();
 
                             let physical_texture = match &texture.data {
                                 TextureData::Physical(data) => data,
@@ -451,7 +495,7 @@ where
 
                         physical_bindings.sort_by(|a, b| a.binding.cmp(&b.binding));
 
-                        let mut set = unsafe { resources.descriptors.alloc(&bind_group.layout) };
+                        let mut set = unsafe { scheduler.descriptors.alloc(&bind_group.layout) };
                         set.raw_mut().update(&WriteDescriptorResources {
                             bindings: &physical_bindings,
                         });
@@ -467,7 +511,7 @@ where
                 let color_attachment_views = ScratchBuffer::new(cmd.color_attachments.len());
                 let mut color_attachments = Vec::new();
                 for attachment in cmd.color_attachments {
-                    let texture = resources.textures.get(attachment.texture.id).unwrap();
+                    let texture = scheduler.textures.get(attachment.texture.id).unwrap();
                     let texture = match &texture.data {
                         TextureData::Physical(data) => data,
                         TextureData::Virtual(data) => data.texture(),
@@ -496,7 +540,7 @@ where
 
                 render_pass.bind_pipeline(&cmd.pipeline);
                 for (index, set) in sets {
-                    let set = resources
+                    let set = scheduler
                         .bind_groups
                         .get(set)
                         .unwrap()
@@ -514,11 +558,11 @@ where
                 frame_texture_views.push(color_attachment_views);
 
                 for (id, access) in buffer_transition {
-                    resources.buffers.get_mut(id).unwrap().access = access;
+                    scheduler.buffers.get_mut(id).unwrap().access = access;
                 }
 
                 for (id, access) in texture_transition {
-                    resources.textures.get_mut(id).unwrap().access = access;
+                    scheduler.textures.get_mut(id).unwrap().access = access;
                 }
             }
             _ => todo!(),
