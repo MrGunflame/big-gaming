@@ -74,7 +74,7 @@ impl Components {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct RawComponent {
     bytes: Arc<[u8]>,
     fields: Arc<[Field]>,
@@ -157,6 +157,18 @@ impl Default for RawComponent {
         Self::new(Vec::new(), Vec::new())
     }
 }
+
+impl PartialEq for RawComponent {
+    fn eq(&self, other: &Self) -> bool {
+        if Arc::ptr_eq(&self.bytes, &other.bytes) && Arc::ptr_eq(&self.fields, &other.fields) {
+            true
+        } else {
+            self.bytes == other.bytes && self.fields == other.fields
+        }
+    }
+}
+
+impl Eq for RawComponent {}
 
 pub struct Iter<'a> {
     inner: std::collections::hash_map::Iter<'a, RecordReference, RawComponent>,
