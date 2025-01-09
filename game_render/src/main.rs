@@ -5,7 +5,7 @@ use bytemuck::{Pod, Zeroable};
 use game_render::backend::allocator::{GeneralPurposeAllocator, UsageFlags};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::shader::glsl_to_spirv;
-use game_render::backend::vulkan::{DescriptorSetLayout, Pipeline, Sampler};
+use game_render::backend::vulkan::{Config, DescriptorSetLayout, Pipeline, Sampler};
 use game_render::backend::{
     AccessFlags, AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor,
     FilterMode, FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers,
@@ -68,7 +68,8 @@ static VERTICES: [Vertex; 3] = [
 ];
 
 fn vk_main(state: WindowState) {
-    let instance = game_render::backend::vulkan::Instance::new().unwrap();
+    let instance =
+        game_render::backend::vulkan::Instance::new(Config { validation: true }).unwrap();
 
     let texture_data = image::load_from_memory(include_bytes!("../../assets/diffuse.png"))
         .unwrap()

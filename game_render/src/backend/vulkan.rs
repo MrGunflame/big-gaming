@@ -69,7 +69,22 @@ const APPLICATION_VERSION: u32 = 0;
 const ENGINE_NAME: Option<&CStr> = None;
 const ENGINE_VERSION: u32 = 0;
 
-const VULKAN_VALIDATION_LAYERS: &CStr = c"VK_LAYER_KHRONOS_validation";
+#[derive(Copy, Clone, Debug, Default)]
+struct InstanceLayers {
+    /// `VK_LAYER_KHRONOS_validation`
+    validation: bool,
+}
+
+impl InstanceLayers {
+    const VALIDATION: &CStr = c"VK_LAYER_KHRONOS_validation";
+
+    fn names(&self) -> Vec<&'static CStr> {
+        [(self.validation, Self::VALIDATION)]
+            .iter()
+            .filter_map(|(enabled, name)| enabled.then_some(*name))
+            .collect()
+    }
+}
 
 #[derive(Copy, Clone, Debug, Default)]
 struct InstanceExtensions {
@@ -136,6 +151,8 @@ pub enum Error {
     OutOfPoolMemory,
     #[error("missing layer: {0:?}")]
     MissingLayer(&'static CStr),
+    #[error("missing extension: {0:?}")]
+    MissingExtension(&'static CStr),
     #[error(transparent)]
     Other(vk::Result),
 }
@@ -152,6 +169,13 @@ impl From<vk::Result> for Error {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct Config {
+    /// Enabled valiation layers if available.
+    pub validation: bool,
+}
+
+/// Entrypoint for the Vulkan API.
 #[derive(Clone, Debug)]
 pub struct Instance {
     instance: Arc<InstanceShared>,
@@ -159,7 +183,8 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new() -> Result<Self, Error> {
+    /// Creates a new `Instance`.
+    pub fn new(config: Config) -> Result<Self, Error> {
         let entry = unsafe { Entry::load().unwrap() };
 
         let mut app = ApplicationInfo::default()
@@ -175,35 +200,31 @@ impl Instance {
             app = app.engine_name(name);
         }
 
-        let available_layers = unsafe {
-            entry
-                .enumerate_instance_layer_properties()
-                .unwrap()
-                .iter()
-                .map(|l| l.layer_name)
-                .collect::<HashSet<_>>()
-        };
-
-        if !available_layers.contains(&cstr_to_fixed_array(VULKAN_VALIDATION_LAYERS)) {
-            return Err(Error::MissingLayer(VULKAN_VALIDATION_LAYERS));
+        let supported_layers = Self::get_supported_layers(&entry)?;
+        if config.validation && !supported_layers.validation {
+            return Err(Error::MissingLayer(InstanceLayers::VALIDATION));
         }
 
         let supported_extensions = Self::get_supported_extensions(&entry);
-        assert!(supported_extensions.debug_utils);
+        if config.validation && !supported_extensions.debug_utils {
+            return Err(Error::MissingExtension(vk::EXT_DEBUG_UTILS_NAME));
+        }
 
-        let mut layers = Vec::new();
-        layers.push(VULKAN_VALIDATION_LAYERS.as_ptr());
-
-        let extensions = supported_extensions
+        let mut enabled_layers = InstanceLayers::default();
+        enabled_layers.validation = config.validation;
+        let enabled_layers = enabled_layers
             .names()
             .iter()
             .map(|v| v.as_ptr())
             .collect::<Vec<_>>();
 
-        let mut info = InstanceCreateInfo::default()
-            .application_info(&app)
-            .enabled_layer_names(&layers)
-            .enabled_extension_names(&extensions);
+        // For now we just enable all extensions that we have queried support
+        // for and that are available.
+        let enabled_extensions = supported_extensions
+            .names()
+            .iter()
+            .map(|v| v.as_ptr())
+            .collect::<Vec<_>>();
 
         let mut debug_info = DebugUtilsMessengerCreateInfoEXT::default()
             .message_severity(
@@ -219,18 +240,30 @@ impl Instance {
                     | DebugUtilsMessageTypeFlagsEXT::DEVICE_ADDRESS_BINDING,
             )
             .pfn_user_callback(Some(debug_callback));
-        info = info.push_next(&mut debug_info);
 
-        let instance = unsafe { entry.create_instance(&info, None).unwrap() };
+        let mut info = InstanceCreateInfo::default()
+            .application_info(&app)
+            .enabled_layer_names(&enabled_layers)
+            .enabled_extension_names(&enabled_extensions);
 
-        let messenger = unsafe {
-            debug_utils::Instance::new(&entry, &instance)
-                .create_debug_utils_messenger(&debug_info, None)
-                .unwrap()
+        if config.validation {
+            info = info.push_next(&mut debug_info);
+        }
+
+        // FIXME: This will leak the instance if the below code
+        // returns an error or panics.
+        let instance = unsafe { entry.create_instance(&info, None)? };
+
+        let messenger = if config.validation {
+            let instance = debug_utils::Instance::new(&entry, &instance);
+            Some(unsafe { instance.create_debug_utils_messenger(&debug_info, None)? })
+        } else {
+            None
         };
 
         Ok(Self {
             instance: Arc::new(InstanceShared {
+                config,
                 entry,
                 instance,
                 messenger,
@@ -313,6 +346,22 @@ impl Instance {
             instance: self.instance.clone(),
             surface,
         })
+    }
+
+    fn get_supported_layers(entry: &Entry) -> Result<InstanceLayers, Error> {
+        let mut layers = InstanceLayers::default();
+
+        let layer_props = unsafe { entry.enumerate_instance_layer_properties()? };
+        for props in layer_props {
+            let name = CStr::from_bytes_until_nul(bytemuck::bytes_of(&props.layer_name)).unwrap();
+
+            match name {
+                name if name == InstanceLayers::VALIDATION => layers.validation = true,
+                _ => (),
+            }
+        }
+
+        Ok(layers)
     }
 
     fn get_supported_extensions(entry: &Entry) -> InstanceExtensions {
@@ -463,7 +512,9 @@ impl<'a> Adapter<'a> {
         let queue_infos = [queue_info];
 
         let mut layers = Vec::new();
-        layers.push(VULKAN_VALIDATION_LAYERS.as_ptr());
+        if self.instance.instance.config.validation {
+            layers.push(InstanceLayers::VALIDATION.as_ptr());
+        }
 
         let mut extensions = Vec::new();
         extensions.extend(DEVICE_EXTENSIONS.iter().map(|v| v.as_ptr()));
@@ -981,17 +1032,18 @@ impl Device {
     }
 }
 
+#[derive(Debug)]
 pub struct Queue {
     device: Arc<DeviceShared>,
     queue: vk::Queue,
 }
 
 impl Queue {
-    pub fn submit<'a, T>(&mut self, buffers: T, cmd: QueueSubmit<'_>)
+    pub fn submit<'a, T>(&mut self, buffers: T, cmd: QueueSubmit<'_>) -> Result<(), Error>
     where
-        T: Iterator<Item = CommandBuffer<'a>>,
+        T: IntoIterator<Item = CommandBuffer<'a>>,
     {
-        let buffers: Vec<_> = buffers.map(|buf| buf.buffer).collect();
+        let buffers: Vec<_> = buffers.into_iter().map(|buf| buf.buffer).collect();
         let wait_semaphores: Vec<_> = cmd
             .wait
             .iter()
@@ -1013,9 +1065,9 @@ impl Queue {
         unsafe {
             self.device
                 .device
-                .queue_submit(self.queue, &[info], vk::Fence::null())
-                .unwrap();
+                .queue_submit(self.queue, &[info], vk::Fence::null())?;
         }
+        Ok(())
     }
 
     pub fn wait_idle(&mut self) {
@@ -1346,6 +1398,7 @@ impl TryFrom<Format> for TextureFormat {
             Format::R8G8B8A8_SRGB => Ok(Self::R8G8B8A8UnormSrgb),
             Format::B8G8R8A8_UNORM => Ok(Self::B8G8R8A8Unorm),
             Format::B8G8R8A8_SRGB => Ok(Self::B8G8R8A8UnormSrgb),
+            Format::D32_SFLOAT => Ok(Self::Depth32Float),
             _ => Err(UnknownEnumValue),
         }
     }
@@ -1358,6 +1411,7 @@ impl From<TextureFormat> for Format {
             TextureFormat::R8G8B8A8UnormSrgb => Self::R8G8B8A8_SRGB,
             TextureFormat::B8G8R8A8Unorm => Self::B8G8R8A8_SNORM,
             TextureFormat::B8G8R8A8UnormSrgb => Self::B8G8R8A8_SRGB,
+            TextureFormat::Depth32Float => Self::D32_SFLOAT,
         }
     }
 }
@@ -2499,9 +2553,10 @@ pub struct UnknownEnumValue;
 
 #[derive(Clone)]
 struct InstanceShared {
+    config: Config,
     entry: ash::Entry,
     instance: ash::Instance,
-    messenger: DebugUtilsMessengerEXT,
+    messenger: Option<DebugUtilsMessengerEXT>,
 }
 
 impl Debug for InstanceShared {
@@ -2521,9 +2576,11 @@ impl Deref for InstanceShared {
 
 impl Drop for InstanceShared {
     fn drop(&mut self) {
-        unsafe {
-            let instance = debug_utils::Instance::new(&self.entry, &self.instance);
-            instance.destroy_debug_utils_messenger(self.messenger, None);
+        if let Some(messenger) = self.messenger.take() {
+            unsafe {
+                let instance = debug_utils::Instance::new(&self.entry, &self.instance);
+                instance.destroy_debug_utils_messenger(messenger, None);
+            }
         }
 
         unsafe {

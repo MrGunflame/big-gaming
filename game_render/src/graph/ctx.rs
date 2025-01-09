@@ -48,6 +48,7 @@ impl<'a> RenderContext<'a> {
         let id = self.resources.buffers.insert(BufferInner {
             buffer,
             access: AccessFlags::empty(),
+            flags: BufferUsage::all(),
         });
         self.cmds.push(Command::CreateBuffer(id));
 
@@ -55,6 +56,11 @@ impl<'a> RenderContext<'a> {
     }
 
     pub fn write_buffer(&mut self, buffer: &Buffer, data: &[u8]) {
+        {
+            let buffer = self.resources.buffers.get(buffer.id).unwrap();
+            assert!(buffer.flags.contains(BufferUsage::TRANSFER_DST));
+        }
+
         self.cmds
             .push(Command::WriteBuffer(buffer.id, data.to_vec()));
     }
@@ -167,6 +173,7 @@ pub struct Buffer {
 
 pub struct BufferInner {
     buffer: BufferAlloc,
+    flags: BufferUsage,
     access: AccessFlags,
 }
 

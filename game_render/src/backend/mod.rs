@@ -100,6 +100,7 @@ pub enum TextureFormat {
     R8G8B8A8UnormSrgb,
     B8G8R8A8Unorm,
     B8G8R8A8UnormSrgb,
+    Depth32Float,
 }
 
 #[derive(Clone, Debug)]
@@ -308,6 +309,7 @@ impl TextureDescriptor {
             TextureFormat::R8G8B8A8UnormSrgb => 4,
             TextureFormat::B8G8R8A8Unorm => 4,
             TextureFormat::B8G8R8A8UnormSrgb => 4,
+            TextureFormat::Depth32Float => 4,
         };
 
         bytes_per_texel * u64::from(self.size.x) * u64::from(self.size.y)
