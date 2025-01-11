@@ -8,9 +8,9 @@ use std::ops::Range;
 
 use ash::vk::{self, PipelineStageFlags};
 use bitflags::bitflags;
+use game_common::components::Color;
 use glam::UVec2;
-use thiserror::Error;
-use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, ShaderModule, TextureView};
+use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, TextureView};
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -18,7 +18,7 @@ pub struct AdapterProperties {
     pub kind: AdapterKind,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AdapterKind {
     DiscreteGpu,
     IntegratedGpu,
@@ -96,14 +96,21 @@ pub enum PresentMode {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
-    R8G8B8A8Unorm,
-    R8G8B8A8UnormSrgb,
-    B8G8R8A8Unorm,
-    B8G8R8A8UnormSrgb,
+    Rgba8Unorm,
+    Rgba8UnormSrgb,
+    Bgra8Unorm,
+    Bgra8UnormSrgb,
     Depth32Float,
+    Rgba16Float,
 }
 
-#[derive(Clone, Debug)]
+impl TextureFormat {
+    pub const fn is_srgb(&self) -> bool {
+        matches!(self, Self::Bgra8UnormSrgb | Self::Rgba8UnormSrgb)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct SwapchainConfig {
     pub image_count: u32,
     pub extent: UVec2,
@@ -143,10 +150,12 @@ pub enum PipelineStage<'a> {
 
 pub struct VertexStage<'a> {
     pub shader: &'a ShaderModule,
+    pub entry: &'static str,
 }
 
 pub struct FragmentStage<'a> {
     pub shader: &'a ShaderModule,
+    pub entry: &'static str,
     pub targets: &'a [TextureFormat],
 }
 
@@ -164,7 +173,7 @@ pub struct RenderPassColorAttachment<'res> {
 
 #[derive(Copy, Clone, Debug)]
 pub enum LoadOp {
-    Clear([f32; 4]),
+    Clear(Color),
     Load,
 }
 
@@ -219,6 +228,16 @@ bitflags! {
         const VERTEX = 1 << 4;
         const INDEX = 1 << 5;
         const INDIRECT = 1 << 6;
+    }
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct TextureUsage: u32 {
+        const TRANSFER_SRC = 1 << 0;
+        const TRANSFER_DST = 1 << 1;
+        const RENDER_ATTACHMENT = 1 << 2;
+        const TEXTURE_BINDING = 1 << 3;
     }
 }
 
@@ -294,6 +313,7 @@ pub struct TextureDescriptor {
     pub size: UVec2,
     pub mip_levels: u32,
     pub format: TextureFormat,
+    pub usage: TextureUsage,
 }
 
 impl TextureDescriptor {
@@ -305,11 +325,12 @@ impl TextureDescriptor {
         );
 
         let bytes_per_texel = match self.format {
-            TextureFormat::R8G8B8A8Unorm => 4,
-            TextureFormat::R8G8B8A8UnormSrgb => 4,
-            TextureFormat::B8G8R8A8Unorm => 4,
-            TextureFormat::B8G8R8A8UnormSrgb => 4,
+            TextureFormat::Rgba8Unorm => 4,
+            TextureFormat::Rgba8UnormSrgb => 4,
+            TextureFormat::Bgra8Unorm => 4,
+            TextureFormat::Bgra8UnormSrgb => 4,
             TextureFormat::Depth32Float => 4,
+            TextureFormat::Rgba16Float => 8,
         };
 
         bytes_per_texel * u64::from(self.size.x) * u64::from(self.size.y)
@@ -375,9 +396,9 @@ pub struct ImageDataLayout {
 
 #[derive(Debug)]
 pub struct QueueSubmit<'a> {
-    pub wait: &'a mut [&'a mut Semaphore],
+    pub wait: &'a mut [Semaphore],
     pub wait_stage: PipelineStageFlags,
-    pub signal: &'a mut [&'a mut Semaphore],
+    pub signal: &'a mut [Semaphore],
 }
 
 pub struct SamplerDescriptor {
@@ -406,4 +427,28 @@ pub enum AddressMode {
 pub enum IndexFormat {
     U16,
     U32,
+}
+
+#[derive(Debug)]
+pub struct ShaderModule {
+    inner: vulkan::ShaderModule,
+}
+
+impl ShaderModule {
+    pub fn new(source: &ShaderSource<'_>, device: &vulkan::Device) -> Self {
+        match source {
+            ShaderSource::Wgsl(src) => {
+                let spirv = shader::wgsl_to_spirv(&src);
+                let inner = unsafe { device.create_shader(&spirv) };
+                Self { inner }
+            }
+        }
+    }
+}
+
+pub struct ShaderModuleDescriptor {}
+
+#[derive(Clone, Debug)]
+pub enum ShaderSource<'a> {
+    Wgsl(&'a str),
 }

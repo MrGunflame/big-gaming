@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use glam::UVec2;
 
-pub use wgpu::TextureFormat;
+use crate::backend::TextureFormat;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -52,36 +52,14 @@ impl Image {
     }
 
     fn validate_size(&self) {
-        use TextureFormat::*;
-
         let size = match self.format {
             // 8-bit
-            R8Unorm => 1,
-            R8Snorm => 1,
-            R8Uint => 1,
-            R8Sint => 1,
-            // 16-bit
-            R16Uint => 2,
-            R16Sint => 2,
-            R16Float => 2,
-            Rg8Unorm => 2,
-            Rg8Snorm => 2,
-            Rg8Uint => 2,
-            Rg8Sint => 2,
-            // 32-bit
-            R32Uint => 4,
-            R32Sint => 4,
-            R32Float => 4,
-            Rg16Uint => 4,
-            Rg16Sint => 4,
-            Rg16Float => 4,
-            Rgba8Unorm => 4,
-            Rgba8UnormSrgb => 4,
-            Rgba8Snorm => 4,
-            Rgba8Uint => 4,
-            Rgba8Sint => 4,
-            Bgra8Unorm => 4,
-            Bgra8UnormSrgb => 4,
+            TextureFormat::Rgba8Unorm => 4,
+            TextureFormat::Rgba8UnormSrgb => 4,
+            TextureFormat::Bgra8Unorm => 4,
+            TextureFormat::Bgra8UnormSrgb => 4,
+            TextureFormat::Rgba16Float => 8,
+            TextureFormat::Depth32Float => 4,
             _ => panic!("unsupported texture format: {:?}", self.format),
         };
 

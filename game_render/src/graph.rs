@@ -28,12 +28,11 @@ pub(crate) mod scheduler;
 
 use std::collections::HashMap;
 
+use ctx::{Buffer, CommandQueue, Texture};
 use glam::UVec2;
 use thiserror::Error;
-use wgpu::{Buffer, CommandEncoder, Device, Queue, Texture, TextureFormat, TextureView};
 
 use crate::camera::RenderTarget;
-use crate::mipmap::MipMapGenerator;
 
 pub trait Node: Send + Sync + 'static {
     /// Renders the node.
@@ -43,13 +42,9 @@ pub trait Node: Send + Sync + 'static {
 /// Context provided to render a [`Node`].
 pub struct RenderContext<'a, 'b> {
     pub render_target: RenderTarget,
-    pub encoder: &'b mut CommandEncoder,
-    pub target: &'a TextureView,
+    pub queue: &'b mut CommandQueue<'a>,
+    // TODO: Remove
     pub size: UVec2,
-    pub format: TextureFormat,
-    pub device: &'a Device,
-    pub queue: &'a Queue,
-    pub mipmap: &'b mut MipMapGenerator,
     pub(crate) resource_permissions: &'a HashMap<SlotLabel, SlotFlags>,
     pub(crate) resources: &'b mut HashMap<SlotLabel, SlotValueInner<'a>>,
 }

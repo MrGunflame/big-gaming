@@ -6,17 +6,18 @@ use ash::vk;
 use game_common::collections::arena::{Arena, Key};
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
-use parking_lot::Mutex;
+use glam::UVec2;
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc, UsageFlags};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
 use crate::backend::vulkan::{
-    self, CommandEncoder, DescriptorSetLayout, Device, Pipeline, Sampler, ShaderModule, TextureView,
+    self, CommandEncoder, DescriptorSetLayout, Device, Pipeline, Sampler, TextureView,
 };
 use crate::backend::{
     AccessFlags, AdapterMemoryProperties, BufferBarrier, BufferUsage, CopyBuffer,
-    DescriptorSetDescriptor, ImageDataLayout, LoadOp, PipelineBarriers, PipelineDescriptor,
-    SamplerDescriptor, StoreOp, TextureBarrier, TextureDescriptor, WriteDescriptorBinding,
+    DescriptorSetDescriptor, ImageDataLayout, IndexFormat, LoadOp, PipelineBarriers,
+    PipelineDescriptor, SamplerDescriptor, ShaderModule, ShaderSource, ShaderStages, StoreOp,
+    TextureBarrier, TextureDescriptor, TextureFormat, WriteDescriptorBinding,
     WriteDescriptorResource, WriteDescriptorResources,
 };
 
@@ -30,7 +31,7 @@ pub struct Scheduler {
     bind_groups: Arena<BindGroupInner>,
     allocator: GeneralPurposeAllocator,
     descriptors: DescriptorSetAllocator,
-    cmds: Arc<Mutex<Vec<Command>>>,
+    cmds: Vec<Command>,
     device: Device,
 }
 
@@ -42,25 +43,18 @@ impl Scheduler {
             bind_groups: Arena::new(),
             allocator: GeneralPurposeAllocator::new(device.clone(), memory_props),
             descriptors: DescriptorSetAllocator::new(device.clone()),
-            cmds: Arc::default(),
+            cmds: Vec::new(),
             device,
         }
     }
 
     pub fn queue(&mut self) -> CommandQueue<'_> {
-        CommandQueue {
-            scheduler: self,
-            cmds: Vec::new(),
-        }
+        CommandQueue { scheduler: self }
     }
 
-    pub fn execute(
-        &mut self,
-        cmds: Vec<Command>,
-        encoder: &mut CommandEncoder<'_>,
-    ) -> InflightResources<'_> {
+    pub fn execute(&mut self, encoder: &mut CommandEncoder<'_>) -> InflightResources<'_> {
         let _span = trace_span!("Scheduler::execute").entered();
-        execute(self, cmds, encoder)
+        execute(self, encoder)
     }
 }
 
@@ -74,11 +68,10 @@ pub struct Resources {
 
 pub struct CommandQueue<'a> {
     scheduler: &'a mut Scheduler,
-    pub cmds: Vec<Command>,
 }
 
 impl<'a> CommandQueue<'a> {
-    pub fn create_buffer(&mut self, descriptor: BufferDescriptor) -> Buffer {
+    pub fn create_buffer(&mut self, descriptor: &BufferDescriptor) -> Buffer {
         let buffer = self.scheduler.allocator.create_buffer(
             descriptor.size.try_into().unwrap(),
             BufferUsage::all(),
@@ -90,9 +83,18 @@ impl<'a> CommandQueue<'a> {
             access: AccessFlags::empty(),
             flags: BufferUsage::all(),
         });
-        self.cmds.push(Command::CreateBuffer(id));
+        self.scheduler.cmds.push(Command::CreateBuffer(id));
 
         Buffer { id }
+    }
+
+    pub fn create_buffer_init(&mut self, descriptor: &BufferInitDescriptor<'_>) -> Buffer {
+        let buffer = self.create_buffer(&BufferDescriptor {
+            size: descriptor.contents.len() as u64,
+            usage: descriptor.usage,
+        });
+        self.write_buffer(&buffer, descriptor.contents);
+        buffer
     }
 
     pub fn write_buffer(&mut self, buffer: &Buffer, data: &[u8]) {
@@ -101,11 +103,12 @@ impl<'a> CommandQueue<'a> {
             assert!(buffer.flags.contains(BufferUsage::TRANSFER_DST));
         }
 
-        self.cmds
+        self.scheduler
+            .cmds
             .push(Command::WriteBuffer(buffer.id, data.to_vec()));
     }
 
-    pub fn create_texture(&mut self, descriptor: TextureDescriptor) -> Texture {
+    pub fn create_texture(&mut self, descriptor: &TextureDescriptor) -> Texture {
         let texture = self
             .scheduler
             .allocator
@@ -115,29 +118,36 @@ impl<'a> CommandQueue<'a> {
             data: TextureData::Virtual(texture),
             access: AccessFlags::empty(),
         });
-        self.cmds.push(Command::CreateTexture(id));
+        self.scheduler.cmds.push(Command::CreateTexture(id));
 
-        Texture { id }
+        Texture {
+            id,
+            size: descriptor.size,
+            format: descriptor.format,
+        }
     }
 
     pub fn import_texture(
         &mut self,
         texture: &'static vulkan::Texture,
         access: AccessFlags,
+        size: UVec2,
+        format: TextureFormat,
     ) -> Texture {
         let id = self.scheduler.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
             access,
         });
-        Texture { id }
+        Texture { id, size, format }
     }
 
     pub fn write_texture(&mut self, texture: &Texture, data: &[u8], layout: ImageDataLayout) {
-        self.cmds
+        self.scheduler
+            .cmds
             .push(Command::WriteTexture(texture.id, data.to_vec(), layout));
     }
 
-    pub fn create_bind_group(&mut self, descriptor: BindGroupDescriptor<'_>) -> BindGroup {
+    pub fn create_bind_group(&mut self, descriptor: &BindGroupDescriptor<'_>) -> BindGroup {
         let mut buffers = Vec::new();
         let mut samplers = Vec::new();
         let mut textures = Vec::new();
@@ -163,10 +173,6 @@ impl<'a> CommandQueue<'a> {
             layout: descriptor.layout.clone(),
         });
         BindGroup { id }
-    }
-
-    pub fn create_shader(&mut self, code: &[u32]) -> ShaderModule {
-        unsafe { self.scheduler.device.create_shader(code) }
     }
 
     pub fn create_descriptor_set_layout(
@@ -204,8 +210,8 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    pub fn finish(self) -> Vec<Command> {
-        self.cmds
+    pub fn create_shader_module(&mut self, src: ShaderSource<'_>) -> ShaderModule {
+        ShaderModule::new(&src, &self.scheduler.device)
     }
 }
 
@@ -224,6 +230,13 @@ pub struct BufferInner {
 #[derive(Copy, Clone, Debug)]
 pub struct BufferDescriptor {
     pub size: u64,
+    pub usage: BufferUsage,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BufferInitDescriptor<'a> {
+    pub contents: &'a [u8],
+    pub usage: BufferUsage,
 }
 
 pub struct BindGroupDescriptor<'a> {
@@ -277,6 +290,18 @@ struct RenderPassCmd {
 #[derive(Clone, Debug)]
 pub struct Texture {
     id: TextureId,
+    size: UVec2,
+    format: TextureFormat,
+}
+
+impl Texture {
+    pub fn size(&self) -> UVec2 {
+        self.size
+    }
+
+    pub fn format(&self) -> TextureFormat {
+        self.format
+    }
 }
 
 pub struct TextureInner {
@@ -310,6 +335,14 @@ impl<'a, 'b> RenderPass<'a, 'b> {
         self.bind_groups.insert(index, bind_group.clone());
     }
 
+    pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
+        todo!()
+    }
+
+    pub fn set_index_buffer(&mut self, buffer: &Buffer, format: IndexFormat) {
+        todo!()
+    }
+
     pub fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {
         assert!(self.pipeline.is_some(), "Pipeline is not set");
 
@@ -318,17 +351,23 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             instances,
         });
     }
+
+    pub fn draw_indexed(&mut self, indices: Range<u32>, vertex_offset: u32, instances: Range<u32>) {
+    }
 }
 
 impl<'a, 'b> Drop for RenderPass<'a, 'b> {
     fn drop(&mut self) {
         if let Some(pipeline) = &self.pipeline {
-            self.ctx.cmds.push(Command::RenderPass(RenderPassCmd {
-                pipeline: pipeline.clone(),
-                bind_groups: self.bind_groups.clone(),
-                draw_calls: self.draw_calls.clone(),
-                color_attachments: self.color_attachments.clone(),
-            }));
+            self.ctx
+                .scheduler
+                .cmds
+                .push(Command::RenderPass(RenderPassCmd {
+                    pipeline: pipeline.clone(),
+                    bind_groups: self.bind_groups.clone(),
+                    draw_calls: self.draw_calls.clone(),
+                    color_attachments: self.color_attachments.clone(),
+                }));
         }
     }
 }
@@ -357,18 +396,14 @@ struct DrawCall {
     instances: Range<u32>,
 }
 
-pub fn execute<'a, I>(
+pub fn execute<'a>(
     scheduler: &'a mut Scheduler,
-    cmds: I,
     encoder: &mut CommandEncoder<'_>,
-) -> InflightResources<'a>
-where
-    I: IntoIterator<Item = Command>,
-{
+) -> InflightResources<'a> {
     let mut staging_buffers = Vec::new();
     let mut frame_texture_views = Vec::new();
 
-    for cmd in cmds.into_iter() {
+    for cmd in scheduler.cmds.drain(..) {
         match cmd {
             Command::CreateBuffer(buffer) => {
                 // Nothing to do

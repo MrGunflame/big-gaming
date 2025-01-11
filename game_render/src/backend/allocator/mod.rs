@@ -298,6 +298,11 @@ struct Block {
     memory_host_ptr: *mut u8,
 }
 
+// We lose the `Send` impl because of `memory_host_ptr`, but
+// host-mapped memory is always send + sync.
+unsafe impl Send for Block {}
+unsafe impl Sync for Block {}
+
 impl Block {
     fn alloc(&mut self, size: NonZeroU64, align: NonZeroU64) -> Option<Region> {
         let region = self
@@ -317,6 +322,11 @@ pub struct DeviceMemoryRegion {
     /// Pointer to host mapped memory. This pointer starts at memory, not at this region.
     memory_host_ptr: *mut u8,
 }
+
+// We lose the `Send` impl because of `memory_host_ptr`, but
+// host-mapped memory is always send + sync.
+unsafe impl Send for DeviceMemoryRegion {}
+unsafe impl Sync for DeviceMemoryRegion {}
 
 impl DeviceMemoryRegion {
     pub fn memory(&self) -> DeviceMemorySlice<'_> {

@@ -3,24 +3,19 @@ use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::Arc;
 
+use ash::vk::PipelineStageFlags;
 use game_common::cell::UnsafeRefCell;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
-use glam::UVec2;
-use wgpu::{
-    Adapter, BufferAddress, BufferDescriptor, BufferUsages, CommandEncoderDescriptor, Device,
-    Extent3d, ImageCopyBuffer, ImageCopyTexture, ImageDataLayout, Instance, MapMode, Origin3d,
-    Queue, Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureViewDescriptor, COPY_BYTES_PER_ROW_ALIGNMENT,
-};
 
+use crate::backend::vulkan::{Adapter, CommandPool, Device, Instance, Queue};
+use crate::backend::{AccessFlags, QueueSubmit};
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
+use crate::graph::ctx::Scheduler;
 use crate::graph::scheduler::RenderGraphScheduler;
 use crate::graph::{NodeLabel, RenderContext, RenderGraph, SlotLabel, SlotValueInner};
-use crate::mipmap::MipMapGenerator;
 use crate::surface::RenderSurfaces;
-use crate::texture::RenderImageId;
 use crate::Job;
 
 const PIPELINE_STATE_RENDERING: u8 = 1;
@@ -31,10 +26,8 @@ pub struct SharedState {
     pub instance: Instance,
     pub adapter: Adapter,
     pub device: Device,
-    pub queue: Queue,
     pub surfaces: UnsafeRefCell<RenderSurfaces>,
-    pub render_textures: UnsafeRefCell<HashMap<RenderImageId, RenderImageGpu>>,
-    mipmap_generator: UnsafeRefCell<MipMapGenerator>,
+    // render_textures: UnsafeRefCell<HashMap<RenderImageId, RenderImageGpu>>,
     pub graph: UnsafeRefCell<RenderGraph>,
     state: AtomicU8,
     /// Unparker for the calling thread.
@@ -42,14 +35,10 @@ pub struct SharedState {
     pub jobs: UnsafeRefCell<VecDeque<Job>>,
     fps_limiter: UnsafeRefCell<FpsLimiter>,
     shutdown: AtomicBool,
+    pub scheduler: UnsafeRefCell<Scheduler>,
 }
 
-struct State {
-    shared: Arc<SharedState>,
-    schedule: Vec<NodeLabel>,
-}
-
-pub struct Pipeline {
+pub struct RenderThreadHandle {
     pub shared: Arc<SharedState>,
     main_parker: Arc<Parker>,
     /// Unparker for the render thread.
@@ -60,28 +49,29 @@ pub struct Pipeline {
     _marker: PhantomData<*const ()>,
 }
 
-impl Pipeline {
+impl RenderThreadHandle {
     pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
         let main_parker = Arc::new(Parker::new());
         let main_unparker = main_parker.clone();
 
+        let scheduler = Scheduler::new(device.clone(), adapter.memory_properties());
+
         let shared = Arc::new(SharedState {
-            mipmap_generator: UnsafeRefCell::new(MipMapGenerator::new(&device)),
             instance,
             adapter,
             device,
-            queue,
             surfaces: UnsafeRefCell::new(RenderSurfaces::new()),
             state: AtomicU8::new(PIPELINE_STATE_IDLE),
             graph: UnsafeRefCell::new(RenderGraph::default()),
             main_unparker,
-            render_textures: UnsafeRefCell::new(HashMap::new()),
+            // render_textures: UnsafeRefCell::new(HashMap::new()),
             jobs: UnsafeRefCell::new(VecDeque::new()),
             fps_limiter: UnsafeRefCell::new(FpsLimiter::new(FpsLimit::UNLIMITED)),
             shutdown: AtomicBool::new(false),
+            scheduler: UnsafeRefCell::new(scheduler),
         });
 
-        let render_unparker = start_render_thread(shared.clone());
+        let render_unparker = start_render_thread(shared.clone(), queue);
 
         Self {
             shared,
@@ -122,245 +112,341 @@ impl Pipeline {
     }
 }
 
-fn start_render_thread(shared: Arc<SharedState>) -> Arc<Parker> {
+fn start_render_thread(shared: Arc<SharedState>, queue: Queue) -> Arc<Parker> {
     let parker = Arc::new(Parker::new());
     let unparker = parker.clone();
 
+    let renderer = RenderThread::new(shared, queue);
     std::thread::spawn(move || {
-        let _span = trace_span!("render_thread").entered();
-
-        let mut state = State {
-            shared,
-            schedule: Vec::new(),
-        };
-
-        loop {
-            if state.shared.shutdown.load(Ordering::Acquire) {
-                return;
-            }
-
-            // FIXME: If it is guaranteed that the parker will never yield
-            // before being signaled, there is not need to watch for the atomic
-            // to change.
-            while state.shared.state.load(Ordering::Acquire) != PIPELINE_STATE_RENDERING {
-                parker.park();
-            }
-
-            // SAFETY: The pipeline is in rendering state, the render thread
-            // has full access to the state.
-            unsafe {
-                execute_render(&mut state);
-            }
-
-            state
-                .shared
-                .state
-                .store(PIPELINE_STATE_IDLE, Ordering::Relaxed);
-            state.shared.main_unparker.unpark();
-        }
+        renderer.run(parker);
     });
 
     unparker
 }
 
-unsafe fn execute_render(state: &mut State) {
-    let _span = trace_span!("render_frame").entered();
+struct RenderThread {
+    shared: Arc<SharedState>,
+    queue: Queue,
+    schedule: Vec<NodeLabel>,
+    command_pool: CommandPool,
+    scheduler: Scheduler,
+}
 
-    let surfaces = unsafe { state.shared.surfaces.borrow() };
-    let mut graph = unsafe { state.shared.graph.borrow_mut() };
-    let mut mipmap = unsafe { state.shared.mipmap_generator.borrow_mut() };
-    let mut fps_limiter = unsafe { state.shared.fps_limiter.borrow_mut() };
+impl RenderThread {
+    fn new(shared: Arc<SharedState>, queue: Queue) -> Self {
+        let command_pool = shared.device.create_command_pool();
 
-    let mut encoder = state
-        .shared
-        .device
-        .create_command_encoder(&CommandEncoderDescriptor { label: None });
-
-    let mut outputs = Vec::new();
-
-    if graph.has_changed {
-        graph.has_changed = false;
-        let render_passes = RenderGraphScheduler.schedule(&graph).unwrap();
-        state.schedule = render_passes;
+        Self {
+            scheduler: Scheduler::new(shared.device.clone(), shared.adapter.memory_properties()),
+            shared,
+            queue,
+            schedule: Vec::new(),
+            command_pool,
+        }
     }
 
-    for (window, surface) in surfaces.iter() {
-        let output = match surface.surface.get_current_texture() {
-            Ok(output) => output,
-            Err(err) => {
-                tracing::error!("failed to get surface: {}", err);
-                continue;
+    fn run(mut self, parker: Arc<Parker>) {
+        let _span = trace_span!("RenderThread::run").entered();
+
+        loop {
+            if self.shared.shutdown.load(Ordering::Acquire) {
+                return;
             }
-        };
 
-        let target = output.texture.create_view(&TextureViewDescriptor {
-            label: Some("surface_view"),
-            format: Some(surface.config.format),
-            ..Default::default()
-        });
+            // Sleep until the main thread requests a render.
+            parker.park();
+            // The main thread must set the state to `RENDERING`
+            // before it unparks the parker above.
+            debug_assert_eq!(
+                self.shared.state.load(Ordering::Acquire),
+                PIPELINE_STATE_RENDERING
+            );
 
-        let mut resources = HashMap::new();
-        resources.insert(
-            SlotLabel::SURFACE,
-            SlotValueInner::TextureRef(&output.texture),
+            // SAFETY: The pipeline is in rendering state, the render thread
+            // has full access to the state.
+            unsafe {
+                self.render();
+            }
+
+            // Signal to the main thread that the render thread is now
+            // idle.
+            self.shared
+                .state
+                .store(PIPELINE_STATE_IDLE, Ordering::Release);
+            self.shared.main_unparker.unpark();
+        }
+    }
+
+    unsafe fn render(&mut self) {
+        let _span = trace_span!("RenderThread::render").entered();
+
+        let mut surfaces = unsafe { self.shared.surfaces.borrow_mut() };
+        let mut graph = unsafe { self.shared.graph.borrow_mut() };
+
+        if graph.has_changed {
+            graph.has_changed = false;
+            let render_passes = RenderGraphScheduler.schedule(&graph).unwrap();
+            self.schedule = render_passes;
+        }
+
+        let mut surfaces_to_present = Vec::new();
+        let mut image_avail_sems = Vec::new();
+        let mut render_done_sems = Vec::new();
+
+        for (window, surface) in surfaces.iter_mut() {
+            let mut image_avail = self.shared.device.create_semaphore();
+            let render_done = self.shared.device.create_semaphore();
+
+            let surface_window = surface.window().clone();
+            let output = surface.swapchain.acquire_next_image(&mut image_avail);
+
+            image_avail_sems.push(image_avail);
+            render_done_sems.push(render_done);
+
+            let mut queue = self.scheduler.queue();
+            let swapchain_texture = queue.import_texture(
+                unsafe { core::mem::transmute::<&'_ _, &'static _>(&output.texture()) },
+                AccessFlags::empty(),
+                output.texture().size(),
+                output.texture().format(),
+            );
+
+            let mut resources = HashMap::new();
+            resources.insert(
+                SlotLabel::SURFACE,
+                SlotValueInner::TextureRef(&swapchain_texture),
+            );
+
+            for node in &self.schedule {
+                let node = graph.get(*node).unwrap();
+
+                let mut ctx = RenderContext {
+                    render_target: RenderTarget::Window(*window),
+                    queue: &mut queue,
+                    resources: &mut resources,
+                    resource_permissions: &node.permissions,
+                    size: swapchain_texture.size(),
+                };
+                node.node.render(&mut ctx);
+            }
+
+            // surface.window().pre_present_notify();
+
+            surfaces_to_present.push((surface_window, output));
+        }
+
+        let mut encoder = self.command_pool.create_encoder().unwrap();
+
+        let res = self.scheduler.execute(&mut encoder);
+
+        self.queue.submit(
+            core::iter::once(encoder.finish()),
+            QueueSubmit {
+                wait: &mut image_avail_sems,
+                wait_stage: PipelineStageFlags::TOP_OF_PIPE,
+                signal: &mut render_done_sems,
+            },
         );
 
-        for node in &state.schedule {
-            let node = graph.get(*node).unwrap();
-
-            let mut ctx = RenderContext {
-                render_target: RenderTarget::Window(*window),
-                encoder: &mut encoder,
-                size: UVec2::new(surface.config.width, surface.config.height),
-                target: &target,
-                format: surface.config.format,
-                device: &state.shared.device,
-                queue: &state.shared.queue,
-                mipmap: &mut mipmap,
-                resources: &mut resources,
-                resource_permissions: &node.permissions,
-            };
-
-            node.node.render(&mut ctx);
+        for ((window, output), mut render_done) in
+            surfaces_to_present.into_iter().zip(render_done_sems)
+        {
+            window.pre_present_notify();
+            output.present(&mut self.queue, &mut render_done);
         }
 
-        outputs.push((surface, output));
-    }
-
-    let mut render_textures = unsafe { state.shared.render_textures.borrow_mut() };
-    for (id, render_texture) in render_textures.iter_mut() {
-        let texture = render_texture.texture.get_or_insert_with(|| {
-            state.shared.device.create_texture(&TextureDescriptor {
-                label: None,
-                size: Extent3d {
-                    width: render_texture.size.x,
-                    height: render_texture.size.y,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
-                format: TextureFormat::Rgba8Unorm,
-                usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            })
-        });
-
-        let target = texture.create_view(&TextureViewDescriptor::default());
-
-        let mut resources = HashMap::new();
-        resources.insert(SlotLabel::SURFACE, SlotValueInner::TextureRef(texture));
-
-        for node in &state.schedule {
-            let node = graph.get(*node).unwrap();
-
-            let mut ctx = RenderContext {
-                render_target: RenderTarget::Image(*id),
-                encoder: &mut encoder,
-                size: render_texture.size,
-                target: &target,
-                format: texture.format(),
-                device: &state.shared.device,
-                queue: &state.shared.queue,
-                mipmap: &mut mipmap,
-                resources: &mut resources,
-                resource_permissions: &node.permissions,
-            };
-
-            node.node.render(&mut ctx);
-        }
-    }
-
-    let mut mapping_buffers = Vec::new();
-
-    let mut jobs = unsafe { state.shared.jobs.borrow_mut() };
-    for job in jobs.drain(..) {
-        match job {
-            Job::SetFpsLimit(limit) => {
-                *fps_limiter = FpsLimiter::new(limit);
-            }
-            Job::TextureToBuffer(id, tx) => {
-                let texture = render_textures.get(&id).unwrap();
-
-                // bytes_per_row must be aligned as required by wgpu.
-                // 4 for RGBA8
-                let mut bytes_per_row = 4 * texture.size.x;
-                if bytes_per_row & COPY_BYTES_PER_ROW_ALIGNMENT != 0 {
-                    bytes_per_row &= u32::MAX & !COPY_BYTES_PER_ROW_ALIGNMENT;
-                    bytes_per_row += COPY_BYTES_PER_ROW_ALIGNMENT;
-                }
-
-                let buffer_size = bytes_per_row * texture.size.y;
-
-                let buffer = state.shared.device.create_buffer(&BufferDescriptor {
-                    size: buffer_size as BufferAddress,
-                    usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
-                    mapped_at_creation: false,
-                    label: None,
-                });
-
-                encoder.copy_texture_to_buffer(
-                    ImageCopyTexture {
-                        aspect: TextureAspect::All,
-                        mip_level: 0,
-                        origin: Origin3d::ZERO,
-                        texture: texture.texture.as_ref().unwrap(),
-                    },
-                    ImageCopyBuffer {
-                        buffer: &buffer,
-                        layout: ImageDataLayout {
-                            offset: 0,
-                            bytes_per_row: Some(bytes_per_row),
-                            rows_per_image: None,
-                        },
-                    },
-                    Extent3d {
-                        width: texture.size.x,
-                        height: texture.size.y,
-                        depth_or_array_layers: 1,
-                    },
-                );
-
-                mapping_buffers.push((buffer, tx));
-            }
-        }
-    }
-
-    state.shared.queue.submit(std::iter::once(encoder.finish()));
-
-    fps_limiter.block_until_ready();
-
-    for (surface, output) in outputs {
-        surface.window().pre_present_notify();
-        output.present();
-    }
-
-    for (buffer, tx) in mapping_buffers {
-        // Unfortunately we need to wrap `Buffer` in `Arc` to be able
-        // to call `map_async` on the same value that takes a closure
-        // that also moves the value.
-        let buffer = Arc::new(buffer);
-
-        buffer
-            .clone()
-            .slice(..)
-            .map_async(MapMode::Read, move |res| {
-                res.unwrap();
-
-                {
-                    let slice = buffer.slice(..);
-                    let data = slice.get_mapped_range();
-                    let _ = tx.send(data.to_vec());
-                }
-
-                buffer.unmap();
-            });
+        self.queue.wait_idle();
+        drop(res);
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct RenderImageGpu {
-    pub(crate) size: UVec2,
-    /// Texture if initiliazed.
-    pub(crate) texture: Option<Texture>,
-}
+// unsafe fn execute_render(state: &mut State) {
+//     let _span = trace_span!("render_frame").entered();
+
+//     let mut surfaces = unsafe { state.shared.surfaces.borrow_mut() };
+//     let mut graph = unsafe { state.shared.graph.borrow_mut() };
+//     let mut mipmap = unsafe { state.shared.mipmap_generator.borrow_mut() };
+//     let mut fps_limiter = unsafe { state.shared.fps_limiter.borrow_mut() };
+
+//     let mut encoder = state
+//         .shared
+//         .device
+//         .create_command_encoder(&CommandEncoderDescriptor { label: None });
+
+//     let mut outputs = Vec::new();
+
+//     if graph.has_changed {
+//         graph.has_changed = false;
+//         let render_passes = RenderGraphScheduler.schedule(&graph).unwrap();
+//         state.schedule = render_passes;
+//     }
+
+//     for (window, surface) in surfaces.iter_mut() {
+//         let mut image_avail = state.shared.device.create_semaphore();
+//         let mut render_done = state.shared.device.create_semaphore();
+
+//         let output = surface.swapchain.acquire_next_image(&mut image_avail);
+
+//         let mut queue = state.scheduler.queue();
+
+//         let swapchain_texture = queue.import_texture(&output.texture(), AccessFlags::empty());
+
+//         let mut resources = HashMap::new();
+//         resources.insert(
+//             SlotLabel::SURFACE,
+//             SlotValueInner::TextureRef(&output.texture),
+//         );
+
+//         for node in &state.schedule {
+//             let node = graph.get(*node).unwrap();
+
+//             let mut ctx = RenderContext {
+//                 render_target: RenderTarget::Window(*window),
+//                 queue,
+//                 resources: &mut resources,
+//                 resource_permissions: &node.permissions,
+//             };
+
+//             node.node.render(&mut ctx);
+//         }
+
+//         outputs.push((surface, output));
+//     }
+
+//     let mut render_textures = unsafe { state.shared.render_textures.borrow_mut() };
+//     for (id, render_texture) in render_textures.iter_mut() {
+//         let texture = render_texture.texture.get_or_insert_with(|| {
+//             state.shared.device.create_texture(&TextureDescriptor {
+//                 label: None,
+//                 size: Extent3d {
+//                     width: render_texture.size.x,
+//                     height: render_texture.size.y,
+//                     depth_or_array_layers: 1,
+//                 },
+//                 mip_level_count: 1,
+//                 sample_count: 1,
+//                 dimension: TextureDimension::D2,
+//                 format: TextureFormat::Rgba8Unorm,
+//                 usage: TextureUsages::COPY_SRC | TextureUsages::RENDER_ATTACHMENT,
+//                 view_formats: &[],
+//             })
+//         });
+
+//         let target = texture.create_view(&TextureViewDescriptor::default());
+
+//         let mut resources = HashMap::new();
+//         resources.insert(SlotLabel::SURFACE, SlotValueInner::TextureRef(texture));
+
+//         for node in &state.schedule {
+//             let node = graph.get(*node).unwrap();
+
+//             let mut ctx = RenderContext {
+//                 render_target: RenderTarget::Image(*id),
+//                 encoder: &mut encoder,
+//                 size: render_texture.size,
+//                 target: &target,
+//                 format: texture.format(),
+//                 device: &state.shared.device,
+//                 queue: &state.shared.queue,
+//                 mipmap: &mut mipmap,
+//                 resources: &mut resources,
+//                 resource_permissions: &node.permissions,
+//             };
+
+//             node.node.render(&mut ctx);
+//         }
+//     }
+
+//     let mut mapping_buffers = Vec::new();
+
+//     let mut jobs = unsafe { state.shared.jobs.borrow_mut() };
+//     for job in jobs.drain(..) {
+//         match job {
+//             Job::SetFpsLimit(limit) => {
+//                 *fps_limiter = FpsLimiter::new(limit);
+//             }
+//             Job::TextureToBuffer(id, tx) => {
+//                 let texture = render_textures.get(&id).unwrap();
+
+//                 // bytes_per_row must be aligned as required by wgpu.
+//                 // 4 for RGBA8
+//                 let mut bytes_per_row = 4 * texture.size.x;
+//                 if bytes_per_row & COPY_BYTES_PER_ROW_ALIGNMENT != 0 {
+//                     bytes_per_row &= u32::MAX & !COPY_BYTES_PER_ROW_ALIGNMENT;
+//                     bytes_per_row += COPY_BYTES_PER_ROW_ALIGNMENT;
+//                 }
+
+//                 let buffer_size = bytes_per_row * texture.size.y;
+
+//                 let buffer = state.shared.device.create_buffer(&BufferDescriptor {
+//                     size: buffer_size as BufferAddress,
+//                     usage: BufferUsages::COPY_DST | BufferUsages::MAP_READ,
+//                     mapped_at_creation: false,
+//                     label: None,
+//                 });
+
+//                 encoder.copy_texture_to_buffer(
+//                     ImageCopyTexture {
+//                         aspect: TextureAspect::All,
+//                         mip_level: 0,
+//                         origin: Origin3d::ZERO,
+//                         texture: texture.texture.as_ref().unwrap(),
+//                     },
+//                     ImageCopyBuffer {
+//                         buffer: &buffer,
+//                         layout: ImageDataLayout {
+//                             offset: 0,
+//                             bytes_per_row: Some(bytes_per_row),
+//                             rows_per_image: None,
+//                         },
+//                     },
+//                     Extent3d {
+//                         width: texture.size.x,
+//                         height: texture.size.y,
+//                         depth_or_array_layers: 1,
+//                     },
+//                 );
+
+//                 mapping_buffers.push((buffer, tx));
+//             }
+//         }
+//     }
+
+//     state.shared.queue.submit(std::iter::once(encoder.finish()));
+
+//     fps_limiter.block_until_ready();
+
+//     for (surface, output) in outputs {
+//         surface.window().pre_present_notify();
+//         output.present();
+//     }
+
+//     for (buffer, tx) in mapping_buffers {
+//         // Unfortunately we need to wrap `Buffer` in `Arc` to be able
+//         // to call `map_async` on the same value that takes a closure
+//         // that also moves the value.
+//         let buffer = Arc::new(buffer);
+
+//         buffer
+//             .clone()
+//             .slice(..)
+//             .map_async(MapMode::Read, move |res| {
+//                 res.unwrap();
+
+//                 {
+//                     let slice = buffer.slice(..);
+//                     let data = slice.get_mapped_range();
+//                     let _ = tx.send(data.to_vec());
+//                 }
+
+//                 buffer.unmap();
+//             });
+//     }
+// }
+
+// #[derive(Debug)]
+// pub(crate) struct RenderImageGpu {
+//     pub(crate) size: UVec2,
+//     /// Texture if initiliazed.
+//     pub(crate) texture: Option<Texture>,
+// }

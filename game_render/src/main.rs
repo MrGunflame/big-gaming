@@ -252,7 +252,7 @@ impl ExampleNode {
                 PipelineStage::Vertex(VertexStage { shader: &vert }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &frag,
-                    targets: &[TextureFormat::B8G8R8A8UnormSrgb],
+                    targets: &[TextureFormat::Bgra8UnormSrgb],
                 }),
             ],
             descriptors: &[&descriptor_set_layout],
@@ -263,7 +263,7 @@ impl ExampleNode {
             .to_rgba8();
         let texture = ctx.create_texture(TextureDescriptor {
             size: UVec2::new(texture_data.width(), texture_data.height()),
-            format: TextureFormat::R8G8B8A8UnormSrgb,
+            format: TextureFormat::Rgba8UnormSrgb,
             mip_levels: 1,
         });
         ctx.write_texture(

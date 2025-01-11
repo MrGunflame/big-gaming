@@ -16,15 +16,17 @@ pub mod texture;
 
 pub mod backend;
 mod debug;
-mod depth_stencil;
 mod fps_limiter;
 mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
 
+use backend::vulkan::{Config, Device, Instance, Queue};
+use backend::{AdapterKind, QueueCapabilities};
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
 use game_common::cell::RefMut;
+use graph::ctx::CommandQueue;
 
 use std::collections::VecDeque;
 use std::future::Future;
@@ -41,14 +43,10 @@ use forward::ForwardPipeline;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
-use pipelined_rendering::{Pipeline, RenderImageGpu};
+use pipelined_rendering::RenderThreadHandle;
 use texture::{RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
-use wgpu::{
-    Backends, Device, DeviceDescriptor, Features, Gles3MinorVersion, Instance, InstanceDescriptor,
-    InstanceFlags, Limits, PowerPreference, Queue, RequestAdapterOptions, RequestDeviceError,
-};
 
 pub use passes::FINAL_RENDER_PASS;
 
@@ -56,12 +54,12 @@ pub use passes::FINAL_RENDER_PASS;
 pub enum Error {
     #[error("no adapter")]
     NoAdapter,
-    #[error("failed to request device: {}", 0)]
-    NoDevice(RequestDeviceError),
+    // #[error("failed to request device: {}", 0)]
+    // NoDevice(RequestDeviceError),
 }
 
 pub struct Renderer {
-    pipeline: Pipeline,
+    render_thread: RenderThreadHandle,
 
     backlog: VecDeque<SurfaceEvent>,
 
@@ -75,65 +73,45 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new() -> Result<Self, Error> {
-        let flags = if debug::debug_layers_enabled() {
-            InstanceFlags::DEBUG | InstanceFlags::VALIDATION
-        } else {
-            InstanceFlags::empty()
-        };
+        let mut config = Config::default();
+        if debug::debug_layers_enabled() {
+            config.validation = true;
+        }
 
-        let instance = Instance::new(InstanceDescriptor {
-            backends: Backends::VULKAN,
-            dx12_shader_compiler: Default::default(),
-            flags,
-            gles_minor_version: Gles3MinorVersion::Automatic,
-        });
+        let instance = Instance::new(config).unwrap();
 
-        let adapter =
-            futures_lite::future::block_on(instance.request_adapter(&RequestAdapterOptions {
-                power_preference: PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
+        let adapter = instance
+            .adapters()
+            .into_iter()
+            .nth(0)
             .ok_or(Error::NoAdapter)?;
 
-        let features = Features::TEXTURE_BINDING_ARRAY
-            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-            | Features::PARTIALLY_BOUND_BINDING_ARRAY
-            | Features::PUSH_CONSTANTS;
+        let queue_family = *adapter
+            .queue_families()
+            .iter()
+            .find(|q| q.capabilities.contains(QueueCapabilities::GRAPHICS))
+            .unwrap();
 
-        let mut limits = Limits::default();
-        limits.max_sampled_textures_per_shader_stage = 2048;
-        limits.max_push_constant_size = 128;
+        let device = adapter.create_device(queue_family.id);
+        let queue = device.queue();
 
-        let (device, queue) = futures_lite::future::block_on(adapter.request_device(
-            &DeviceDescriptor {
-                required_features: features,
-                required_limits: limits,
-                label: None,
-            },
-            None,
-        ))
-        .map_err(Error::NoDevice)?;
+        let render_thread = RenderThreadHandle::new(instance, adapter, device, queue);
+
+        let mut scheduler = unsafe { render_thread.shared.scheduler.borrow_mut() };
+        let mut graph = unsafe { render_thread.shared.graph.borrow_mut() };
+        let mut queue = scheduler.queue();
 
         let resources = Arc::new(Resources::default());
 
-        let forward = Arc::new(ForwardPipeline::new(&device, resources.clone()));
+        let forward = Arc::new(ForwardPipeline::new(&mut queue, resources.clone()));
+        passes::init(&mut graph, forward.clone(), &mut queue);
 
-        let pipeline = Pipeline::new(instance, adapter, device, queue);
-
-        {
-            let mut graph = unsafe { pipeline.shared.graph.borrow_mut() };
-            passes::init(
-                &mut graph,
-                forward.clone(),
-                &pipeline.shared.device,
-                &pipeline.shared.queue,
-            );
-        }
+        drop(graph);
+        drop(scheduler);
 
         Ok(Self {
+            render_thread,
             backlog: VecDeque::new(),
-            pipeline,
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
             forward,
@@ -152,17 +130,17 @@ impl Renderer {
         ReadTexture { rx }
     }
 
-    pub fn device(&self) -> &Device {
-        &self.pipeline.shared.device
-    }
-
-    pub fn queue(&self) -> &Queue {
-        &self.pipeline.shared.queue
-    }
-
-    pub fn graph_mut(&mut self) -> RefMut<'_, RenderGraph> {
-        self.pipeline.wait_idle();
-        unsafe { self.pipeline.shared.graph.borrow_mut() }
+    pub fn with_command_queue_and_graph<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut RenderGraph, &mut CommandQueue<'_>) -> R,
+    {
+        self.render_thread.wait_idle();
+        // SAFETY: We have waited until the render thread is idle.
+        // This means we are allowed to access all shared resources.
+        let mut scheduler = unsafe { self.render_thread.shared.scheduler.borrow_mut() };
+        let mut graph = unsafe { self.render_thread.shared.graph.borrow_mut() };
+        let mut queue = scheduler.queue();
+        f(&mut graph, &mut queue)
     }
 
     pub fn create_render_texture(&mut self, texture: RenderTexture) -> RenderImageId {
@@ -189,10 +167,8 @@ impl Renderer {
     pub fn get_surface_size(&self, target: RenderTarget) -> Option<UVec2> {
         match target {
             RenderTarget::Window(id) => {
-                let surfaces = unsafe { self.pipeline.shared.surfaces.borrow() };
-                surfaces
-                    .get(id)
-                    .map(|s| UVec2::new(s.config.width, s.config.height))
+                let surfaces = unsafe { self.render_thread.shared.surfaces.borrow() };
+                surfaces.get(id).map(|s| s.config.extent)
             }
             RenderTarget::Image(id) => self.render_textures.get(id).map(|v| v.size),
         }
@@ -201,13 +177,13 @@ impl Renderer {
     /// Waits until a new frame can be queued.
     pub fn wait_until_ready(&mut self) {
         let _span = trace_span!("Renderer::wait_until_ready").entered();
-        self.pipeline.wait_idle();
+        self.render_thread.wait_idle();
     }
 
     pub fn render(&mut self, pool: &TaskPool) {
         let _span = trace_span!("Renderer::render").entered();
 
-        self.pipeline.wait_idle();
+        self.render_thread.wait_idle();
 
         unsafe {
             self.update_surfaces();
@@ -219,35 +195,35 @@ impl Renderer {
             self.events.clear();
         }
 
-        {
-            let mut render_textures = unsafe { self.pipeline.shared.render_textures.borrow_mut() };
+        // {
+        //     let mut render_textures = unsafe { self.pipeline.shared.render_textures.borrow_mut() };
 
-            for event in self.render_textures.events.drain(..) {
-                match event {
-                    RenderTextureEvent::Create(id, texture) => {
-                        render_textures.insert(
-                            id,
-                            RenderImageGpu {
-                                size: texture.size,
-                                texture: None,
-                            },
-                        );
-                    }
-                    RenderTextureEvent::Destroy(id) => {
-                        render_textures.remove(&id);
-                    }
-                }
-            }
-        }
+        //     for event in self.render_textures.events.drain(..) {
+        //         match event {
+        //             RenderTextureEvent::Create(id, texture) => {
+        //                 render_textures.insert(
+        //                     id,
+        //                     RenderImageGpu {
+        //                         size: texture.size,
+        //                         texture: None,
+        //                     },
+        //                 );
+        //             }
+        //             RenderTextureEvent::Destroy(id) => {
+        //                 render_textures.remove(&id);
+        //             }
+        //         }
+        //     }
+        // }
 
-        {
-            let mut jobs = unsafe { self.pipeline.shared.jobs.borrow_mut() };
-            std::mem::swap(&mut self.jobs, &mut jobs);
-        }
+        // {
+        //     let mut jobs = unsafe { self.pipeline.shared.jobs.borrow_mut() };
+        //     std::mem::swap(&mut self.jobs, &mut jobs);
+        // }
 
         // SAFETY: We just waited for the renderer to be idle.
         unsafe {
-            self.pipeline.render_unchecked();
+            self.render_thread.render_unchecked();
         }
     }
 
@@ -255,10 +231,10 @@ impl Renderer {
     ///
     ///  Caller guarantees that the renderer is idle.
     unsafe fn update_surfaces(&mut self) {
-        let mut surfaces = unsafe { self.pipeline.shared.surfaces.borrow_mut() };
-        let instance = &self.pipeline.shared.instance;
-        let adapter = &self.pipeline.shared.adapter;
-        let device = &self.pipeline.shared.device;
+        let mut surfaces = unsafe { self.render_thread.shared.surfaces.borrow_mut() };
+        let instance = &self.render_thread.shared.instance;
+        let adapter = &self.render_thread.shared.adapter;
+        let device = &self.render_thread.shared.device;
 
         while let Some(event) = self.backlog.pop_front() {
             match event {
@@ -290,7 +266,7 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        self.pipeline.shutdown();
+        self.render_thread.shutdown();
     }
 }
 

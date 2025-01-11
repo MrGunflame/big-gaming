@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
-use std::ffi::{c_void, CStr};
+use std::ffi::{c_void, CStr, CString};
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
@@ -43,6 +43,7 @@ use ash::vk::{
 };
 use ash::Entry;
 use bitflags::bitflags;
+use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
@@ -305,12 +306,12 @@ impl Instance {
         })
     }
 
-    pub fn adapters(&self) -> Vec<Adapter<'_>> {
+    pub fn adapters(&self) -> Vec<Adapter> {
         let physical_devices = unsafe { self.instance.enumerate_physical_devices().unwrap() };
         physical_devices
             .into_iter()
             .map(|physical_device| Adapter {
-                instance: &self,
+                instance: self.instance.clone(),
                 physical_device,
             })
             .collect()
@@ -376,8 +377,10 @@ impl Instance {
         };
 
         Ok(Surface {
-            instance: self.instance.clone(),
-            surface,
+            shared: Arc::new(SurfaceShared {
+                instance: self.instance.clone(),
+                surface,
+            }),
         })
     }
 
@@ -420,12 +423,12 @@ impl Instance {
     }
 }
 
-pub struct Adapter<'a> {
-    instance: &'a Instance,
+pub struct Adapter {
+    instance: Arc<InstanceShared>,
     physical_device: PhysicalDevice,
 }
 
-impl<'a> Adapter<'a> {
+impl Adapter {
     pub fn properties(&self) -> AdapterProperties {
         let properties = unsafe {
             self.instance
@@ -545,7 +548,7 @@ impl<'a> Adapter<'a> {
         let queue_infos = [queue_info];
 
         let mut layers = Vec::new();
-        if self.instance.instance.config.validation {
+        if self.instance.config.validation {
             layers.push(InstanceLayers::VALIDATION.as_ptr());
         }
 
@@ -580,13 +583,13 @@ impl<'a> Adapter<'a> {
 
         Device {
             physical_device: self.physical_device,
-            queue_family_index: queue_id,
             device: Arc::new(DeviceShared {
-                instance: self.instance.instance.clone(),
+                instance: self.instance.clone(),
                 device,
+                limits: self.device_limits(),
+                memory_properties: self.memory_properties(),
+                queue_family_index: queue_id,
             }),
-            limits: self.device_limits(),
-            memory_properties: self.memory_properties(),
         }
     }
 
@@ -607,15 +610,12 @@ impl<'a> Adapter<'a> {
 pub struct Device {
     physical_device: vk::PhysicalDevice,
     device: Arc<DeviceShared>,
-    queue_family_index: u32,
-    limits: DeviceLimits,
-    memory_properties: AdapterMemoryProperties,
 }
 
 impl Device {
     pub fn queue(&self) -> Queue {
         let info = DeviceQueueInfo2::default()
-            .queue_family_index(self.queue_family_index)
+            .queue_family_index(self.device.queue_family_index)
             // Index is always 0 since we only create
             // a single queue for now.
             .queue_index(0);
@@ -682,7 +682,7 @@ impl Device {
             memory,
             device: self.device.clone(),
             size,
-            flags: self.memory_properties.types[memory_type_index as usize].flags,
+            flags: self.device.memory_properties.types[memory_type_index as usize].flags,
             mapped_range: None,
         }
     }
@@ -852,19 +852,25 @@ impl Device {
         let mut stages = Vec::new();
         let mut color_attchment_formats: Vec<Format> = Vec::new();
 
+        let stage_entry_pointers = ScratchBuffer::new(descriptor.stages.len());
         for stage in descriptor.stages {
             let vk_stage = match stage {
-                PipelineStage::Vertex(stage) => PipelineShaderStageCreateInfo::default()
-                    .stage(ShaderStageFlags::VERTEX)
-                    .module(stage.shader.shader)
-                    .name(c"main"),
+                PipelineStage::Vertex(stage) => {
+                    let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
+
+                    PipelineShaderStageCreateInfo::default()
+                        .stage(ShaderStageFlags::VERTEX)
+                        .module(stage.shader.inner.shader)
+                        .name(&*name)
+                }
                 PipelineStage::Fragment(stage) => {
                     color_attchment_formats.extend(stage.targets.iter().copied().map(Format::from));
+                    let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
 
                     PipelineShaderStageCreateInfo::default()
                         .stage(ShaderStageFlags::FRAGMENT)
-                        .module(stage.shader.shader)
-                        .name(c"main")
+                        .module(stage.shader.inner.shader)
+                        .name(&*name)
                 }
             };
 
@@ -960,10 +966,10 @@ impl Device {
         }
     }
 
-    pub fn create_command_pool(&self) -> CommandPool<'_> {
+    pub fn create_command_pool(&self) -> CommandPool {
         let info = CommandPoolCreateInfo::default()
             .flags(CommandPoolCreateFlags::empty())
-            .queue_family_index(self.queue_family_index);
+            .queue_family_index(self.device.queue_family_index);
 
         let pool = unsafe { self.device.create_command_pool(&info, None).unwrap() };
 
@@ -974,7 +980,7 @@ impl Device {
         let buffers = unsafe { self.device.allocate_command_buffers(&info).unwrap() };
 
         CommandPool {
-            device: self,
+            device: self.device.clone(),
             pool,
             buffers,
             next_buffer: 0,
@@ -1111,104 +1117,13 @@ impl Queue {
     }
 }
 
-pub struct Surface {
+#[derive(Debug)]
+struct SurfaceShared {
     instance: Arc<InstanceShared>,
     surface: SurfaceKHR,
 }
 
-impl Surface {
-    pub fn get_capabilities(&self, device: &Device) -> SwapchainCapabilities {
-        let instance =
-            ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
-
-        let is_supported = unsafe {
-            instance
-                .get_physical_device_surface_support(
-                    device.physical_device,
-                    device.queue_family_index,
-                    self.surface,
-                )
-                .unwrap()
-        };
-
-        if !is_supported {
-            todo!()
-        }
-
-        let caps = unsafe {
-            instance
-                .get_physical_device_surface_capabilities(device.physical_device, self.surface)
-                .unwrap()
-        };
-        let formats = unsafe {
-            instance
-                .get_physical_device_surface_formats(device.physical_device, self.surface)
-                .unwrap()
-        };
-        let present_modes = unsafe {
-            instance
-                .get_physical_device_surface_present_modes(device.physical_device, self.surface)
-                .unwrap()
-        };
-
-        // Vulkan spec requires that `maxImageArrayLayers` is at least one.
-        debug_assert!(caps.max_image_array_layers >= 1);
-
-        // Vulkan spec requires that `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must be included.
-        debug_assert!(caps
-            .supported_usage_flags
-            .contains(ImageUsageFlags::COLOR_ATTACHMENT));
-
-        // FIXME: This does not seem strictly required by the Vulkan spec?
-        // See https://github.com/KhronosGroup/Vulkan-Docs/issues/2440
-        assert!(caps.supported_transforms.contains(caps.current_transform));
-
-        SwapchainCapabilities {
-            min_extent: UVec2 {
-                x: caps.min_image_extent.width,
-                y: caps.min_image_extent.height,
-            },
-            max_extent: UVec2 {
-                x: caps.max_image_extent.width,
-                y: caps.max_image_extent.height,
-            },
-            min_images: caps.min_image_count,
-            max_images: NonZeroU32::new(caps.max_image_count),
-            // FIXME: What to do about color space?
-            // It is probably always SRGB_NONLINEAR.
-            formats: formats
-                .into_iter()
-                .filter_map(|v| v.format.try_into().ok())
-                .collect(),
-            present_modes: present_modes
-                .into_iter()
-                .filter_map(|v| v.try_into().ok())
-                .collect(),
-            current_transform: caps.current_transform,
-            supported_composite_alpha: caps.supported_composite_alpha,
-        }
-    }
-
-    pub fn create_swapchain(
-        &self,
-        device: &Device,
-        config: SwapchainConfig,
-        caps: &SwapchainCapabilities,
-    ) -> Swapchain<'_> {
-        // SAFETY: `old_swapchain` is null.
-        let (swapchain, images) =
-            unsafe { self.create_swapchain_inner(device, &config, &caps, SwapchainKHR::null()) };
-
-        Swapchain {
-            surface: self,
-            device: device.clone(),
-            swapchain,
-            images,
-            format: config.format,
-            extent: config.extent,
-        }
-    }
-
+impl SurfaceShared {
     /// Creates a new [`SwapchainKHR`] and returns its images.
     ///
     /// # Safety
@@ -1240,7 +1155,7 @@ impl Surface {
 
         assert!(caps.formats.contains(&config.format));
 
-        let queue_family_indices = [device.queue_family_index];
+        let queue_family_indices = [device.device.queue_family_index];
 
         let info = SwapchainCreateInfoKHR::default()
             // - Surface must be supported. This is checked by the call to `get_capabilities` above.
@@ -1292,7 +1207,7 @@ impl Surface {
     }
 }
 
-impl Drop for Surface {
+impl Drop for SurfaceShared {
     fn drop(&mut self) {
         let instance =
             ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
@@ -1303,8 +1218,118 @@ impl Drop for Surface {
     }
 }
 
-pub struct Swapchain<'a> {
-    surface: &'a Surface,
+#[derive(Debug)]
+pub struct Surface {
+    shared: Arc<SurfaceShared>,
+}
+
+impl Surface {
+    pub fn get_capabilities(&self, device: &Device) -> SwapchainCapabilities {
+        let instance = ash::khr::surface::Instance::new(
+            &self.shared.instance.entry,
+            &self.shared.instance.instance,
+        );
+
+        let is_supported = unsafe {
+            instance
+                .get_physical_device_surface_support(
+                    device.physical_device,
+                    device.device.queue_family_index,
+                    self.shared.surface,
+                )
+                .unwrap()
+        };
+
+        if !is_supported {
+            todo!()
+        }
+
+        let caps = unsafe {
+            instance
+                .get_physical_device_surface_capabilities(
+                    device.physical_device,
+                    self.shared.surface,
+                )
+                .unwrap()
+        };
+        let formats = unsafe {
+            instance
+                .get_physical_device_surface_formats(device.physical_device, self.shared.surface)
+                .unwrap()
+        };
+        let present_modes = unsafe {
+            instance
+                .get_physical_device_surface_present_modes(
+                    device.physical_device,
+                    self.shared.surface,
+                )
+                .unwrap()
+        };
+
+        // Vulkan spec requires that `maxImageArrayLayers` is at least one.
+        debug_assert!(caps.max_image_array_layers >= 1);
+
+        // Vulkan spec requires that `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must be included.
+        debug_assert!(caps
+            .supported_usage_flags
+            .contains(ImageUsageFlags::COLOR_ATTACHMENT));
+
+        // FIXME: This does not seem strictly required by the Vulkan spec?
+        // See https://github.com/KhronosGroup/Vulkan-Docs/issues/2440
+        assert!(caps.supported_transforms.contains(caps.current_transform));
+
+        SwapchainCapabilities {
+            min_extent: UVec2 {
+                x: caps.min_image_extent.width,
+                y: caps.min_image_extent.height,
+            },
+            max_extent: UVec2 {
+                x: caps.max_image_extent.width,
+                y: caps.max_image_extent.height,
+            },
+            min_images: caps.min_image_count,
+            max_images: NonZeroU32::new(caps.max_image_count),
+            // FIXME: What to do about color space?
+            // It is probably always SRGB_NONLINEAR.
+            formats: formats
+                .into_iter()
+                .filter_map(|v| v.format.try_into().ok())
+                .collect(),
+            present_modes: present_modes
+                .into_iter()
+                .filter_map(|v| v.try_into().ok())
+                .collect(),
+            current_transform: caps.current_transform,
+            supported_composite_alpha: caps.supported_composite_alpha,
+        }
+    }
+
+    pub fn create_swapchain(
+        &self,
+        device: &Device,
+        config: SwapchainConfig,
+        caps: &SwapchainCapabilities,
+    ) -> Swapchain {
+        // SAFETY: `old_swapchain` is null.
+        let (swapchain, images) = unsafe {
+            self.shared
+                .create_swapchain_inner(device, &config, &caps, SwapchainKHR::null())
+        };
+
+        Swapchain {
+            surface: self.shared.clone(),
+            device: device.clone(),
+            swapchain,
+            images,
+            format: config.format,
+            extent: config.extent,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Swapchain {
+    surface: Arc<SurfaceShared>,
     device: Device,
     swapchain: SwapchainKHR,
     images: Vec<vk::Image>,
@@ -1313,7 +1338,7 @@ pub struct Swapchain<'a> {
     extent: UVec2,
 }
 
-impl<'a> Swapchain<'a> {
+impl Swapchain {
     pub fn recreate(&mut self, config: SwapchainConfig, caps: &SwapchainCapabilities) {
         // SAFETY: `self.swapchain` is a valid swapchain created by `self.surface`.
         // Since this function accepts a mutable reference this swapchain is not used.
@@ -1337,8 +1362,7 @@ impl<'a> Swapchain<'a> {
         self.extent = config.extent;
     }
 
-    // FIXME: Should be &mut self.
-    pub fn acquire_next_image(&self, semaphore: &mut Semaphore) -> SwapchainTexture<'_> {
+    pub fn acquire_next_image(&mut self, semaphore: &mut Semaphore) -> SwapchainTexture<'_> {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
@@ -1387,7 +1411,7 @@ impl<'a> Swapchain<'a> {
     }
 }
 
-impl<'a> Drop for Swapchain<'a> {
+impl Drop for Swapchain {
     fn drop(&mut self) {
         let device =
             ash::khr::swapchain::Device::new(&self.surface.instance.instance, &self.device.device);
@@ -1427,11 +1451,12 @@ impl TryFrom<Format> for TextureFormat {
 
     fn try_from(value: Format) -> Result<Self, Self::Error> {
         match value {
-            Format::R8G8B8A8_UNORM => Ok(Self::R8G8B8A8Unorm),
-            Format::R8G8B8A8_SRGB => Ok(Self::R8G8B8A8UnormSrgb),
-            Format::B8G8R8A8_UNORM => Ok(Self::B8G8R8A8Unorm),
-            Format::B8G8R8A8_SRGB => Ok(Self::B8G8R8A8UnormSrgb),
+            Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
+            Format::R8G8B8A8_SRGB => Ok(Self::Rgba8UnormSrgb),
+            Format::B8G8R8A8_UNORM => Ok(Self::Bgra8Unorm),
+            Format::B8G8R8A8_SRGB => Ok(Self::Bgra8UnormSrgb),
             Format::D32_SFLOAT => Ok(Self::Depth32Float),
+            Format::R16G16B16A16_SFLOAT => Ok(Self::Rgba16Float),
             _ => Err(UnknownEnumValue),
         }
     }
@@ -1440,11 +1465,12 @@ impl TryFrom<Format> for TextureFormat {
 impl From<TextureFormat> for Format {
     fn from(value: TextureFormat) -> Self {
         match value {
-            TextureFormat::R8G8B8A8Unorm => Self::R8G8B8A8_UNORM,
-            TextureFormat::R8G8B8A8UnormSrgb => Self::R8G8B8A8_SRGB,
-            TextureFormat::B8G8R8A8Unorm => Self::B8G8R8A8_SNORM,
-            TextureFormat::B8G8R8A8UnormSrgb => Self::B8G8R8A8_SRGB,
+            TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
+            TextureFormat::Rgba8UnormSrgb => Self::R8G8B8A8_SRGB,
+            TextureFormat::Bgra8Unorm => Self::B8G8R8A8_SNORM,
+            TextureFormat::Bgra8UnormSrgb => Self::B8G8R8A8_SRGB,
             TextureFormat::Depth32Float => Self::D32_SFLOAT,
+            TextureFormat::Rgba16Float => Self::R16G16B16A16_SFLOAT,
         }
     }
 }
@@ -1544,6 +1570,7 @@ impl From<IndexFormat> for vk::IndexType {
     }
 }
 
+#[derive(Debug)]
 pub struct ShaderModule {
     device: Arc<DeviceShared>,
     shader: vk::ShaderModule,
@@ -1575,15 +1602,16 @@ impl Drop for Pipeline {
     }
 }
 
-pub struct CommandPool<'a> {
-    device: &'a Device,
+#[derive(Debug)]
+pub struct CommandPool {
+    device: Arc<DeviceShared>,
     pool: vk::CommandPool,
     buffers: Vec<vk::CommandBuffer>,
     /// Index of the next buffer.
     next_buffer: usize,
 }
 
-impl<'a> CommandPool<'a> {
+impl CommandPool {
     /// Acquires a new [`CommandEncoder`] from this `CommandPool`.
     pub fn create_encoder(&mut self) -> Option<CommandEncoder<'_>> {
         let inheritance = CommandBufferInheritanceInfo::default();
@@ -1609,7 +1637,7 @@ impl<'a> CommandPool<'a> {
         }
 
         Some(CommandEncoder {
-            device: self.device,
+            device: &self.device,
             pool: self,
             buffer,
         })
@@ -1638,7 +1666,7 @@ impl<'a> CommandPool<'a> {
     }
 }
 
-impl<'a> Drop for CommandPool<'a> {
+impl Drop for CommandPool {
     fn drop(&mut self) {
         // Deallocate the command buffers of this pool:
         // https://registry.khronos.org/vulkan/specs/latest/man/html/vkFreeCommandBuffers.html
@@ -1668,8 +1696,8 @@ impl<'a> Drop for CommandPool<'a> {
 }
 
 pub struct CommandEncoder<'a> {
-    device: &'a Device,
-    pool: &'a CommandPool<'a>,
+    device: &'a DeviceShared,
+    pool: &'a CommandPool,
     buffer: vk::CommandBuffer,
 }
 
@@ -1797,7 +1825,7 @@ impl<'a> CommandEncoder<'a> {
 
             let clear_value = match attachment.load_op {
                 LoadOp::Clear(color) => ClearValue {
-                    color: ClearColorValue { float32: color },
+                    color: ClearColorValue { float32: color.0 },
                 },
                 LoadOp::Load => ClearValue::default(),
             };
@@ -2066,8 +2094,9 @@ impl<'encoder, 'resources> Drop for RenderPass<'encoder, 'resources> {
     }
 }
 
+#[derive(Debug)]
 pub struct CommandBuffer<'a> {
-    device: &'a Device,
+    device: &'a DeviceShared,
     buffer: vk::CommandBuffer,
 }
 
@@ -2092,7 +2121,7 @@ pub struct SwapchainTexture<'a> {
     pub suboptimal: bool,
     index: u32,
     device: &'a Device,
-    swapchain: &'a Swapchain<'a>,
+    swapchain: &'a Swapchain,
 }
 
 impl<'a> SwapchainTexture<'a> {
@@ -2100,7 +2129,7 @@ impl<'a> SwapchainTexture<'a> {
         &self.texture
     }
 
-    pub fn present(&self, queue: &Queue, wait_semaphore: &Semaphore) {
+    pub fn present(&self, queue: &mut Queue, wait_semaphore: &mut Semaphore) {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
@@ -2626,6 +2655,9 @@ impl Drop for InstanceShared {
 struct DeviceShared {
     instance: Arc<InstanceShared>,
     device: ash::Device,
+    queue_family_index: u32,
+    limits: DeviceLimits,
+    memory_properties: AdapterMemoryProperties,
 }
 
 impl Debug for DeviceShared {

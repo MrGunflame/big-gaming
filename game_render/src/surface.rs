@@ -2,13 +2,10 @@ use std::collections::HashMap;
 
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use wgpu::{
-    Adapter, CompositeAlphaMode, Device, Instance, PresentMode, Surface, SurfaceConfiguration,
-    SurfaceTargetUnsafe, TextureFormat, TextureUsages,
-};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
-#[allow(deprecated)]
-use wgpu::rwh::{HasRawDisplayHandle, HasRawWindowHandle};
+use crate::backend::vulkan::{Adapter, Device, Instance, Surface, Swapchain};
+use crate::backend::{PresentMode, SwapchainConfig, TextureFormat};
 
 #[derive(Debug, Default)]
 pub struct RenderSurfaces {
@@ -61,8 +58,9 @@ impl RenderSurfaces {
 
 #[derive(Debug)]
 pub struct SurfaceData {
-    pub surface: Surface<'static>,
-    pub config: SurfaceConfiguration,
+    pub surface: Surface,
+    pub swapchain: Swapchain,
+    pub config: SwapchainConfig,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
@@ -89,22 +87,16 @@ fn create_surface(
 ) -> Result<SurfaceData, ()> {
     let size = window.inner_size();
 
-    let surface: Surface<'static> = match unsafe {
-        instance.create_surface_unsafe(SurfaceTargetUnsafe::RawHandle {
-            #[allow(deprecated)]
-            raw_display_handle: window.raw_display_handle().unwrap(),
-            #[allow(deprecated)]
-            raw_window_handle: window.raw_window_handle().unwrap(),
-        })
-    } {
-        Ok(surface) => surface,
-        Err(err) => {
-            tracing::error!("failed to create surface: {}", err);
-            return Err(());
-        }
+    let surface = unsafe {
+        instance
+            .create_surface(
+                window.raw_display_handle().unwrap(),
+                window.raw_window_handle().unwrap(),
+            )
+            .unwrap()
     };
 
-    let caps = surface.get_capabilities(adapter);
+    let caps = surface.get_capabilities(device);
 
     let Some(format) = get_surface_format(&caps.formats) else {
         tracing::error!("failed to select format for render suface");
@@ -116,26 +108,17 @@ fn create_surface(
         return Err(());
     };
 
-    let Some(alpha_mode) = get_surface_alpha_mode(&caps.alpha_modes) else {
-        tracing::error!("failed to select alpha mode for render surface");
-        return Err(());
-    };
-
-    let config = SurfaceConfiguration {
-        usage: TextureUsages::RENDER_ATTACHMENT,
+    let config = SwapchainConfig {
+        image_count: caps.min_images,
+        extent: size,
         format,
-        width: size.x,
-        height: size.y,
         present_mode,
-        alpha_mode,
-        view_formats: vec![],
-        // Double buffering
-        desired_maximum_frame_latency: 2,
     };
 
-    surface.configure(device, &config);
+    let swapchain = surface.create_swapchain(device, config, &caps);
 
     Ok(SurfaceData {
+        swapchain,
         surface,
         config,
         window,
@@ -147,9 +130,9 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
         return;
     }
 
-    surface.config.width = size.x;
-    surface.config.height = size.y;
-    surface.surface.configure(device, &surface.config);
+    let caps = surface.surface.get_capabilities(device);
+    surface.config.extent = size;
+    surface.swapchain.recreate(surface.config, &caps);
 }
 
 fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {
@@ -175,8 +158,4 @@ fn get_surface_present_mode(modes: &[PresentMode]) -> Option<PresentMode> {
     }
 
     None
-}
-
-fn get_surface_alpha_mode(modes: &[CompositeAlphaMode]) -> Option<CompositeAlphaMode> {
-    modes.get(0).copied()
 }

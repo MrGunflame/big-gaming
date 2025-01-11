@@ -1,28 +1,29 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use ash::qcom;
+use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
-use wgpu::util::{BufferInitDescriptor, DeviceExt};
-use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindingResource, Buffer,
-    BufferUsages, Color, CommandEncoderDescriptor, Device, Extent3d, ImageCopyTexture,
-    ImageDataLayout, IndexFormat, LoadOp, Operations, Origin3d, Queue, RenderPassColorAttachment,
-    RenderPassDepthStencilAttachment, RenderPassDescriptor, Sampler, ShaderStages, StoreOp,
-    Texture, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
-    TextureViewDescriptor,
-};
 
+use crate::backend::vulkan::{DescriptorSetLayout, Sampler};
+use crate::backend::{
+    BufferUsage, ImageDataLayout, IndexFormat, LoadOp, ShaderStages, StoreOp, TextureDescriptor,
+    TextureFormat, TextureUsage,
+};
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{Camera, CameraUniform, RenderTarget};
-use crate::depth_stencil::DepthData;
 use crate::entities::pool::Viewer;
 use crate::entities::{
     CameraId, DirectionalLightId, Event, ImageId, MaterialId, MeshId, ObjectId, PointLightId,
     Resources, SceneId, SpotLightId,
 };
 use crate::forward::ForwardPipeline;
+use crate::graph::ctx::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferInitDescriptor,
+    CommandQueue, RenderPassColorAttachment, RenderPassDescriptor, Texture,
+};
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
 use crate::mesh::{Indices, Mesh};
@@ -36,19 +37,18 @@ use crate::texture::Image;
 pub(super) struct ForwardPass {
     pub state: Mutex<ForwardState>,
     pub forward: Arc<ForwardPipeline>,
-    pub depth_stencils: Mutex<HashMap<RenderTarget, DepthData>>,
+    pub depth_stencils: Mutex<HashMap<RenderTarget, Texture>>,
     pub dst: SlotLabel,
 }
 
 impl ForwardPass {
     pub(super) fn new(
-        device: &Device,
-        queue: &Queue,
+        queue: &mut CommandQueue<'_>,
         forward: Arc<ForwardPipeline>,
         dst: SlotLabel,
     ) -> Self {
         Self {
-            state: Mutex::new(ForwardState::new(device, queue)),
+            state: Mutex::new(ForwardState::new(queue)),
             forward,
             depth_stencils: Mutex::default(),
             dst,
@@ -64,19 +64,17 @@ impl Node for ForwardPass {
             state.update(
                 &self.forward.resources,
                 &mut events,
-                ctx.device,
-                ctx.queue,
+                &mut ctx.queue,
                 &self.forward.mesh_bind_group_layout,
                 &self.forward.material_bind_group_layout,
                 &self.forward.vs_bind_group_layout,
                 &self.forward.sampler,
-                ctx.mipmap,
             );
         }
 
         for camera in state.cameras.values() {
             if camera.target == ctx.render_target {
-                self.update_depth_stencil(ctx.render_target, ctx.size, ctx.device);
+                self.update_depth_stencil(ctx.render_target, ctx.size, &mut ctx.queue);
 
                 let scene = state.scenes.get(&camera.scene).unwrap();
                 self.render_camera_target(&state, &scene, camera, ctx);
@@ -91,17 +89,29 @@ impl Node for ForwardPass {
 }
 
 impl ForwardPass {
-    fn update_depth_stencil(&self, target: RenderTarget, size: UVec2, device: &Device) {
+    fn update_depth_stencil(
+        &self,
+        target: RenderTarget,
+        size: UVec2,
+        queue: &mut CommandQueue<'_>,
+    ) {
         let mut depth_stencils = self.depth_stencils.lock();
 
-        if let Some(data) = depth_stencils.get(&target) {
+        if let Some(texture) = depth_stencils.get(&target) {
             // Texture size unchanged.
-            if data.texture.width() == size.x && data.texture.height() == size.y {
+            if texture.size() == size {
                 return;
             }
         }
 
-        depth_stencils.insert(target, DepthData::new(device, size));
+        let texture = queue.create_texture(&TextureDescriptor {
+            size,
+            mip_levels: 1,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsage::RENDER_ATTACHMENT,
+        });
+
+        depth_stencils.insert(target, texture);
     }
 
     fn render_camera_target(
@@ -113,69 +123,66 @@ impl ForwardPass {
     ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
-        let device = ctx.device;
         let pipeline = &self.forward;
         let depth_stencils = self.depth_stencils.lock();
 
-        let light_bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("light_bind_group"),
+        let light_bind_group = ctx.queue.create_bind_group(&BindGroupDescriptor {
             layout: &pipeline.lights_bind_group_layout,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
-                    resource: scene.directional_lights_buffer.as_entire_binding(),
+                    resource: BindingResource::Buffer(&scene.directional_lights_buffer),
                 },
                 BindGroupEntry {
                     binding: 1,
-                    resource: scene.point_lights_buffer.as_entire_binding(),
+                    resource: BindingResource::Buffer(&scene.point_lights_buffer),
                 },
                 BindGroupEntry {
                     binding: 2,
-                    resource: scene.spot_lights_buffer.as_entire_binding(),
+                    resource: BindingResource::Buffer(&scene.spot_lights_buffer),
                 },
             ],
         });
 
         let depth_stencil = depth_stencils.get(&ctx.render_target).unwrap();
 
-        let size = Extent3d {
-            width: ctx.size.x,
-            height: ctx.size.y,
-            depth_or_array_layers: 1,
-        };
-        let render_target = device.create_texture(&TextureDescriptor {
-            label: None,
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
+        let render_target = ctx.queue.create_texture(&TextureDescriptor {
+            size: ctx.size,
+            mip_levels: 1,
             format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
+            usage: TextureUsage::TEXTURE_BINDING | TextureUsage::RENDER_ATTACHMENT,
         });
-        let target_view = render_target.create_view(&TextureViewDescriptor::default());
+        // let target_view = render_target.create_view(&TextureViewDescriptor::default());
 
-        let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("render_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: &target_view,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Clear(Color::BLACK),
-                    store: StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                view: &depth_stencil.view,
-                depth_ops: Some(Operations {
-                    load: LoadOp::Clear(1.0),
-                    store: StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
+        let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+            color_attachments: &[RenderPassColorAttachment {
+                texture: &render_target,
+                load_op: LoadOp::Clear(Color::BLACK),
+                store_op: StoreOp::Store,
+            }],
         });
+
+        // let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
+        //     label: Some("render_pass"),
+        //     color_attachments: &[Some(RenderPassColorAttachment {
+        //         view: &target_view,
+        //         resolve_target: None,
+        //         ops: Operations {
+        //             load: LoadOp::Clear(Color::BLACK),
+        //             store: StoreOp::Store,
+        //         },
+        //     })],
+        //     depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+        //         view: &depth_stencil.view,
+        //         depth_ops: Some(Operations {
+        //             load: LoadOp::Clear(1.0),
+        //             store: StoreOp::Store,
+        //         }),
+        //         stencil_ops: None,
+        //     }),
+        //     timestamp_writes: None,
+        //     occlusion_query_set: None,
+        // });
 
         let mut push_constants = [0; 84];
         push_constants[0..80].copy_from_slice(bytemuck::bytes_of(&CameraUniform::new(
@@ -199,12 +206,12 @@ impl ForwardPass {
             let (mesh_bg, index_buffer) = state.meshes.get(mesh).unwrap();
             let material_bg = state.materials.get(material).unwrap();
 
-            render_pass.set_bind_group(0, transform_bg, &[]);
-            render_pass.set_bind_group(1, mesh_bg, &[]);
-            render_pass.set_bind_group(2, material_bg, &[]);
-            render_pass.set_bind_group(3, &light_bind_group, &[]);
+            render_pass.set_bind_group(0, transform_bg);
+            render_pass.set_bind_group(1, mesh_bg);
+            render_pass.set_bind_group(2, material_bg);
+            render_pass.set_bind_group(3, &light_bind_group);
 
-            render_pass.set_index_buffer(index_buffer.buffer.slice(..), index_buffer.format);
+            render_pass.set_index_buffer(&index_buffer.buffer, index_buffer.format);
             render_pass.draw_indexed(0..index_buffer.len, 0, 0..1);
         }
 
@@ -214,35 +221,19 @@ impl ForwardPass {
 }
 
 fn clear_pass(ctx: &mut RenderContext<'_, '_>, dst: SlotLabel) {
-    let texture = ctx.device.create_texture(&TextureDescriptor {
-        label: None,
-        size: Extent3d {
-            width: 1,
-            height: 1,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
+    let texture = ctx.queue.create_texture(&TextureDescriptor {
+        size: UVec2::ONE,
+        mip_levels: 1,
         format: TextureFormat::Rgba16Float,
-        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
+        usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
     });
-    let view = texture.create_view(&TextureViewDescriptor::default());
 
-    ctx.encoder.begin_render_pass(&RenderPassDescriptor {
-        label: Some("clear_pass"),
-        color_attachments: &[Some(RenderPassColorAttachment {
-            view: &view,
-            resolve_target: None,
-            ops: Operations {
-                load: LoadOp::Clear(Color::BLACK),
-                store: StoreOp::Store,
-            },
-        })],
-        depth_stencil_attachment: None,
-        occlusion_query_set: None,
-        timestamp_writes: None,
+    ctx.queue.run_render_pass(&RenderPassDescriptor {
+        color_attachments: &[RenderPassColorAttachment {
+            texture: &texture,
+            load_op: LoadOp::Clear(Color::BLACK),
+            store_op: StoreOp::Store,
+        }],
     });
 
     ctx.write(dst, texture).unwrap();
@@ -256,7 +247,7 @@ struct DefaultTextures {
 }
 
 impl DefaultTextures {
-    fn new(device: &Device, queue: &Queue) -> Self {
+    fn new(queue: &mut CommandQueue<'_>) -> Self {
         let [default_base_color, default_normal, default_metallic_roughness] = [
             (TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]),
             (
@@ -267,38 +258,19 @@ impl DefaultTextures {
             (TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]),
         ]
         .map(|(format, data)| {
-            let texture = device.create_texture(&TextureDescriptor {
-                label: None,
-                size: Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: TextureDimension::D2,
+            let texture = queue.create_texture(&TextureDescriptor {
+                size: UVec2::splat(1),
+                mip_levels: 1,
                 format,
-                usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                view_formats: &[],
+                usage: TextureUsage::TRANSFER_DST,
             });
 
             queue.write_texture(
-                ImageCopyTexture {
-                    texture: &texture,
-                    mip_level: 0,
-                    origin: Origin3d::ZERO,
-                    aspect: TextureAspect::All,
-                },
+                &texture,
                 &data,
                 ImageDataLayout {
-                    offset: 0,
-                    bytes_per_row: Some(4),
-                    rows_per_image: Some(1),
-                },
-                Extent3d {
-                    width: 1,
-                    height: 1,
-                    depth_or_array_layers: 1,
+                    bytes_per_row: 4,
+                    rows_per_image: 1,
                 },
             );
 
@@ -341,23 +313,20 @@ struct Scene {
 }
 
 impl Scene {
-    fn new(device: &Device) -> Self {
-        let directional_lights = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+    fn new(queue: &mut CommandQueue<'_>) -> Self {
+        let directional_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<DirectionalLightUniform>::new().as_bytes(),
-            usage: BufferUsages::STORAGE,
+            usage: BufferUsage::STORAGE,
         });
 
-        let point_lights = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+        let point_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<PointLightUniform>::new().as_bytes(),
-            usage: BufferUsages::STORAGE,
+            usage: BufferUsage::STORAGE,
         });
 
-        let spot_lights = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+        let spot_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<SpotLightUniform>::new().as_bytes(),
-            usage: BufferUsages::STORAGE,
+            usage: BufferUsage::STORAGE,
         });
 
         Self {
@@ -383,9 +352,9 @@ impl Scene {
 }
 
 impl ForwardState {
-    fn new(device: &Device, queue: &Queue) -> Self {
+    fn new(queue: &mut CommandQueue<'_>) -> Self {
         Self {
-            default_textures: DefaultTextures::new(device, queue),
+            default_textures: DefaultTextures::new(queue),
             meshes: HashMap::new(),
             images: HashMap::new(),
             materials: HashMap::new(),
@@ -400,13 +369,11 @@ impl ForwardState {
         &mut self,
         resources: &Resources,
         events: &mut Vec<Event>,
-        device: &Device,
-        queue: &Queue,
-        mesh_bind_group_layout: &BindGroupLayout,
-        material_bind_group_layout: &BindGroupLayout,
-        object_bind_group_layout: &BindGroupLayout,
-        material_sampler: &Sampler,
-        mipmap_generator: &mut MipMapGenerator,
+        queue: &mut CommandQueue<'_>,
+        mesh_bind_group_layout: &Arc<DescriptorSetLayout>,
+        material_bind_group_layout: &Arc<DescriptorSetLayout>,
+        object_bind_group_layout: &Arc<DescriptorSetLayout>,
+        material_sampler: &Arc<Sampler>,
     ) {
         let meshes = unsafe { resources.meshes.viewer() };
         let images = unsafe { resources.images.viewer() };
@@ -428,7 +395,7 @@ impl ForwardState {
                     let scene = self
                         .scenes
                         .entry(camera.scene)
-                        .or_insert_with(|| Scene::new(device));
+                        .or_insert_with(|| Scene::new(queue));
                     scene.cameras.insert(id);
                 }
                 Event::DestroyCamera(id) => {
@@ -445,15 +412,13 @@ impl ForwardState {
                     // Otherwise we will have to upload it.
                     self.meshes.entry(object.mesh).or_insert_with(|| {
                         let mesh = meshes.get(object.mesh.0).unwrap();
-                        upload_mesh(device, mesh, mesh_bind_group_layout)
+                        upload_mesh(queue, mesh, mesh_bind_group_layout)
                     });
 
                     self.materials.entry(object.material).or_insert_with(|| {
                         let material = materials.get(object.material.0).unwrap();
                         create_material(
-                            device,
                             queue,
-                            mipmap_generator,
                             material_bind_group_layout,
                             &self.default_textures,
                             &mut self.images,
@@ -463,18 +428,16 @@ impl ForwardState {
                         )
                     });
 
-                    let transform_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                        label: None,
+                    let transform_buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: bytemuck::bytes_of(&TransformUniform::from(object.transform)),
-                        usage: BufferUsages::UNIFORM,
+                        usage: BufferUsage::UNIFORM,
                     });
 
-                    let object_bind_group = device.create_bind_group(&BindGroupDescriptor {
-                        label: None,
+                    let object_bind_group = queue.create_bind_group(&BindGroupDescriptor {
                         layout: object_bind_group_layout,
                         entries: &[BindGroupEntry {
                             binding: 0,
-                            resource: transform_buffer.as_entire_binding(),
+                            resource: BindingResource::Buffer(&transform_buffer),
                         }],
                     });
 
@@ -484,7 +447,7 @@ impl ForwardState {
                     let scene = self
                         .scenes
                         .entry(object.scene)
-                        .or_insert_with(|| Scene::new(device));
+                        .or_insert_with(|| Scene::new(queue));
                     scene.objects.insert(id);
                 }
                 Event::DestroyObject(id) => {
@@ -505,7 +468,7 @@ impl ForwardState {
                     let scene = self
                         .scenes
                         .entry(light.scene)
-                        .or_insert_with(|| Scene::new(device));
+                        .or_insert_with(|| Scene::new(queue));
 
                     scene.directional_lights.insert(id);
 
@@ -517,10 +480,9 @@ impl ForwardState {
                         .map(DirectionalLightUniform::from)
                         .collect::<DynamicBuffer<DirectionalLightUniform>>();
 
-                    let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                        label: None,
+                    let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: buffer.as_bytes(),
-                        usage: BufferUsages::STORAGE,
+                        usage: BufferUsage::STORAGE,
                     });
 
                     scene.directional_lights_buffer = buffer;
@@ -543,10 +505,9 @@ impl ForwardState {
                             .map(DirectionalLightUniform::from)
                             .collect::<DynamicBuffer<DirectionalLightUniform>>();
 
-                        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                            label: None,
+                        let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                             contents: buffer.as_bytes(),
-                            usage: BufferUsages::STORAGE,
+                            usage: BufferUsage::STORAGE,
                         });
 
                         scene.directional_lights_buffer = buffer;
@@ -558,7 +519,7 @@ impl ForwardState {
                     let scene = self
                         .scenes
                         .entry(light.scene)
-                        .or_insert_with(|| Scene::new(device));
+                        .or_insert_with(|| Scene::new(queue));
 
                     scene.point_lights.insert(id);
 
@@ -570,10 +531,9 @@ impl ForwardState {
                         .map(PointLightUniform::from)
                         .collect::<DynamicBuffer<PointLightUniform>>();
 
-                    let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                        label: None,
+                    let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: buffer.as_bytes(),
-                        usage: BufferUsages::STORAGE,
+                        usage: BufferUsage::STORAGE,
                     });
 
                     scene.point_lights_buffer = buffer;
@@ -596,10 +556,9 @@ impl ForwardState {
                             .map(PointLightUniform::from)
                             .collect::<DynamicBuffer<PointLightUniform>>();
 
-                        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                            label: None,
+                        let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                             contents: buffer.as_bytes(),
-                            usage: BufferUsages::STORAGE,
+                            usage: BufferUsage::STORAGE,
                         });
 
                         scene.point_lights_buffer = buffer;
@@ -611,7 +570,7 @@ impl ForwardState {
                     let scene = self
                         .scenes
                         .entry(light.scene)
-                        .or_insert_with(|| Scene::new(device));
+                        .or_insert_with(|| Scene::new(queue));
 
                     scene.spot_lights.insert(id);
 
@@ -623,10 +582,9 @@ impl ForwardState {
                         .map(SpotLightUniform::from)
                         .collect::<DynamicBuffer<SpotLightUniform>>();
 
-                    let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                        label: None,
+                    let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: buffer.as_bytes(),
-                        usage: BufferUsages::STORAGE,
+                        usage: BufferUsage::STORAGE,
                     });
 
                     scene.spot_lights_buffer = buffer;
@@ -649,10 +607,9 @@ impl ForwardState {
                             .map(SpotLightUniform::from)
                             .collect::<DynamicBuffer<SpotLightUniform>>();
 
-                        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                            label: None,
+                        let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                             contents: buffer.as_bytes(),
-                            usage: BufferUsages::STORAGE,
+                            usage: BufferUsage::STORAGE,
                         });
 
                         scene.spot_lights_buffer = buffer;
@@ -671,9 +628,9 @@ impl ForwardState {
 }
 
 fn upload_mesh(
-    device: &Device,
+    queue: &mut CommandQueue<'_>,
     mesh: &Mesh,
-    bind_group_layout: &BindGroupLayout,
+    bind_group_layout: &Arc<DescriptorSetLayout>,
 ) -> (BindGroup, IndexBuffer) {
     let _span = trace_span!("upload_mesh").entered();
     // FIXME: Since meshes are user controlled, we might not catch invalid
@@ -686,77 +643,70 @@ fn upload_mesh(
 
     let indices = match mesh.indicies() {
         Some(Indices::U32(indices)) => {
-            let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
+            let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                 contents: bytemuck::must_cast_slice(&indices),
-                usage: BufferUsages::INDEX,
+                usage: BufferUsage::INDEX,
             });
 
             IndexBuffer {
                 buffer,
-                format: IndexFormat::Uint32,
+                format: IndexFormat::U32,
                 len: indices.len() as u32,
             }
         }
         Some(Indices::U16(indices)) => {
-            let buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
+            let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                 contents: bytemuck::must_cast_slice(&indices),
-                usage: BufferUsages::INDEX,
+                usage: BufferUsage::INDEX,
             });
 
             IndexBuffer {
                 buffer,
-                format: IndexFormat::Uint16,
+                format: IndexFormat::U16,
                 len: indices.len() as u32,
             }
         }
         None => todo!(),
     };
 
-    let positions = device.create_buffer_init(&BufferInitDescriptor {
-        label: None,
+    let positions = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.positions()),
-        usage: BufferUsages::STORAGE,
+        usage: BufferUsage::STORAGE,
     });
 
-    let normals = device.create_buffer_init(&BufferInitDescriptor {
-        label: None,
+    let normals = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.normals()),
-        usage: BufferUsages::STORAGE,
+        usage: BufferUsage::STORAGE,
     });
 
-    let tangents = device.create_buffer_init(&BufferInitDescriptor {
-        label: None,
+    let tangents = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.tangents()),
-        usage: BufferUsages::STORAGE,
+        usage: BufferUsage::STORAGE,
     });
 
-    let uvs = device.create_buffer_init(&BufferInitDescriptor {
-        label: None,
+    let uvs = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.uvs()),
-        usage: BufferUsages::STORAGE,
+        usage: BufferUsage::STORAGE,
     });
 
-    let bind_group = device.create_bind_group(&BindGroupDescriptor {
-        label: None,
+    let bind_group = queue.create_bind_group(&BindGroupDescriptor {
         layout: bind_group_layout,
         entries: &[
             BindGroupEntry {
                 binding: 0,
-                resource: positions.as_entire_binding(),
+                resource: BindingResource::Buffer(&positions),
             },
             BindGroupEntry {
                 binding: 1,
-                resource: normals.as_entire_binding(),
+                resource: BindingResource::Buffer(&normals),
             },
             BindGroupEntry {
                 binding: 2,
-                resource: tangents.as_entire_binding(),
+                resource: BindingResource::Buffer(&tangents),
             },
             BindGroupEntry {
                 binding: 3,
-                resource: uvs.as_entire_binding(),
+                resource: BindingResource::Buffer(&uvs),
             },
         ],
     });
@@ -765,20 +715,17 @@ fn upload_mesh(
 }
 
 fn create_material(
-    device: &Device,
-    queue: &Queue,
-    mipmap_generator: &mut MipMapGenerator,
-    bind_group_layout: &BindGroupLayout,
+    queue: &mut CommandQueue<'_>,
+    bind_group_layout: &Arc<DescriptorSetLayout>,
     default_textures: &DefaultTextures,
     bound_textures: &mut HashMap<ImageId, Texture>,
     images: &Viewer<'_, Image>,
     material: &PbrMaterial,
-    sampler: &Sampler,
+    sampler: &Arc<Sampler>,
 ) -> BindGroup {
     let _span = trace_span!("create_material").entered();
 
-    let constants = device.create_buffer_init(&BufferInitDescriptor {
-        label: None,
+    let constants = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::bytes_of(&MaterialConstants {
             base_color: material.base_color.as_rgba(),
             base_metallic: material.metallic,
@@ -786,7 +733,7 @@ fn create_material(
             reflectance: material.reflectance,
             _pad: [0; 1],
         }),
-        usage: BufferUsages::UNIFORM,
+        usage: BufferUsage::UNIFORM,
     });
 
     // Ensure all textures exist before we try to access them.
@@ -799,7 +746,7 @@ fn create_material(
             Some(id) => {
                 if !bound_textures.contains_key(&id) {
                     let image = images.get(id.0).unwrap();
-                    let image = upload_material_texture(device, queue, mipmap_generator, image);
+                    let image = upload_material_texture(queue, image);
                     bound_textures.insert(id, image);
                 }
             }
@@ -822,31 +769,24 @@ fn create_material(
         None => &default_textures.default_metallic_roughness,
     };
 
-    device.create_bind_group(&BindGroupDescriptor {
-        label: None,
+    queue.create_bind_group(&BindGroupDescriptor {
         layout: bind_group_layout,
         entries: &[
             BindGroupEntry {
                 binding: 0,
-                resource: constants.as_entire_binding(),
+                resource: BindingResource::Buffer(&constants),
             },
             BindGroupEntry {
                 binding: 1,
-                resource: BindingResource::TextureView(
-                    &base_color_texture.create_view(&TextureViewDescriptor::default()),
-                ),
+                resource: BindingResource::Texture(base_color_texture),
             },
             BindGroupEntry {
                 binding: 2,
-                resource: BindingResource::TextureView(
-                    &normal_texture.create_view(&TextureViewDescriptor::default()),
-                ),
+                resource: BindingResource::Texture(normal_texture),
             },
             BindGroupEntry {
                 binding: 3,
-                resource: BindingResource::TextureView(
-                    &metallic_roughness_texture.create_view(&TextureViewDescriptor::default()),
-                ),
+                resource: BindingResource::Texture(metallic_roughness_texture),
             },
             BindGroupEntry {
                 binding: 4,
@@ -856,54 +796,41 @@ fn create_material(
     })
 }
 
-fn upload_material_texture(
-    device: &Device,
-    queue: &Queue,
-    mipmap_generator: &mut MipMapGenerator,
-    image: &Image,
-) -> Texture {
+fn upload_material_texture(queue: &mut CommandQueue<'_>, image: &Image) -> Texture {
     let _span = trace_span!("upload_material_texture").entered();
 
-    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
+    // TODO: Reimplement mip generation using blitting.
 
-    let size = Extent3d {
-        width: image.width(),
-        height: image.height(),
-        depth_or_array_layers: 1,
-    };
+    // let texture = queue.create_texture(&TextureDescriptor {
+    //     size,
+    //     mip_level_count: size.max_mips(TextureDimension::D2),
+    //     sample_count: 1,
+    //     dimension: TextureDimension::D2,
+    //     format: image.format(),
+    //     usage: TextureUsages::TEXTURE_BINDING
+    //         | TextureUsages::COPY_DST
+    //         | TextureUsages::RENDER_ATTACHMENT,
+    //     view_formats: &[],
+    // });
 
-    let texture = device.create_texture(&TextureDescriptor {
-        label: None,
-        size,
-        mip_level_count: size.max_mips(TextureDimension::D2),
-        sample_count: 1,
-        dimension: TextureDimension::D2,
+    let texture = queue.create_texture(&TextureDescriptor {
+        size: UVec2::new(image.width(), image.height()),
+        mip_levels: 1,
         format: image.format(),
-        usage: TextureUsages::TEXTURE_BINDING
-            | TextureUsages::COPY_DST
-            | TextureUsages::RENDER_ATTACHMENT,
-        view_formats: &[],
+        usage: TextureUsage::TRANSFER_DST | TextureUsage::TEXTURE_BINDING,
     });
 
     queue.write_texture(
-        ImageCopyTexture {
-            texture: &texture,
-            mip_level: 0,
-            origin: Origin3d::ZERO,
-            aspect: TextureAspect::All,
-        },
+        &texture,
         image.as_bytes(),
         ImageDataLayout {
-            offset: 0,
-            // TODO: Support for non-RGBA (non 4 px) textures.
-            bytes_per_row: Some(4 * image.width()),
-            rows_per_image: Some(image.height()),
+            bytes_per_row: 4 * image.width(),
+            rows_per_image: image.height(),
         },
-        size,
     );
 
-    mipmap_generator.generate_mipmaps(device, &mut encoder, &texture);
-    queue.submit(std::iter::once(encoder.finish()));
+    // mipmap_generator.generate_mipmaps(device, &mut encoder, &texture);
+    // queue.submit(std::iter::once(encoder.finish()));
 
     texture
 }

@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use glam::UVec2;
 use slotmap::{DefaultKey, SlotMap};
 
-pub use self::image::{Image, ImageFormat, TextureFormat};
+pub use self::image::{Image, ImageFormat};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct RenderImageId(DefaultKey);
