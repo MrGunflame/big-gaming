@@ -8,8 +8,10 @@ use std::ops::Range;
 
 use ash::vk::{self, PipelineStageFlags};
 use bitflags::bitflags;
+use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
 use glam::UVec2;
+use shader::ShaderInfo;
 use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, TextureView};
 
 #[derive(Clone, Debug)]
@@ -124,6 +126,13 @@ pub struct PipelineDescriptor<'a> {
     pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
     pub descriptors: &'a [&'a DescriptorSetLayout],
+    pub push_constant_ranges: &'a [PushConstantRange],
+}
+
+#[derive(Clone, Debug)]
+pub struct PushConstantRange {
+    pub range: Range<u32>,
+    pub stages: ShaderStages,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -432,15 +441,16 @@ pub enum IndexFormat {
 #[derive(Debug)]
 pub struct ShaderModule {
     inner: vulkan::ShaderModule,
+    info: ShaderInfo,
 }
 
 impl ShaderModule {
     pub fn new(source: &ShaderSource<'_>, device: &vulkan::Device) -> Self {
         match source {
             ShaderSource::Wgsl(src) => {
-                let spirv = shader::wgsl_to_spirv(&src);
+                let (spirv, info) = shader::wgsl_to_spirv(&src);
                 let inner = unsafe { device.create_shader(&spirv) };
-                Self { inner }
+                Self { inner, info }
             }
         }
     }
@@ -451,4 +461,19 @@ pub struct ShaderModuleDescriptor {}
 #[derive(Clone, Debug)]
 pub enum ShaderSource<'a> {
     Wgsl(&'a str),
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct DrawIndirectArgs {
+    pub vertex_count: u32,
+    pub instance_count: u32,
+    pub first_vertex: u32,
+    pub first_instance: u32,
+}
+
+impl DrawIndirectArgs {
+    pub fn as_bytes(&self) -> &[u8] {
+        bytemuck::bytes_of(self)
+    }
 }

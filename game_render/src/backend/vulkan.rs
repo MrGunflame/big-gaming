@@ -48,6 +48,7 @@ use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 use tracing::instrument::WithSubscriber;
+use wgpu::hal::auxil::db;
 
 use crate::backend::TextureLayout;
 
@@ -602,6 +603,7 @@ impl Adapter {
 
         DeviceLimits {
             max_push_constants_size: props.limits.max_push_constants_size,
+            max_bound_descriptor_sets: props.limits.max_bound_descriptor_sets,
         }
     }
 }
@@ -842,7 +844,43 @@ impl Device {
             .map(|layout| layout.layout)
             .collect::<Vec<_>>();
 
-        let pipeline_layout_info = PipelineLayoutCreateInfo::default().set_layouts(&descriptors);
+        let push_constant_ranges = descriptor
+            .push_constant_ranges
+            .iter()
+            .map(|r| {
+                assert!(r.range.end > r.range.start);
+
+                let offset = r.range.start;
+                let size = r.range.end - r.range.start;
+                let stage_flags: vk::ShaderStageFlags = r.stages.into();
+
+                assert!(offset < self.device.limits.max_push_constants_size);
+                assert!(offset % 4 == 0);
+                assert!(size > 0);
+                assert!(size % 4 == 0);
+                assert!(size <= self.device.limits.max_push_constants_size - offset);
+                assert!(!stage_flags.is_empty());
+
+                vk::PushConstantRange {
+                    // - `offset` must be less than `VkPhysicalDeviceLimits::maxPushConstantsSize`.
+                    // - `offset` must be a multiple of 4.
+                    offset,
+                    // - `size` must be greater than 0.
+                    // - `size` must be a multiple of 4.
+                    // - `size` must be less than or equal to `VkPhysicalDeviceLimits::maxPushConstantsSize` minus `offset`.
+                    size,
+                    // - `stageFlags` must not be 0.
+                    stage_flags,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        assert!(descriptors.len() as u32 <= self.device.limits.max_bound_descriptor_sets);
+
+        let pipeline_layout_info = PipelineLayoutCreateInfo::default()
+            // - `setLayoutCount` must be less than or equal to `VkPhysicalDeviceLimits::maxBoundDescriptorSets`.
+            .set_layouts(&descriptors)
+            .push_constant_ranges(&push_constant_ranges);
         let pipeline_layout = unsafe {
             self.device
                 .create_pipeline_layout(&pipeline_layout_info, None)
@@ -858,6 +896,8 @@ impl Device {
                 PipelineStage::Vertex(stage) => {
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
 
+                    validate_shader_bindings(stage.shader, descriptor.descriptors);
+
                     PipelineShaderStageCreateInfo::default()
                         .stage(ShaderStageFlags::VERTEX)
                         .module(stage.shader.inner.shader)
@@ -866,6 +906,8 @@ impl Device {
                 PipelineStage::Fragment(stage) => {
                     color_attchment_formats.extend(stage.targets.iter().copied().map(Format::from));
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
+
+                    validate_shader_bindings(stage.shader, descriptor.descriptors);
 
                     PipelineShaderStageCreateInfo::default()
                         .stage(ShaderStageFlags::FRAGMENT)
@@ -963,6 +1005,11 @@ impl Device {
             device: self.device.clone(),
             pipeline: pipelines[0],
             pipeline_layout,
+            descriptors: descriptor
+                .descriptors
+                .iter()
+                .map(|descriptor| descriptor.bindings.clone())
+                .collect(),
         }
     }
 
@@ -1109,10 +1156,15 @@ impl Queue {
         Ok(())
     }
 
-    pub fn wait_idle(&mut self) {
+    /// Waits for the `Queue` to become idle.
+    ///
+    /// When this function returns all previously submitted command buffers on this `Queue` have
+    /// finished execution.
+    pub fn wait_idle(&mut self) -> Result<(), Error> {
         unsafe {
             // - Access to `queue` must be externally synchronized.
-            self.device.device.queue_wait_idle(self.queue).unwrap();
+            self.device.device.queue_wait_idle(self.queue)?;
+            Ok(())
         }
     }
 }
@@ -1589,6 +1641,7 @@ pub struct Pipeline {
     device: Arc<DeviceShared>,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
+    descriptors: Vec<Vec<super::DescriptorBinding>>,
 }
 
 impl Drop for Pipeline {
@@ -2118,7 +2171,7 @@ impl Drop for Semaphore {
 
 pub struct SwapchainTexture<'a> {
     texture: Texture,
-    pub suboptimal: bool,
+    suboptimal: bool,
     index: u32,
     device: &'a Device,
     swapchain: &'a Swapchain,
@@ -2127,6 +2180,10 @@ pub struct SwapchainTexture<'a> {
 impl<'a> SwapchainTexture<'a> {
     pub fn texture(&self) -> &Texture {
         &self.texture
+    }
+
+    pub fn is_suboptimal(&self) -> bool {
+        self.suboptimal
     }
 
     pub fn present(&self, queue: &mut Queue, wait_semaphore: &mut Semaphore) {
@@ -2591,9 +2648,11 @@ extern "system" fn debug_callback(
         None => Cow::Borrowed("(no message)"),
     };
 
+    let backtrace = std::backtrace::Backtrace::force_capture();
+
     match severity {
         DebugUtilsMessageSeverityFlagsEXT::ERROR => {
-            println!("{:?} {}", typ, message);
+            println!("{:?} {} {}", typ, message, backtrace);
         }
         DebugUtilsMessageSeverityFlagsEXT::WARNING => {
             println!("{:?} {}", typ, message);
@@ -2686,6 +2745,7 @@ impl Drop for DeviceShared {
 #[derive(Copy, Clone, Debug)]
 struct DeviceLimits {
     max_push_constants_size: u32,
+    max_bound_descriptor_sets: u32,
 }
 
 trait RangeBoundsExt {
@@ -2751,5 +2811,30 @@ fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFl
 
             (ImageLayout::GENERAL, flags)
         }
+    }
+}
+
+fn validate_shader_bindings(shader: &super::ShaderModule, descriptors: &[&DescriptorSetLayout]) {
+    for shader_binding in &shader.info.bindings {
+        if shader_binding.group >= descriptors.len() as u32 {
+            panic!(
+                "shader requires descriptor set bound to group {} (only {} descriptor sets were bound)",
+                shader_binding.group,
+                descriptors.len(),
+            );
+        }
+
+        let Some(binding) = descriptors[shader_binding.group as usize]
+            .bindings
+            .iter()
+            .find(|descriptor_binding| descriptor_binding.binding == shader_binding.binding)
+        else {
+            panic!(
+                "shader requires descriptor set with binding {} in group {}",
+                shader_binding.group, shader_binding.binding,
+            );
+        };
+
+        assert!(shader_binding.kind == binding.kind);
     }
 }

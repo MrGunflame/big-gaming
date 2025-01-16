@@ -19,6 +19,14 @@ impl RenderSurfaces {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.windows.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn create(
         &mut self,
         instance: &Instance,

@@ -5,11 +5,12 @@ use std::sync::Arc;
 
 use ash::vk::PipelineStageFlags;
 use game_common::cell::UnsafeRefCell;
+use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 
 use crate::backend::vulkan::{Adapter, CommandPool, Device, Instance, Queue};
-use crate::backend::{AccessFlags, QueueSubmit};
+use crate::backend::{AccessFlags, PipelineBarriers, QueueSubmit, TextureBarrier};
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::ctx::Scheduler;
@@ -193,19 +194,21 @@ impl RenderThread {
         let mut image_avail_sems = Vec::new();
         let mut render_done_sems = Vec::new();
 
+        let mut outputs = ScratchBuffer::new(surfaces.len());
         for (window, surface) in surfaces.iter_mut() {
             let mut image_avail = self.shared.device.create_semaphore();
             let render_done = self.shared.device.create_semaphore();
 
             let surface_window = surface.window().clone();
             let output = surface.swapchain.acquire_next_image(&mut image_avail);
+            let output = outputs.insert(output);
 
             image_avail_sems.push(image_avail);
             render_done_sems.push(render_done);
 
             let mut queue = self.scheduler.queue();
             let swapchain_texture = queue.import_texture(
-                unsafe { core::mem::transmute::<&'_ _, &'static _>(&output.texture()) },
+                unsafe { core::mem::transmute::<&'_ _, &'static _>(output.texture()) },
                 AccessFlags::empty(),
                 output.texture().size(),
                 output.texture().format(),
@@ -239,17 +242,30 @@ impl RenderThread {
 
         let res = self.scheduler.execute(&mut encoder);
 
-        self.queue.submit(
-            core::iter::once(encoder.finish()),
-            QueueSubmit {
-                wait: &mut image_avail_sems,
-                wait_stage: PipelineStageFlags::TOP_OF_PIPE,
-                signal: &mut render_done_sems,
-            },
-        );
+        for (_, output) in &mut surfaces_to_present {
+            encoder.insert_pipeline_barriers(&PipelineBarriers {
+                buffer: &[],
+                texture: &[TextureBarrier {
+                    src_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    dst_access: AccessFlags::PRESENT,
+                    texture: output.texture(),
+                }],
+            });
+        }
+
+        self.queue
+            .submit(
+                core::iter::once(encoder.finish()),
+                QueueSubmit {
+                    wait: &mut image_avail_sems,
+                    wait_stage: PipelineStageFlags::TOP_OF_PIPE,
+                    signal: &mut render_done_sems,
+                },
+            )
+            .unwrap();
 
         for ((window, output), mut render_done) in
-            surfaces_to_present.into_iter().zip(render_done_sems)
+            surfaces_to_present.into_iter().zip(&mut render_done_sems)
         {
             window.pre_present_notify();
             output.present(&mut self.queue, &mut render_done);
@@ -257,6 +273,12 @@ impl RenderThread {
 
         self.queue.wait_idle();
         drop(res);
+        unsafe {
+            self.command_pool.reset();
+        }
+
+        drop(render_done_sems);
+        drop(image_avail_sems);
     }
 }
 

@@ -4,7 +4,6 @@ use ash::vk::{CuFunctionNVX, PipelineStageFlags};
 use bytemuck::{Pod, Zeroable};
 use game_render::backend::allocator::{GeneralPurposeAllocator, UsageFlags};
 use game_render::backend::descriptors::DescriptorSetAllocator;
-use game_render::backend::shader::glsl_to_spirv;
 use game_render::backend::vulkan::{Config, DescriptorSetLayout, Pipeline, Sampler};
 use game_render::backend::{
     AccessFlags, AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor,
@@ -17,6 +16,8 @@ use game_render::backend::{
 use game_render::graph::ctx::{
     BindGroupDescriptor, BindGroupEntry, BufferDescriptor, CommandQueue, Resources, Scheduler,
 };
+use game_render::Renderer;
+use game_tasks::TaskPool;
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
 use glam::{vec2, vec3, vec4, UVec2, Vec2, Vec3, Vec4};
@@ -39,7 +40,7 @@ impl App for MyApp {
         match event {
             game_window::events::WindowEvent::WindowCreated(id) => {
                 let window = ctx.windows.state(id.window).unwrap();
-                vk_main(window);
+                render_main(window);
             }
             _ => (),
         }
@@ -48,291 +49,302 @@ impl App for MyApp {
     fn update(&mut self, ctx: game_window::WindowManagerContext<'_>) {}
 }
 
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-struct Vertex {
-    pos: Vec4,
-    color: Vec4,
-}
+fn render_main(window: WindowState) {
+    let mut renderer = Renderer::new().unwrap();
+    let mut pool = TaskPool::new(1);
 
-impl Vertex {
-    const fn new(pos: Vec4, color: Vec4) -> Self {
-        Self { pos, color }
+    renderer.create(window.id(), window);
+
+    loop {
+        renderer.render(&pool);
     }
 }
 
-static VERTICES: [Vertex; 3] = [
-    Vertex::new(vec4(0.0, -0.5, 0.0, 0.0), vec4(1.0, 1.0, 1.0, 0.0)),
-    Vertex::new(vec4(0.5, 0.5, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0)),
-    Vertex::new(vec4(-0.5, 0.5, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0)),
-];
+// #[repr(C)]
+// #[derive(Copy, Clone, Debug, Zeroable, Pod)]
+// struct Vertex {
+//     pos: Vec4,
+//     color: Vec4,
+// }
 
-fn vk_main(state: WindowState) {
-    let instance =
-        game_render::backend::vulkan::Instance::new(Config { validation: true }).unwrap();
+// impl Vertex {
+//     const fn new(pos: Vec4, color: Vec4) -> Self {
+//         Self { pos, color }
+//     }
+// }
 
-    let texture_data = image::load_from_memory(include_bytes!("../../assets/diffuse.png"))
-        .unwrap()
-        .to_rgba8();
+// static VERTICES: [Vertex; 3] = [
+//     Vertex::new(vec4(0.0, -0.5, 0.0, 0.0), vec4(1.0, 1.0, 1.0, 0.0)),
+//     Vertex::new(vec4(0.5, 0.5, 0.0, 0.0), vec4(0.0, 1.0, 0.0, 0.0)),
+//     Vertex::new(vec4(-0.5, 0.5, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0)),
+// ];
 
-    // let vert_glsl = include_str!("../shader.vert");
-    // let frag_glsl = include_str!("../shader.frag");
-    let vert_spv = include_bytes!("../vert.spv");
-    let frag_spv = include_bytes!("../frag.spv");
-    // let vert_spv = glsl_to_spirv(&vert_glsl, naga::ShaderStage::Vertex);
-    // let frag_spv = glsl_to_spirv(&frag_glsl, naga::ShaderStage::Fragment);
+// fn vk_main(state: WindowState) {
+//     let instance =
+//         game_render::backend::vulkan::Instance::new(Config { validation: true }).unwrap();
 
-    for adapter in instance.adapters() {
-        dbg!(adapter.properties());
-        dbg!(&adapter.queue_families());
-        let mem_props = adapter.memory_properties();
+//     let texture_data = image::load_from_memory(include_bytes!("../../assets/diffuse.png"))
+//         .unwrap()
+//         .to_rgba8();
 
-        for queue_family in adapter.queue_families() {
-            if queue_family
-                .capabilities
-                .contains(QueueCapabilities::GRAPHICS)
-            {
-                let device = adapter.create_device(queue_family.id);
-                let mut queue = device.queue();
+//     // let vert_glsl = include_str!("../shader.vert");
+//     // let frag_glsl = include_str!("../shader.frag");
+//     let vert_spv = include_bytes!("../vert.spv");
+//     let frag_spv = include_bytes!("../frag.spv");
+//     // let vert_spv = glsl_to_spirv(&vert_glsl, naga::ShaderStage::Vertex);
+//     // let frag_spv = glsl_to_spirv(&frag_glsl, naga::ShaderStage::Fragment);
 
-                let surface = unsafe {
-                    instance
-                        .create_surface(
-                            state.raw_display_handle().unwrap(),
-                            state.raw_window_handle().unwrap(),
-                        )
-                        .unwrap()
-                };
+//     for adapter in instance.adapters() {
+//         dbg!(adapter.properties());
+//         dbg!(&adapter.queue_families());
+//         let mem_props = adapter.memory_properties();
 
-                let mut pool = device.create_command_pool();
+//         for queue_family in adapter.queue_families() {
+//             if queue_family
+//                 .capabilities
+//                 .contains(QueueCapabilities::GRAPHICS)
+//             {
+//                 let device = adapter.create_device(queue_family.id);
+//                 let mut queue = device.queue();
 
-                let caps = surface.get_capabilities(&device);
-                dbg!(&caps);
+//                 let surface = unsafe {
+//                     instance
+//                         .create_surface(
+//                             state.raw_display_handle().unwrap(),
+//                             state.raw_window_handle().unwrap(),
+//                         )
+//                         .unwrap()
+//                 };
 
-                let mut swapchain = surface.create_swapchain(
-                    &device,
-                    SwapchainConfig {
-                        format: caps.formats[0],
-                        present_mode: game_render::backend::PresentMode::Fifo,
-                        image_count: 4,
-                        extent: state.inner_size(),
-                    },
-                    &caps,
-                );
+//                 let mut pool = device.create_command_pool();
 
-                let mut image_avail = device.create_semaphore();
-                let mut render_done = device.create_semaphore();
+//                 let caps = surface.get_capabilities(&device);
+//                 dbg!(&caps);
 
-                let mut scheduler = Scheduler::new(device.clone(), mem_props);
+//                 let mut swapchain = surface.create_swapchain(
+//                     &device,
+//                     SwapchainConfig {
+//                         format: caps.formats[0],
+//                         present_mode: game_render::backend::PresentMode::Fifo,
+//                         image_count: 4,
+//                         extent: state.inner_size(),
+//                     },
+//                     &caps,
+//                 );
 
-                let mut node = None;
+//                 let mut image_avail = device.create_semaphore();
+//                 let mut render_done = device.create_semaphore();
 
-                loop {
-                    let img = swapchain.acquire_next_image(&mut image_avail);
+//                 let mut scheduler = Scheduler::new(device.clone(), mem_props);
 
-                    let mut ctx = scheduler.queue();
-                    let swapchain_id = unsafe {
-                        ctx.import_texture(
-                            core::mem::transmute(img.texture()),
-                            AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        )
-                    };
+//                 let mut node = None;
 
-                    let node = node.get_or_insert_with(|| ExampleNode::setup(&mut ctx));
-                    node.render(&mut ctx, &swapchain_id);
+//                 loop {
+//                     let img = swapchain.acquire_next_image(&mut image_avail);
 
-                    let mut encoder = pool.create_encoder().unwrap();
+//                     let mut ctx = scheduler.queue();
+//                     let swapchain_id = unsafe {
+//                         ctx.import_texture(
+//                             core::mem::transmute(img.texture()),
+//                             AccessFlags::COLOR_ATTACHMENT_WRITE,
+//                         )
+//                     };
 
-                    encoder.insert_pipeline_barriers(&PipelineBarriers {
-                        buffer: &[],
-                        texture: &[TextureBarrier {
-                            texture: img.texture(),
-                            src_access: AccessFlags::empty(),
-                            dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        }],
-                    });
+//                     let node = node.get_or_insert_with(|| ExampleNode::setup(&mut ctx));
+//                     node.render(&mut ctx, &swapchain_id);
 
-                    let cmds = ctx.finish();
-                    let res = scheduler.execute(cmds, &mut encoder);
+//                     let mut encoder = pool.create_encoder().unwrap();
 
-                    encoder.insert_pipeline_barriers(&PipelineBarriers {
-                        buffer: &[],
-                        texture: &[TextureBarrier {
-                            texture: img.texture(),
-                            src_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
-                            dst_access: AccessFlags::PRESENT,
-                        }],
-                    });
+//                     encoder.insert_pipeline_barriers(&PipelineBarriers {
+//                         buffer: &[],
+//                         texture: &[TextureBarrier {
+//                             texture: img.texture(),
+//                             src_access: AccessFlags::empty(),
+//                             dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+//                         }],
+//                     });
 
-                    queue.submit(
-                        std::iter::once(encoder.finish()),
-                        QueueSubmit {
-                            wait: &mut [&mut image_avail],
-                            wait_stage: PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                            signal: &mut [&mut render_done],
-                        },
-                    );
+//                     let cmds = ctx.finish();
+//                     let res = scheduler.execute(cmds, &mut encoder);
 
-                    img.present(&queue, &render_done);
-                    queue.wait_idle();
-                    unsafe {
-                        pool.reset();
-                    }
-                    drop(res);
+//                     encoder.insert_pipeline_barriers(&PipelineBarriers {
+//                         buffer: &[],
+//                         texture: &[TextureBarrier {
+//                             texture: img.texture(),
+//                             src_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+//                             dst_access: AccessFlags::PRESENT,
+//                         }],
+//                     });
 
-                    if img.suboptimal {
-                        drop(img);
-                        let caps = surface.get_capabilities(&device);
-                        swapchain.recreate(
-                            SwapchainConfig {
-                                format: caps.formats[0],
-                                present_mode: game_render::backend::PresentMode::Fifo,
-                                image_count: 4,
-                                extent: state.inner_size().clamp(caps.min_extent, caps.max_extent),
-                            },
-                            &caps,
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
+//                     queue.submit(
+//                         std::iter::once(encoder.finish()),
+//                         QueueSubmit {
+//                             wait: &mut [&mut image_avail],
+//                             wait_stage: PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+//                             signal: &mut [&mut render_done],
+//                         },
+//                     );
 
-struct ExampleNode {
-    pipeline: Arc<Pipeline>,
-    vertex_buffer: game_render::graph::ctx::Buffer,
-    texture: game_render::graph::ctx::Texture,
-    layout: Arc<DescriptorSetLayout>,
-    sampler: Arc<Sampler>,
-}
+//                     img.present(&queue, &render_done);
+//                     queue.wait_idle();
+//                     unsafe {
+//                         pool.reset();
+//                     }
+//                     drop(res);
 
-impl ExampleNode {
-    fn setup(ctx: &mut game_render::graph::ctx::CommandQueue<'_>) -> Self {
-        let vert_spv = include_bytes!("../vert.spv");
-        let frag_spv = include_bytes!("../frag.spv");
-        let vert = unsafe {
-            let data = vert_spv.to_vec();
-            let (prefix, spv, suffix) = data.align_to::<u32>();
-            assert!(prefix.is_empty() && suffix.is_empty());
-            ctx.create_shader(spv)
-        };
-        let frag = unsafe {
-            let data = frag_spv.to_vec();
-            let (prefix, spv, suffix) = data.align_to::<u32>();
-            assert!(prefix.is_empty() && suffix.is_empty());
-            ctx.create_shader(spv)
-        };
+//                     if img.suboptimal {
+//                         drop(img);
+//                         let caps = surface.get_capabilities(&device);
+//                         swapchain.recreate(
+//                             SwapchainConfig {
+//                                 format: caps.formats[0],
+//                                 present_mode: game_render::backend::PresentMode::Fifo,
+//                                 image_count: 4,
+//                                 extent: state.inner_size().clamp(caps.min_extent, caps.max_extent),
+//                             },
+//                             &caps,
+//                         );
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
-        let descriptor_set_layout = ctx.create_descriptor_set_layout(&DescriptorSetDescriptor {
-            bindings: &[
-                DescriptorBinding {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX,
-                    kind: game_render::backend::DescriptorType::Uniform,
-                },
-                DescriptorBinding {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    kind: game_render::backend::DescriptorType::Sampler,
-                },
-                DescriptorBinding {
-                    binding: 2,
-                    visibility: ShaderStages::FRAGMENT,
-                    kind: game_render::backend::DescriptorType::Texture,
-                },
-            ],
-        });
+// struct ExampleNode {
+//     pipeline: Arc<Pipeline>,
+//     vertex_buffer: game_render::graph::ctx::Buffer,
+//     texture: game_render::graph::ctx::Texture,
+//     layout: Arc<DescriptorSetLayout>,
+//     sampler: Arc<Sampler>,
+// }
 
-        let pipeline = ctx.create_pipeline(&PipelineDescriptor {
-            topology: game_render::backend::PrimitiveTopology::TriangleList,
-            front_face: game_render::backend::FrontFace::Ccw,
-            cull_mode: None,
-            stages: &[
-                PipelineStage::Vertex(VertexStage { shader: &vert }),
-                PipelineStage::Fragment(FragmentStage {
-                    shader: &frag,
-                    targets: &[TextureFormat::Bgra8UnormSrgb],
-                }),
-            ],
-            descriptors: &[&descriptor_set_layout],
-        });
+// impl ExampleNode {
+//     fn setup(ctx: &mut game_render::graph::ctx::CommandQueue<'_>) -> Self {
+//         let vert_spv = include_bytes!("../vert.spv");
+//         let frag_spv = include_bytes!("../frag.spv");
+//         let vert = unsafe {
+//             let data = vert_spv.to_vec();
+//             let (prefix, spv, suffix) = data.align_to::<u32>();
+//             assert!(prefix.is_empty() && suffix.is_empty());
+//             ctx.create_shader(spv)
+//         };
+//         let frag = unsafe {
+//             let data = frag_spv.to_vec();
+//             let (prefix, spv, suffix) = data.align_to::<u32>();
+//             assert!(prefix.is_empty() && suffix.is_empty());
+//             ctx.create_shader(spv)
+//         };
 
-        let texture_data = image::load_from_memory(include_bytes!("../../assets/diffuse.png"))
-            .unwrap()
-            .to_rgba8();
-        let texture = ctx.create_texture(TextureDescriptor {
-            size: UVec2::new(texture_data.width(), texture_data.height()),
-            format: TextureFormat::Rgba8UnormSrgb,
-            mip_levels: 1,
-        });
-        ctx.write_texture(
-            &texture,
-            &texture_data,
-            ImageDataLayout {
-                bytes_per_row: 4 * texture_data.width(),
-                rows_per_image: texture_data.height(),
-            },
-        );
+//         let descriptor_set_layout = ctx.create_descriptor_set_layout(&DescriptorSetDescriptor {
+//             bindings: &[
+//                 DescriptorBinding {
+//                     binding: 0,
+//                     visibility: ShaderStages::VERTEX,
+//                     kind: game_render::backend::DescriptorType::Uniform,
+//                 },
+//                 DescriptorBinding {
+//                     binding: 1,
+//                     visibility: ShaderStages::FRAGMENT,
+//                     kind: game_render::backend::DescriptorType::Sampler,
+//                 },
+//                 DescriptorBinding {
+//                     binding: 2,
+//                     visibility: ShaderStages::FRAGMENT,
+//                     kind: game_render::backend::DescriptorType::Texture,
+//                 },
+//             ],
+//         });
 
-        let vertex_buffer = ctx.create_buffer(BufferDescriptor {
-            size: size_of::<Vertex>() as u64 * VERTICES.len() as u64,
-        });
-        ctx.write_buffer(&vertex_buffer, bytemuck::cast_slice(&VERTICES));
+//         let pipeline = ctx.create_pipeline(&PipelineDescriptor {
+//             topology: game_render::backend::PrimitiveTopology::TriangleList,
+//             front_face: game_render::backend::FrontFace::Ccw,
+//             cull_mode: None,
+//             stages: &[
+//                 PipelineStage::Vertex(VertexStage { shader: &vert }),
+//                 PipelineStage::Fragment(FragmentStage {
+//                     shader: &frag,
+//                     targets: &[TextureFormat::Bgra8UnormSrgb],
+//                 }),
+//             ],
+//             descriptors: &[&descriptor_set_layout],
+//         });
 
-        let sampler = ctx.create_sampler(&SamplerDescriptor {
-            min_filter: FilterMode::Linear,
-            mag_filter: FilterMode::Linear,
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::Repeat,
-        });
+//         let texture_data = image::load_from_memory(include_bytes!("../../assets/diffuse.png"))
+//             .unwrap()
+//             .to_rgba8();
+//         let texture = ctx.create_texture(TextureDescriptor {
+//             size: UVec2::new(texture_data.width(), texture_data.height()),
+//             format: TextureFormat::Rgba8UnormSrgb,
+//             mip_levels: 1,
+//         });
+//         ctx.write_texture(
+//             &texture,
+//             &texture_data,
+//             ImageDataLayout {
+//                 bytes_per_row: 4 * texture_data.width(),
+//                 rows_per_image: texture_data.height(),
+//             },
+//         );
 
-        Self {
-            pipeline: pipeline.into(),
-            texture,
-            vertex_buffer,
-            layout: descriptor_set_layout.into(),
-            sampler: sampler.into(),
-        }
-    }
+//         let vertex_buffer = ctx.create_buffer(BufferDescriptor {
+//             size: size_of::<Vertex>() as u64 * VERTICES.len() as u64,
+//         });
+//         ctx.write_buffer(&vertex_buffer, bytemuck::cast_slice(&VERTICES));
 
-    fn render(
-        &self,
-        ctx: &mut game_render::graph::ctx::CommandQueue<'_>,
-        target_view: &game_render::graph::ctx::Texture,
-    ) {
-        let bg = ctx.create_bind_group(BindGroupDescriptor {
-            layout: &self.layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: game_render::graph::ctx::BindingResource::Buffer(&self.vertex_buffer),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: game_render::graph::ctx::BindingResource::Sampler(&self.sampler),
-                },
-                BindGroupEntry {
-                    binding: 2,
-                    resource: game_render::graph::ctx::BindingResource::Texture(&self.texture),
-                },
-            ],
-        });
+//         let sampler = ctx.create_sampler(&SamplerDescriptor {
+//             min_filter: FilterMode::Linear,
+//             mag_filter: FilterMode::Linear,
+//             address_mode_u: AddressMode::Repeat,
+//             address_mode_v: AddressMode::Repeat,
+//             address_mode_w: AddressMode::Repeat,
+//         });
 
-        let descriptor = game_render::graph::ctx::RenderPassDescriptor {
-            color_attachments: &[game_render::graph::ctx::RenderPassColorAttachment {
-                texture: target_view,
-                load_op: LoadOp::Clear([0.0; 4]),
-                store_op: StoreOp::Store,
-            }],
-        };
-        let mut render_pass = ctx.run_render_pass(&descriptor);
+//         Self {
+//             pipeline: pipeline.into(),
+//             texture,
+//             vertex_buffer,
+//             layout: descriptor_set_layout.into(),
+//             sampler: sampler.into(),
+//         }
+//     }
 
-        render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &bg);
-        render_pass.draw(0..3, 0..1);
+//     fn render(
+//         &self,
+//         ctx: &mut game_render::graph::ctx::CommandQueue<'_>,
+//         target_view: &game_render::graph::ctx::Texture,
+//     ) {
+//         let bg = ctx.create_bind_group(BindGroupDescriptor {
+//             layout: &self.layout,
+//             entries: &[
+//                 BindGroupEntry {
+//                     binding: 0,
+//                     resource: game_render::graph::ctx::BindingResource::Buffer(&self.vertex_buffer),
+//                 },
+//                 BindGroupEntry {
+//                     binding: 1,
+//                     resource: game_render::graph::ctx::BindingResource::Sampler(&self.sampler),
+//                 },
+//                 BindGroupEntry {
+//                     binding: 2,
+//                     resource: game_render::graph::ctx::BindingResource::Texture(&self.texture),
+//                 },
+//             ],
+//         });
 
-        drop(render_pass);
-    }
-}
+//         let descriptor = game_render::graph::ctx::RenderPassDescriptor {
+//             color_attachments: &[game_render::graph::ctx::RenderPassColorAttachment {
+//                 texture: target_view,
+//                 load_op: LoadOp::Clear([0.0; 4]),
+//                 store_op: StoreOp::Store,
+//             }],
+//         };
+//         let mut render_pass = ctx.run_render_pass(&descriptor);
+
+//         render_pass.set_pipeline(&self.pipeline);
+//         render_pass.set_bind_group(0, &bg);
+//         render_pass.draw(0..3, 0..1);
+
+//         drop(render_pass);
+//     }
+// }

@@ -2,7 +2,7 @@ mod block;
 mod buddy;
 
 use std::alloc::Layout;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
@@ -256,6 +256,8 @@ impl GeneralPurposeAllocator {
 
     unsafe fn dealloc(&self, mem_typ: u32, block_index: usize, region: Region) {
         let mut inner = self.inner.lock();
+
+        return;
 
         let pool = inner.pools.get_mut(&mem_typ).unwrap();
         let block = pool.blocks.get_mut(block_index).unwrap();

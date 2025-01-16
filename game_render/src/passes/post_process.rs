@@ -29,20 +29,22 @@ pub struct PostProcessPass {
 
 impl PostProcessPass {
     pub fn new(queue: &mut CommandQueue<'_>, src: SlotLabel, dst: SlotLabel) -> Self {
-        let bind_group_layout = queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
-            bindings: &[
-                DescriptorBinding {
-                    binding: 0,
-                    visibility: ShaderStages::FRAGMENT,
-                    kind: DescriptorType::Texture,
-                },
-                DescriptorBinding {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    kind: DescriptorType::Sampler,
-                },
-            ],
-        });
+        let bind_group_layout = Arc::new(queue.create_descriptor_set_layout(
+            &DescriptorSetDescriptor {
+                bindings: &[
+                    DescriptorBinding {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        kind: DescriptorType::Texture,
+                    },
+                    DescriptorBinding {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        kind: DescriptorType::Sampler,
+                    },
+                ],
+            },
+        ));
 
         let shader = queue.create_shader_module(ShaderSource::Wgsl(SHADER));
 
@@ -54,10 +56,13 @@ impl PostProcessPass {
             min_filter: FilterMode::Linear,
         });
 
-        let pipelines = PipelineCache::new(PostProcessPipelineBuilder { shader });
+        let pipelines = PipelineCache::new(PostProcessPipelineBuilder {
+            shader,
+            descriptor_set_layout: bind_group_layout.clone(),
+        });
 
         Self {
-            bind_group_layout: Arc::new(bind_group_layout),
+            bind_group_layout,
             sampler: Arc::new(sampler),
             pipelines,
             src,
@@ -106,6 +111,7 @@ impl Node for PostProcessPass {
 #[derive(Debug)]
 struct PostProcessPipelineBuilder {
     shader: ShaderModule,
+    descriptor_set_layout: Arc<DescriptorSetLayout>,
 }
 
 impl PipelineBuilder for PostProcessPipelineBuilder {
@@ -116,7 +122,7 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
             topology: PrimitiveTopology::TriangleList,
             front_face: FrontFace::Ccw,
             cull_mode: None,
-            descriptors: &[],
+            descriptors: &[&self.descriptor_set_layout],
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &self.shader,
@@ -128,6 +134,7 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
                     targets: &[format],
                 }),
             ],
+            push_constant_ranges: &[],
         }))
     }
 }

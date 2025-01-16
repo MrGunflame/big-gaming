@@ -280,6 +280,7 @@ pub struct BindGroupInner {
     layout: Arc<DescriptorSetLayout>,
 }
 
+#[derive(Debug)]
 struct RenderPassCmd {
     pipeline: Arc<Pipeline>,
     bind_groups: HashMap<u32, BindGroup>,
@@ -406,9 +407,12 @@ pub fn execute<'a>(
     for cmd in scheduler.cmds.drain(..) {
         match cmd {
             Command::CreateBuffer(buffer) => {
+                println!("CREATE_BUFFER {:?}", buffer)
                 // Nothing to do
             }
             Command::WriteBuffer(id, data) => {
+                println!("WRITE BUFFER {:?}", id);
+
                 let buffer = scheduler.buffers.get_mut(id).unwrap();
 
                 unsafe {
@@ -416,9 +420,11 @@ pub fn execute<'a>(
                 }
             }
             Command::CreateTexture(id) => {
+                println!("CREATE TEXTURE {:?}", id);
                 // Nothing to do
             }
             Command::WriteTexture(id, data, layout) => {
+                println!("WRITE TEXTURE {:?}", id);
                 let texture = scheduler.textures.get_mut(id).unwrap();
 
                 let mut staging_buffer = scheduler.allocator.create_buffer(
@@ -461,6 +467,8 @@ pub fn execute<'a>(
                 // Nothing to do
             }
             Command::RenderPass(cmd) => {
+                println!("RENDER PASS {:?}", cmd);
+
                 let mut buffer_barriers = Vec::new();
                 let mut texture_barriers = Vec::new();
                 let mut buffer_transition = Vec::new();
@@ -483,7 +491,7 @@ pub fn execute<'a>(
 
                             buffer_barriers.push(BufferBarrier {
                                 buffer: buffer.buffer.buffer(),
-                                src_access: AccessFlags::empty(),
+                                src_access: buffer.access,
                                 dst_access: AccessFlags::SHADER_READ,
                                 offset: 0,
                                 size: buffer.buffer.size(),
@@ -547,18 +555,26 @@ pub fn execute<'a>(
                 let mut color_attachments = Vec::new();
                 for attachment in cmd.color_attachments {
                     let texture = scheduler.textures.get(attachment.texture.id).unwrap();
-                    let texture = match &texture.data {
+                    let physical_texture = match &texture.data {
                         TextureData::Physical(data) => data,
                         TextureData::Virtual(data) => data.texture(),
                     };
 
-                    let view = color_attachment_views.insert(texture.create_view());
+                    texture_barriers.push(TextureBarrier {
+                        texture: physical_texture,
+                        src_access: texture.access,
+                        dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    });
+                    texture_transition
+                        .push((attachment.texture.id, AccessFlags::COLOR_ATTACHMENT_WRITE));
+
+                    let view = color_attachment_views.insert(physical_texture.create_view());
 
                     color_attachments.push(crate::backend::RenderPassColorAttachment {
                         load_op: attachment.load_op,
                         store_op: attachment.store_op,
                         view,
-                        size: texture.size(),
+                        size: physical_texture.size(),
                         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     });
                 }

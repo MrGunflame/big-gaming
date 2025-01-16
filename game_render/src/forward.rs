@@ -6,8 +6,8 @@ use crate::backend::vulkan::{DescriptorSetLayout, Pipeline, Sampler};
 use crate::backend::{
     AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, FilterMode,
     FragmentStage, FrontFace, PipelineDescriptor, PipelineStage, PrimitiveTopology,
-    SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages, TextureFormat,
-    VertexStage,
+    PushConstantRange, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+    TextureFormat, VertexStage,
 };
 use crate::entities::{Event, Resources};
 use crate::graph::ctx::CommandQueue;
@@ -168,6 +168,10 @@ impl ForwardPipeline {
                     targets: &[TextureFormat::Rgba16Float],
                 }),
             ],
+            push_constant_ranges: &[PushConstantRange {
+                range: 0..128,
+                stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+            }],
         });
 
         // let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
