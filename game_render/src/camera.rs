@@ -126,13 +126,6 @@ impl Default for Projection {
     }
 }
 
-pub const OPENGL_TO_WGPU: Mat4 = Mat4::from_cols_array_2d(&[
-    [1.0, 0.0, 0.0, 0.0],
-    [0.0, 1.0, 0.0, 0.0],
-    [0.0, 0.0, 0.5, 0.0],
-    [0.0, 0.0, 0.5, 1.0],
-]);
-
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
 pub struct CameraUniform {
@@ -158,7 +151,7 @@ impl CameraUniform {
                 transform.translation.z,
                 0.0,
             ],
-            view_proj: (OPENGL_TO_WGPU * proj * view).to_cols_array_2d(),
+            view_proj: (proj * view).to_cols_array_2d(),
         }
     }
 }
