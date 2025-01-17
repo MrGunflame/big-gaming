@@ -54,12 +54,12 @@ use crate::backend::TextureLayout;
 
 use super::{
     AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage, BufferView,
-    CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode, IndexFormat,
-    LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
-    PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
-    RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp,
-    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat, TextureUsage,
-    WriteDescriptorResource, WriteDescriptorResources,
+    CompareOp, CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode,
+    IndexFormat, LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags,
+    PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
+    QueueFamily, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor,
+    ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
+    TextureFormat, TextureUsage, WriteDescriptorResource, WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -988,11 +988,28 @@ impl Device {
         let dynamic_state = PipelineDynamicStateCreateInfo::default()
             .dynamic_states(&[DynamicState::VIEWPORT, DynamicState::SCISSOR]);
 
+        let depth_stencil_state = descriptor.depth_stencil_state.as_ref().map(|state| {
+            vk::PipelineDepthStencilStateCreateInfo::default()
+                .flags(vk::PipelineDepthStencilStateCreateFlags::empty())
+                .depth_test_enable(true)
+                .depth_write_enable(state.depth_write_enabled)
+                .depth_compare_op(state.depth_compare_op.into())
+                .depth_bounds_test_enable(false)
+                // TODO: Add API for this.
+                .stencil_test_enable(false)
+                .min_depth_bounds(0.0)
+                .max_depth_bounds(1.0)
+        });
+
         let mut rendering_info = PipelineRenderingCreateInfo::default()
             // - `colorAttachmentCount` must be less than `VkPhysicalDeviceLimits::maxColorAttachments`.
             .color_attachment_formats(&color_attchment_formats);
 
-        let info = GraphicsPipelineCreateInfo::default()
+        if let Some(state) = &descriptor.depth_stencil_state {
+            rendering_info = rendering_info.depth_attachment_format(state.format.into());
+        }
+
+        let mut info = GraphicsPipelineCreateInfo::default()
             .stages(&stages)
             .vertex_input_state(&vertex_input_state)
             .input_assembly_state(&input_assembly_state)
@@ -1006,6 +1023,10 @@ impl Device {
             .render_pass(vk::RenderPass::null())
             .subpass(0)
             .push_next(&mut rendering_info);
+
+        if let Some(state) = &depth_stencil_state {
+            info = info.depth_stencil_state(&state);
+        }
 
         let pipelines = unsafe {
             self.device
@@ -1651,6 +1672,21 @@ impl From<IndexFormat> for vk::IndexType {
     }
 }
 
+impl From<CompareOp> for vk::CompareOp {
+    fn from(value: CompareOp) -> Self {
+        match value {
+            CompareOp::Never => Self::NEVER,
+            CompareOp::Less => Self::LESS,
+            CompareOp::LessEqual => Self::LESS_OR_EQUAL,
+            CompareOp::Equal => Self::EQUAL,
+            CompareOp::Greater => Self::GREATER,
+            CompareOp::GreaterEqual => Self::GREATER_OR_EQUAL,
+            CompareOp::Always => Self::ALWAYS,
+            CompareOp::NotEqual => Self::NOT_EQUAL,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ShaderModule {
     device: Arc<DeviceShared>,
@@ -1921,13 +1957,42 @@ impl<'a> CommandEncoder<'a> {
                 .clear_value(clear_value);
 
             color_attachments.push(info);
-            extent = UVec2::max(extent, attachment.size);
+            extent = UVec2::max(extent, attachment.view.size);
         }
+
+        let depth_attachment = descriptor.depth_stencil_attachment.map(|attachment| {
+            let (load_op, clear_value) = match attachment.depth_load_op {
+                LoadOp::Clear(value) => (
+                    vk::AttachmentLoadOp::CLEAR,
+                    vk::ClearValue {
+                        depth_stencil: vk::ClearDepthStencilValue {
+                            depth: value,
+                            stencil: 0,
+                        },
+                    },
+                ),
+                LoadOp::Load => (vk::AttachmentLoadOp::LOAD, vk::ClearValue::default()),
+            };
+
+            let store_op = match attachment.depth_store_op {
+                StoreOp::Discard => vk::AttachmentStoreOp::NONE,
+                StoreOp::Store => vk::AttachmentStoreOp::STORE,
+            };
+
+            extent = UVec2::max(extent, attachment.view.size);
+            vk::RenderingAttachmentInfo::default()
+                .image_view(attachment.view.view)
+                .image_layout(attachment.layout)
+                .resolve_mode(ResolveModeFlags::NONE)
+                .load_op(load_op)
+                .store_op(store_op)
+                .clear_value(clear_value)
+        });
 
         assert_ne!(extent.x, 0);
         assert_ne!(extent.y, 0);
 
-        let info = RenderingInfo::default()
+        let mut info = RenderingInfo::default()
             .flags(RenderingFlags::empty())
             .render_area(Rect2D {
                 offset: Offset2D { x: 0, y: 0 },
@@ -1939,6 +2004,10 @@ impl<'a> CommandEncoder<'a> {
             .layer_count(1)
             .view_mask(0)
             .color_attachments(&color_attachments);
+
+        if let Some(attachment) = &depth_attachment {
+            info = info.depth_attachment(attachment);
+        }
 
         unsafe {
             self.device.device.cmd_begin_rendering(self.buffer, &info);
@@ -2292,6 +2361,7 @@ impl Texture {
         TextureView {
             device: &self.device,
             view,
+            size: self.size,
         }
     }
 }
@@ -2310,6 +2380,7 @@ impl Drop for Texture {
 pub struct TextureView<'a> {
     device: &'a Device,
     view: vk::ImageView,
+    size: UVec2,
 }
 
 impl<'a> Drop for TextureView<'a> {

@@ -100,6 +100,7 @@ impl Node for PostProcessPass {
                 load_op: LoadOp::Clear(Color::BLACK),
                 store_op: StoreOp::Store,
             }],
+            depth_stencil_attachment: None,
         });
 
         render_pass.set_pipeline(&pipeline);
@@ -134,6 +135,7 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
                     targets: &[format],
                 }),
             ],
+            depth_stencil_state: None,
             push_constant_ranges: &[],
         }))
     }

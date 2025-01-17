@@ -22,7 +22,7 @@ use crate::entities::{
 use crate::forward::ForwardPipeline;
 use crate::graph::ctx::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferInitDescriptor,
-    CommandQueue, RenderPassColorAttachment, RenderPassDescriptor, Texture,
+    CommandQueue, DepthStencilAttachment, RenderPassColorAttachment, RenderPassDescriptor, Texture,
 };
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
@@ -160,6 +160,11 @@ impl ForwardPass {
                 load_op: LoadOp::Clear(Color::BLACK),
                 store_op: StoreOp::Store,
             }],
+            depth_stencil_attachment: Some(&DepthStencilAttachment {
+                texture: depth_stencil,
+                load_op: LoadOp::Clear(1.0),
+                store_op: StoreOp::Store,
+            }),
         });
 
         // let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
@@ -234,6 +239,7 @@ fn clear_pass(ctx: &mut RenderContext<'_, '_>, dst: SlotLabel) {
             load_op: LoadOp::Clear(Color::BLACK),
             store_op: StoreOp::Store,
         }],
+        depth_stencil_attachment: None,
     });
 
     ctx.write(dst, texture).unwrap();

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use ash::vk;
 use game_common::collections::arena::{Arena, Key};
 use game_common::collections::scratch_buffer::ScratchBuffer;
+use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
 use wgpu::hal::auxil::db;
@@ -261,6 +262,15 @@ impl<'a> CommandQueue<'a> {
             })
             .collect();
 
+        let depth_stencil_attachment =
+            descriptor
+                .depth_stencil_attachment
+                .map(|attachment| DepthStencilAttachmentOwned {
+                    texture: attachment.texture.clone(),
+                    load_op: attachment.load_op,
+                    store_op: attachment.store_op,
+                });
+
         RenderPass {
             ctx: self,
             bind_groups: HashMap::new(),
@@ -269,6 +279,7 @@ impl<'a> CommandQueue<'a> {
             color_attachments,
             push_constants: Vec::new(),
             index_buffer: None,
+            depth_stencil_attachment,
         }
     }
 
@@ -355,6 +366,7 @@ struct RenderPassCmd {
     color_attachments: Vec<ColorAttachmentOwned>,
     push_constants: Vec<(Vec<u8>, ShaderStages, u32)>,
     index_buffer: Option<(Buffer, IndexFormat)>,
+    depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
 }
 
 #[derive(Clone, Debug)]
@@ -395,6 +407,7 @@ pub struct RenderPass<'a, 'b> {
     color_attachments: Vec<ColorAttachmentOwned>,
     push_constants: Vec<(Vec<u8>, ShaderStages, u32)>,
     index_buffer: Option<(Buffer, IndexFormat)>,
+    depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
 }
 
 impl<'a, 'b> RenderPass<'a, 'b> {
@@ -455,6 +468,7 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
                     color_attachments: self.color_attachments.clone(),
                     push_constants: self.push_constants.clone(),
                     index_buffer: self.index_buffer.clone(),
+                    depth_stencil_attachment: self.depth_stencil_attachment.clone(),
                 }));
         }
     }
@@ -462,19 +476,33 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
 
 pub struct RenderPassDescriptor<'a> {
     pub color_attachments: &'a [RenderPassColorAttachment<'a>],
+    pub depth_stencil_attachment: Option<&'a DepthStencilAttachment<'a>>,
 }
 
 pub struct RenderPassColorAttachment<'a> {
     // TODO: Should be texture view
     pub texture: &'a Texture,
-    pub load_op: LoadOp,
+    pub load_op: LoadOp<Color>,
+    pub store_op: StoreOp,
+}
+
+pub struct DepthStencilAttachment<'a> {
+    pub texture: &'a Texture,
+    pub load_op: LoadOp<f32>,
     pub store_op: StoreOp,
 }
 
 #[derive(Clone, Debug)]
 struct ColorAttachmentOwned {
     texture: Texture,
-    load_op: LoadOp,
+    load_op: LoadOp<Color>,
+    store_op: StoreOp,
+}
+
+#[derive(Clone, Debug)]
+struct DepthStencilAttachmentOwned {
+    texture: Texture,
+    load_op: LoadOp<f32>,
     store_op: StoreOp,
 }
 
@@ -644,7 +672,10 @@ pub fn execute<'a>(
                     sets.push((*index, bind_group_e.id));
                 }
 
-                let color_attachment_views = ScratchBuffer::new(cmd.color_attachments.len());
+                let attachment_views = ScratchBuffer::new(
+                    cmd.color_attachments.len()
+                        + usize::from(cmd.depth_stencil_attachment.is_some()),
+                );
                 let mut color_attachments = Vec::new();
                 for attachment in cmd.color_attachments {
                     let texture = scheduler.textures.get(attachment.texture.id).unwrap();
@@ -656,16 +687,35 @@ pub fn execute<'a>(
                     *texture_accesses.entry(attachment.texture.id).or_default() |=
                         AccessFlags::COLOR_ATTACHMENT_WRITE;
 
-                    let view = color_attachment_views.insert(physical_texture.create_view());
+                    let view = attachment_views.insert(physical_texture.create_view());
 
                     color_attachments.push(crate::backend::RenderPassColorAttachment {
                         load_op: attachment.load_op,
                         store_op: attachment.store_op,
                         view,
-                        size: physical_texture.size(),
                         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     });
                 }
+
+                let depth_attachment = cmd.depth_stencil_attachment.map(|attachment| {
+                    let texture = scheduler.textures.get(attachment.texture.id).unwrap();
+                    let physical_texture = match &texture.data {
+                        TextureData::Physical(data) => data,
+                        TextureData::Virtual(data) => data.texture(),
+                    };
+
+                    *texture_accesses.entry(attachment.texture.id).or_default() |=
+                        AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
+
+                    let view = attachment_views.insert(physical_texture.create_view());
+
+                    crate::backend::RenderPassDepthStencilAttachment {
+                        depth_load_op: attachment.load_op,
+                        depth_store_op: attachment.store_op,
+                        view,
+                        layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+                    }
+                });
 
                 if let Some((buffer, _)) = &cmd.index_buffer {
                     *buffer_accesses.entry(buffer.id).or_default() |= AccessFlags::INDEX;
@@ -708,6 +758,7 @@ pub fn execute<'a>(
                 let mut render_pass =
                     encoder.begin_render_pass(&crate::backend::RenderPassDescriptor {
                         color_attachments: &color_attachments,
+                        depth_stencil_attachment: depth_attachment.as_ref(),
                     });
 
                 render_pass.bind_pipeline(&cmd.pipeline);
@@ -747,7 +798,7 @@ pub fn execute<'a>(
                 }
 
                 drop(render_pass);
-                frame_texture_views.push(color_attachment_views);
+                frame_texture_views.push(attachment_views);
 
                 for (buffer_id, dst_access) in buffer_accesses {
                     let buffer = scheduler.buffers.get_mut(buffer_id).unwrap();

@@ -131,6 +131,14 @@ pub struct PipelineDescriptor<'a> {
     pub stages: &'a [PipelineStage<'a>],
     pub descriptors: &'a [&'a DescriptorSetLayout],
     pub push_constant_ranges: &'a [PushConstantRange],
+    pub depth_stencil_state: Option<DepthStencilState>,
+}
+
+#[derive(Debug)]
+pub struct DepthStencilState {
+    pub format: TextureFormat,
+    pub depth_write_enabled: bool,
+    pub depth_compare_op: CompareOp,
 }
 
 #[derive(Clone, Debug)]
@@ -172,21 +180,43 @@ pub struct FragmentStage<'a> {
     pub targets: &'a [TextureFormat],
 }
 
+#[derive(Debug)]
 pub struct RenderPassDescriptor<'a, 'res> {
     pub color_attachments: &'a [RenderPassColorAttachment<'res>],
+    pub depth_stencil_attachment: Option<&'a RenderPassDepthStencilAttachment<'res>>,
 }
 
+#[derive(Debug)]
 pub struct RenderPassColorAttachment<'res> {
     pub view: &'res TextureView<'res>,
     pub layout: vk::ImageLayout,
-    pub size: UVec2,
-    pub load_op: LoadOp,
+    pub load_op: LoadOp<Color>,
     pub store_op: StoreOp,
 }
 
+#[derive(Debug)]
+pub struct RenderPassDepthStencilAttachment<'res> {
+    pub view: &'res TextureView<'res>,
+    pub layout: vk::ImageLayout,
+    pub depth_load_op: LoadOp<f32>,
+    pub depth_store_op: StoreOp,
+}
+
 #[derive(Copy, Clone, Debug)]
-pub enum LoadOp {
-    Clear(Color),
+pub enum CompareOp {
+    Never,
+    Less,
+    Equal,
+    LessEqual,
+    Greater,
+    NotEqual,
+    GreaterEqual,
+    Always,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum LoadOp<T> {
+    Clear(T),
     Load,
 }
 
@@ -387,6 +417,8 @@ bitflags! {
         const INDEX = 1 << 4;
         /// Resource can be used as the source of an indirect command.
         const INDIRECT = 1 << 5;
+        const DEPTH_ATTACHMENT_WRITE = 1 << 6;
+        const DEPTH_ATTACHMENT_READ = 1 << 7;
     }
 }
 
