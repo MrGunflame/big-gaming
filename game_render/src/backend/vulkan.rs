@@ -2956,7 +2956,37 @@ fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFl
         super::AccessFlags::PRESENT => {
             return (ImageLayout::PRESENT_SRC_KHR, vk::AccessFlags2::empty());
         }
+        super::AccessFlags::DEPTH_ATTACHMENT_WRITE => {
+            return (
+                ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+                vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            );
+        }
         _ => (),
+    }
+
+    // If DEPTH_READ or DEPTH_WRITE are set and no other flags are set.
+    if (flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_READ)
+        || flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_WRITE))
+        && flags
+            .symmetric_difference(
+                super::AccessFlags::DEPTH_ATTACHMENT_READ
+                    | super::AccessFlags::DEPTH_ATTACHMENT_WRITE,
+            )
+            .is_empty()
+    {
+        let read = flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_READ);
+        let write = flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_WRITE);
+
+        let mut vk_flags = vk::AccessFlags2::empty();
+        if read {
+            vk_flags |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ;
+        }
+        if write {
+            vk_flags |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE;
+        }
+
+        return (ImageLayout::DEPTH_ATTACHMENT_OPTIMAL, vk_flags);
     }
 
     if flags.contains(super::AccessFlags::PRESENT) {
@@ -2981,6 +3011,14 @@ fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFl
         (
             super::AccessFlags::INDIRECT,
             vk::AccessFlags2::INDIRECT_COMMAND_READ,
+        ),
+        (
+            super::AccessFlags::DEPTH_ATTACHMENT_READ,
+            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ_KHR,
+        ),
+        (
+            super::AccessFlags::DEPTH_ATTACHMENT_WRITE,
+            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
         ),
     ] {
         if flags.contains(flag) {
