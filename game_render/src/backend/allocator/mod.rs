@@ -3,6 +3,7 @@ mod buddy;
 
 use std::alloc::Layout;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{self, Debug, Formatter};
 use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
@@ -346,6 +347,16 @@ impl Drop for DeviceMemoryRegion {
     }
 }
 
+impl Debug for DeviceMemoryRegion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct(stringify!(DeviceMemoryRegion))
+            .field("memory", &self.memory)
+            .field("memory_type", &self.memory_type)
+            .field("region", &self.region)
+            .finish_non_exhaustive()
+    }
+}
+
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     pub struct UsageFlags: u32 {
@@ -353,6 +364,7 @@ bitflags! {
     }
 }
 
+#[derive(Debug)]
 pub struct BufferAlloc {
     buffer: Buffer,
     memory: DeviceMemoryRegion,
@@ -383,6 +395,7 @@ impl BufferAlloc {
     }
 }
 
+#[derive(Debug)]
 pub struct TextureAlloc {
     texture: Texture,
     memory: DeviceMemoryRegion,

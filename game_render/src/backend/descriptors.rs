@@ -12,6 +12,7 @@ const MIN_POOL_SIZE: NonZeroU32 = NonZeroU32::new(1).unwrap();
 const MAX_POOL_SIZE: NonZeroU32 = NonZeroU32::new(32).unwrap();
 const GROWTH_FACTOR: NonZeroU32 = NonZeroU32::new(2).unwrap();
 
+#[derive(Debug)]
 pub struct AllocatedDescriptorSet {
     set: DescriptorSet<'static>,
     bucket: DescriptorSetResourceCount,

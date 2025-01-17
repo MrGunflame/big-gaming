@@ -7,6 +7,7 @@ use game_common::collections::arena::{Arena, Key};
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
 use glam::UVec2;
+use wgpu::hal::auxil::db;
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc, UsageFlags};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
@@ -15,10 +16,10 @@ use crate::backend::vulkan::{
 };
 use crate::backend::{
     AccessFlags, AdapterMemoryProperties, BufferBarrier, BufferUsage, CopyBuffer,
-    DescriptorSetDescriptor, ImageDataLayout, IndexFormat, LoadOp, PipelineBarriers,
-    PipelineDescriptor, SamplerDescriptor, ShaderModule, ShaderSource, ShaderStages, StoreOp,
-    TextureBarrier, TextureDescriptor, TextureFormat, WriteDescriptorBinding,
-    WriteDescriptorResource, WriteDescriptorResources,
+    DescriptorSetDescriptor, DescriptorType, ImageDataLayout, IndexFormat, LoadOp,
+    PipelineBarriers, PipelineDescriptor, PushConstantRange, SamplerDescriptor, ShaderModule,
+    ShaderSource, ShaderStages, StoreOp, TextureBarrier, TextureDescriptor, TextureFormat,
+    TextureUsage, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 
 type BufferId = Key;
@@ -85,19 +86,27 @@ impl<'a> CommandQueue<'a> {
         });
         self.scheduler.cmds.push(Command::CreateBuffer(id));
 
-        Buffer { id }
+        Buffer {
+            id,
+            usage: descriptor.usage,
+        }
     }
 
     pub fn create_buffer_init(&mut self, descriptor: &BufferInitDescriptor<'_>) -> Buffer {
         let buffer = self.create_buffer(&BufferDescriptor {
             size: descriptor.contents.len() as u64,
-            usage: descriptor.usage,
+            usage: descriptor.usage | BufferUsage::TRANSFER_DST,
         });
         self.write_buffer(&buffer, descriptor.contents);
         buffer
     }
 
     pub fn write_buffer(&mut self, buffer: &Buffer, data: &[u8]) {
+        assert!(
+            buffer.usage.contains(BufferUsage::TRANSFER_DST),
+            "Buffer cannot be written to: TRANSFER_DST not set",
+        );
+
         {
             let buffer = self.scheduler.buffers.get(buffer.id).unwrap();
             assert!(buffer.flags.contains(BufferUsage::TRANSFER_DST));
@@ -108,7 +117,13 @@ impl<'a> CommandQueue<'a> {
             .push(Command::WriteBuffer(buffer.id, data.to_vec()));
     }
 
+    #[track_caller]
     pub fn create_texture(&mut self, descriptor: &TextureDescriptor) -> Texture {
+        assert!(
+            !descriptor.usage.is_empty(),
+            "TextureUsage flags must not be empty",
+        );
+
         let texture = self
             .scheduler
             .allocator
@@ -124,6 +139,7 @@ impl<'a> CommandQueue<'a> {
             id,
             size: descriptor.size,
             format: descriptor.format,
+            usage: descriptor.usage,
         }
     }
 
@@ -133,20 +149,45 @@ impl<'a> CommandQueue<'a> {
         access: AccessFlags,
         size: UVec2,
         format: TextureFormat,
+        usage: TextureUsage,
     ) -> Texture {
         let id = self.scheduler.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
             access,
         });
-        Texture { id, size, format }
+
+        Texture {
+            id,
+            size,
+            format,
+            usage,
+        }
     }
 
+    pub(crate) fn remove_imported_texture(&mut self, texture: &Texture) {
+        for (_, bind_groups) in self.scheduler.bind_groups.iter() {
+            assert!(
+                !bind_groups.textures.iter().any(|(_, t)| t.id == texture.id),
+                "Texture cannot be removed: it is used in a descriptor set",
+            );
+        }
+
+        self.scheduler.textures.remove(texture.id);
+    }
+
+    #[track_caller]
     pub fn write_texture(&mut self, texture: &Texture, data: &[u8], layout: ImageDataLayout) {
+        assert!(
+            texture.usage.contains(TextureUsage::TRANSFER_DST),
+            "Texture cannot be written to: TRANSFER_DST usage not set",
+        );
+
         self.scheduler
             .cmds
             .push(Command::WriteTexture(texture.id, data.to_vec(), layout));
     }
 
+    #[track_caller]
     pub fn create_bind_group(&mut self, descriptor: &BindGroupDescriptor<'_>) -> BindGroup {
         let mut buffers = Vec::new();
         let mut samplers = Vec::new();
@@ -154,12 +195,23 @@ impl<'a> CommandQueue<'a> {
         for entry in descriptor.entries {
             match entry.resource {
                 BindingResource::Buffer(buffer) => {
+                    assert!(
+                        buffer.usage.contains(BufferUsage::UNIFORM)
+                            || buffer.usage.contains(BufferUsage::STORAGE),
+                        "Buffer cannot be bound to descriptor set: UNIFORM and STORAGE not set",
+                    );
+
                     buffers.push((entry.binding, buffer.clone()));
                 }
                 BindingResource::Sampler(sampler) => {
                     samplers.push((entry.binding, sampler.clone()));
                 }
                 BindingResource::Texture(texture) => {
+                    assert!(
+                        texture.usage.contains(TextureUsage::TEXTURE_BINDING),
+                        "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
+                    );
+
                     textures.push((entry.binding, texture.clone()));
                 }
             }
@@ -171,6 +223,7 @@ impl<'a> CommandQueue<'a> {
             textures,
             descriptor_set: None,
             layout: descriptor.layout.clone(),
+            physical_texture_views: Vec::new(),
         });
         BindGroup { id }
     }
@@ -194,10 +247,17 @@ impl<'a> CommandQueue<'a> {
         let color_attachments = descriptor
             .color_attachments
             .iter()
-            .map(|a| ColorAttachmentOwned {
-                texture: a.texture.clone(),
-                load_op: a.load_op,
-                store_op: a.store_op,
+            .map(|a| {
+                assert!(
+                    a.texture.usage.contains(TextureUsage::RENDER_ATTACHMENT),
+                    "Texture cannot be used as color attachment: RENDER_ATTACHMENT not set",
+                );
+
+                ColorAttachmentOwned {
+                    texture: a.texture.clone(),
+                    load_op: a.load_op,
+                    store_op: a.store_op,
+                }
             })
             .collect();
 
@@ -207,6 +267,8 @@ impl<'a> CommandQueue<'a> {
             draw_calls: Vec::new(),
             pipeline: None,
             color_attachments,
+            push_constants: Vec::new(),
+            index_buffer: None,
         }
     }
 
@@ -219,8 +281,10 @@ impl<'a> CommandQueue<'a> {
 #[derive(Clone, Debug)]
 pub struct Buffer {
     id: BufferId,
+    usage: BufferUsage,
 }
 
+#[derive(Debug)]
 pub struct BufferInner {
     buffer: BufferAlloc,
     flags: BufferUsage,
@@ -255,6 +319,7 @@ pub enum BindingResource<'a> {
     Texture(&'a Texture),
 }
 
+#[derive(Debug)]
 pub enum Command {
     CreateBuffer(BufferId),
     WriteBuffer(BufferId, Vec<u8>),
@@ -271,6 +336,7 @@ pub struct BindGroup {
     id: BindGroupId,
 }
 
+#[derive(Debug)]
 pub struct BindGroupInner {
     // (Binding, Resource)
     buffers: Vec<(u32, Buffer)>,
@@ -278,6 +344,7 @@ pub struct BindGroupInner {
     textures: Vec<(u32, Texture)>,
     descriptor_set: Option<AllocatedDescriptorSet>,
     layout: Arc<DescriptorSetLayout>,
+    physical_texture_views: Vec<TextureView<'static>>,
 }
 
 #[derive(Debug)]
@@ -286,6 +353,8 @@ struct RenderPassCmd {
     bind_groups: HashMap<u32, BindGroup>,
     draw_calls: Vec<DrawCall>,
     color_attachments: Vec<ColorAttachmentOwned>,
+    push_constants: Vec<(Vec<u8>, ShaderStages, u32)>,
+    index_buffer: Option<(Buffer, IndexFormat)>,
 }
 
 #[derive(Clone, Debug)]
@@ -293,6 +362,7 @@ pub struct Texture {
     id: TextureId,
     size: UVec2,
     format: TextureFormat,
+    usage: TextureUsage,
 }
 
 impl Texture {
@@ -305,11 +375,13 @@ impl Texture {
     }
 }
 
+#[derive(Debug)]
 pub struct TextureInner {
     data: TextureData,
     access: AccessFlags,
 }
 
+#[derive(Debug)]
 enum TextureData {
     Physical(&'static vulkan::Texture),
     Virtual(TextureAlloc),
@@ -321,6 +393,8 @@ pub struct RenderPass<'a, 'b> {
     bind_groups: HashMap<u32, BindGroup>,
     draw_calls: Vec<DrawCall>,
     color_attachments: Vec<ColorAttachmentOwned>,
+    push_constants: Vec<(Vec<u8>, ShaderStages, u32)>,
+    index_buffer: Option<(Buffer, IndexFormat)>,
 }
 
 impl<'a, 'b> RenderPass<'a, 'b> {
@@ -337,23 +411,34 @@ impl<'a, 'b> RenderPass<'a, 'b> {
     }
 
     pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
-        todo!()
+        self.push_constants.push((data.to_vec(), stages, offset));
     }
 
     pub fn set_index_buffer(&mut self, buffer: &Buffer, format: IndexFormat) {
-        todo!()
+        assert!(self.pipeline.is_some(), "Pipeline is not set");
+        assert!(
+            buffer.usage.contains(BufferUsage::INDEX),
+            "Buffer cannot be used as index buffer: INDEX not set",
+        );
+
+        self.index_buffer = Some((buffer.clone(), format));
     }
 
     pub fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {
         assert!(self.pipeline.is_some(), "Pipeline is not set");
 
-        self.draw_calls.push(DrawCall {
+        self.draw_calls.push(DrawCall::Draw(Draw {
             vertices,
             instances,
-        });
+        }));
     }
 
-    pub fn draw_indexed(&mut self, indices: Range<u32>, vertex_offset: u32, instances: Range<u32>) {
+    pub fn draw_indexed(&mut self, indices: Range<u32>, vertex_offset: i32, instances: Range<u32>) {
+        self.draw_calls.push(DrawCall::DrawIndexed(DrawIndexed {
+            indices,
+            vertex_offset,
+            instances,
+        }));
     }
 }
 
@@ -368,6 +453,8 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
                     bind_groups: self.bind_groups.clone(),
                     draw_calls: self.draw_calls.clone(),
                     color_attachments: self.color_attachments.clone(),
+                    push_constants: self.push_constants.clone(),
+                    index_buffer: self.index_buffer.clone(),
                 }));
         }
     }
@@ -392,8 +479,21 @@ struct ColorAttachmentOwned {
 }
 
 #[derive(Clone, Debug)]
-struct DrawCall {
+enum DrawCall {
+    Draw(Draw),
+    DrawIndexed(DrawIndexed),
+}
+
+#[derive(Clone, Debug)]
+struct Draw {
     vertices: Range<u32>,
+    instances: Range<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct DrawIndexed {
+    indices: Range<u32>,
+    vertex_offset: i32,
     instances: Range<u32>,
 }
 
@@ -403,6 +503,7 @@ pub fn execute<'a>(
 ) -> InflightResources<'a> {
     let mut staging_buffers = Vec::new();
     let mut frame_texture_views = Vec::new();
+    let mut frame_bind_groups = Vec::new();
 
     for cmd in scheduler.cmds.drain(..) {
         match cmd {
@@ -484,10 +585,21 @@ pub fn execute<'a>(
 
                             let view = buffer_views.insert(buffer.buffer.buffer_view());
 
-                            physical_bindings.push(WriteDescriptorBinding {
-                                binding: *binding,
-                                resource: WriteDescriptorResource::Buffer(view),
-                            });
+                            match bind_group.layout.bindings()[*binding as usize].kind {
+                                DescriptorType::Uniform => {
+                                    physical_bindings.push(WriteDescriptorBinding {
+                                        binding: *binding,
+                                        resource: WriteDescriptorResource::UniformBuffer(view),
+                                    });
+                                }
+                                DescriptorType::Storage => {
+                                    physical_bindings.push(WriteDescriptorBinding {
+                                        binding: *binding,
+                                        resource: WriteDescriptorResource::StorageBuffer(view),
+                                    });
+                                }
+                                _ => unreachable!(),
+                            }
                         }
 
                         for (binding, texture) in &bind_group.textures {
@@ -501,8 +613,7 @@ pub fn execute<'a>(
                                 TextureData::Virtual(data) => data.texture(),
                             };
 
-                            let view = physical_texture.create_view();
-                            let view = texture_views.insert(view);
+                            let view = texture_views.insert(physical_texture.create_view());
 
                             physical_bindings.push(WriteDescriptorBinding {
                                 binding: *binding,
@@ -525,7 +636,7 @@ pub fn execute<'a>(
                             bindings: &physical_bindings,
                         });
 
-                        frame_texture_views.push(texture_views);
+                        bind_group.physical_texture_views.extend(texture_views);
 
                         set
                     });
@@ -554,6 +665,10 @@ pub fn execute<'a>(
                         size: physical_texture.size(),
                         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     });
+                }
+
+                if let Some((buffer, _)) = &cmd.index_buffer {
+                    *buffer_accesses.entry(buffer.id).or_default() |= AccessFlags::INDEX;
                 }
 
                 let mut buffer_barriers = Vec::new();
@@ -607,8 +722,28 @@ pub fn execute<'a>(
                     render_pass.bind_descriptor_set(index, set.raw());
                 }
 
+                for (data, stages, offset) in cmd.push_constants {
+                    render_pass.set_push_constants(stages, offset, &data);
+                }
+
+                if let Some((buffer, format)) = cmd.index_buffer {
+                    let buffer = scheduler.buffers.get(buffer.id).unwrap();
+                    render_pass.bind_index_buffer(buffer.buffer.buffer_view(), format);
+                }
+
                 for call in cmd.draw_calls {
-                    render_pass.draw(call.vertices, call.instances);
+                    match call {
+                        DrawCall::Draw(call) => {
+                            render_pass.draw(call.vertices, call.instances);
+                        }
+                        DrawCall::DrawIndexed(call) => {
+                            render_pass.draw_indexed(
+                                call.indices,
+                                call.vertex_offset,
+                                call.instances,
+                            );
+                        }
+                    }
                 }
 
                 drop(render_pass);
@@ -631,10 +766,13 @@ pub fn execute<'a>(
     InflightResources {
         texture_views: frame_texture_views,
         staging_buffers,
+        frame_bind_groups,
     }
 }
 
+#[derive(Debug)]
 pub struct InflightResources<'a> {
-    staging_buffers: Vec<BufferAlloc>,
     texture_views: Vec<ScratchBuffer<TextureView<'a>>>,
+    staging_buffers: Vec<BufferAlloc>,
+    frame_bind_groups: Vec<BindGroupId>,
 }

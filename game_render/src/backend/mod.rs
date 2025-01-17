@@ -110,6 +110,10 @@ impl TextureFormat {
     pub const fn is_srgb(&self) -> bool {
         matches!(self, Self::Bgra8UnormSrgb | Self::Rgba8UnormSrgb)
     }
+
+    pub const fn is_depth(&self) -> bool {
+        matches!(self, Self::Depth32Float)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -292,7 +296,8 @@ pub struct WriteDescriptorBinding<'a> {
 }
 
 pub enum WriteDescriptorResource<'a> {
-    Buffer(&'a BufferView<'a>),
+    UniformBuffer(&'a BufferView<'a>),
+    StorageBuffer(&'a BufferView<'a>),
     Texture(&'a TextureView<'a>),
     Sampler(&'a Sampler),
 }
@@ -378,6 +383,20 @@ bitflags! {
         const COLOR_ATTACHMENT_WRITE = 1 << 2;
         /// Resource can be used to present to the swapchain.
         const PRESENT = 1 << 3;
+        /// Resources can be bound as a read-only index buffer.
+        const INDEX = 1 << 4;
+        /// Resource can be used as the source of an indirect command.
+        const INDIRECT = 1 << 5;
+    }
+}
+
+impl AccessFlags {
+    fn is_readable(&self) -> bool {
+        matches!(*self, Self::SHADER_READ | Self::INDEX | Self::INDIRECT)
+    }
+
+    fn is_writable(&self) -> bool {
+        matches!(*self, Self::TRANSFER_WRITE | Self::COLOR_ATTACHMENT_WRITE)
     }
 }
 

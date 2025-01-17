@@ -10,7 +10,7 @@ use game_tasks::park::Parker;
 use game_tracing::trace_span;
 
 use crate::backend::vulkan::{Adapter, CommandPool, Device, Instance, Queue};
-use crate::backend::{AccessFlags, PipelineBarriers, QueueSubmit, TextureBarrier};
+use crate::backend::{AccessFlags, PipelineBarriers, QueueSubmit, TextureBarrier, TextureUsage};
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::ctx::Scheduler;
@@ -130,7 +130,6 @@ struct RenderThread {
     queue: Queue,
     schedule: Vec<NodeLabel>,
     command_pool: CommandPool,
-    scheduler: Scheduler,
 }
 
 impl RenderThread {
@@ -138,7 +137,6 @@ impl RenderThread {
         let command_pool = shared.device.create_command_pool();
 
         Self {
-            scheduler: Scheduler::new(shared.device.clone(), shared.adapter.memory_properties()),
             shared,
             queue,
             schedule: Vec::new(),
@@ -183,6 +181,7 @@ impl RenderThread {
 
         let mut surfaces = unsafe { self.shared.surfaces.borrow_mut() };
         let mut graph = unsafe { self.shared.graph.borrow_mut() };
+        let mut scheduler = unsafe { self.shared.scheduler.borrow_mut() };
 
         if graph.has_changed {
             graph.has_changed = false;
@@ -194,6 +193,7 @@ impl RenderThread {
         let mut image_avail_sems = Vec::new();
         let mut render_done_sems = Vec::new();
 
+        let mut swapchain_textures = Vec::new();
         let mut outputs = ScratchBuffer::new(surfaces.len());
         for (window, surface) in surfaces.iter_mut() {
             let mut image_avail = self.shared.device.create_semaphore();
@@ -206,13 +206,15 @@ impl RenderThread {
             image_avail_sems.push(image_avail);
             render_done_sems.push(render_done);
 
-            let mut queue = self.scheduler.queue();
+            let mut queue = scheduler.queue();
             let swapchain_texture = queue.import_texture(
                 unsafe { core::mem::transmute::<&'_ _, &'static _>(output.texture()) },
                 AccessFlags::empty(),
                 output.texture().size(),
                 output.texture().format(),
+                TextureUsage::RENDER_ATTACHMENT,
             );
+            dbg!(&swapchain_texture);
 
             let mut resources = HashMap::new();
             resources.insert(
@@ -235,12 +237,24 @@ impl RenderThread {
 
             // surface.window().pre_present_notify();
 
+            swapchain_textures.push(swapchain_texture);
             surfaces_to_present.push((surface_window, output));
         }
 
         let mut encoder = self.command_pool.create_encoder().unwrap();
 
-        let res = self.scheduler.execute(&mut encoder);
+        for (_, output) in &mut surfaces_to_present {
+            encoder.insert_pipeline_barriers(&PipelineBarriers {
+                buffer: &[],
+                texture: &[TextureBarrier {
+                    src_access: AccessFlags::empty(),
+                    dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    texture: output.texture(),
+                }],
+            });
+        }
+
+        let res = scheduler.execute(&mut encoder);
 
         for (_, output) in &mut surfaces_to_present {
             encoder.insert_pipeline_barriers(&PipelineBarriers {
@@ -272,13 +286,19 @@ impl RenderThread {
         }
 
         self.queue.wait_idle();
-        drop(res);
         unsafe {
             self.command_pool.reset();
         }
 
+        dbg!(&res);
+        drop(res);
         drop(render_done_sems);
         drop(image_avail_sems);
+
+        for texture in swapchain_textures {
+            let mut queue = scheduler.queue();
+            queue.remove_imported_texture(&texture);
+        }
     }
 }
 

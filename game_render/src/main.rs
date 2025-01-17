@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use ash::vk::{CuFunctionNVX, PipelineStageFlags};
 use bytemuck::{Pod, Zeroable};
+use game_common::components::{Color, Transform};
 use game_render::backend::allocator::{GeneralPurposeAllocator, UsageFlags};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::vulkan::{Config, DescriptorSetLayout, Pipeline, Sampler};
@@ -13,15 +14,20 @@ use game_render::backend::{
     TextureBarrier, TextureDescriptor, TextureFormat, TextureLayout, VertexStage,
     WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
+use game_render::camera::{Camera, Projection, RenderTarget};
+use game_render::entities::Object;
 use game_render::graph::ctx::{
     BindGroupDescriptor, BindGroupEntry, BufferDescriptor, CommandQueue, Resources, Scheduler,
 };
-use game_render::Renderer;
+use game_render::light::{DirectionalLight, PointLight, SpotLight};
+use game_render::pbr::PbrMaterial;
+use game_render::{shape, Renderer};
 use game_tasks::TaskPool;
 use game_window::windows::{WindowBuilder, WindowState};
 use game_window::App;
-use glam::{vec2, vec3, vec4, UVec2, Vec2, Vec3, Vec4};
+use glam::{vec2, vec3, vec4, Quat, UVec2, Vec2, Vec3, Vec4};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use tracing::Instrument;
 
 fn main() {
     let mut manager = game_window::WindowManager::new();
@@ -53,7 +59,61 @@ fn render_main(window: WindowState) {
     let mut renderer = Renderer::new().unwrap();
     let mut pool = TaskPool::new(1);
 
-    renderer.create(window.id(), window);
+    renderer.create(window.id(), window.clone());
+
+    let scene_id = renderer.resources().scenes().insert();
+    renderer.resources().cameras().insert(Camera {
+        transform: Transform {
+            translation: Vec3::new(10.0, 0.0, 0.0),
+            ..Default::default()
+        }
+        .looking_at(Vec3::ZERO, Vec3::Y),
+        projection: Projection::default(),
+        target: RenderTarget::Window(window.id()),
+        scene: scene_id,
+    });
+    let box_shape = renderer.resources().meshes().insert(
+        shape::Box {
+            max_x: 1.0,
+            min_x: -1.0,
+            max_y: 1.0,
+            min_y: -1.0,
+            min_z: -1.0,
+            max_z: 1.0,
+        }
+        .into(),
+    );
+    let material = renderer
+        .resources()
+        .materials()
+        .insert(PbrMaterial::default());
+    renderer.resources().objects().insert(Object {
+        transform: Transform::default(),
+        scene: scene_id,
+        mesh: box_shape,
+        material,
+    });
+
+    renderer.resources().point_lights().insert(PointLight {
+        transform: Transform {
+            translation: Vec3::new(0.0, 1.0, 0.0),
+            ..Default::default()
+        },
+        color: Color::WHITE,
+        intensity: 70.0,
+        radius: 100.0,
+        scene: scene_id,
+    });
+    renderer
+        .resources()
+        .directional_lights()
+        .insert(DirectionalLight {
+            transform: Transform::from_translation(Vec3::splat(1.0))
+                .looking_at(Vec3::ZERO, Vec3::Y),
+            scene: scene_id,
+            color: Color::WHITE,
+            illuminance: 100_000.0,
+        });
 
     loop {
         renderer.render(&pool);

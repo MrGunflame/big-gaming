@@ -58,7 +58,7 @@ use super::{
     LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
     PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
     RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp,
-    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
+    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat, TextureUsage,
     WriteDescriptorResource, WriteDescriptorResources,
 };
 
@@ -772,6 +772,17 @@ impl Device {
             .height(descriptor.size.y)
             .depth(1);
 
+        let mut usages: vk::ImageUsageFlags = descriptor.usage.into();
+        if descriptor.usage.contains(TextureUsage::RENDER_ATTACHMENT) {
+            if descriptor.format.is_depth() {
+                usages |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
+            } else {
+                usages |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
+            }
+        }
+
+        assert!(!usages.is_empty());
+
         let info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(extent)
@@ -780,7 +791,7 @@ impl Device {
             .format(descriptor.format.into())
             .tiling(vk::ImageTiling::OPTIMAL)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST)
+            .usage(usages)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)
             .samples(vk::SampleCountFlags::TYPE_1)
             .flags(vk::ImageCreateFlags::empty());
@@ -792,6 +803,7 @@ impl Device {
             format: descriptor.format,
             size: descriptor.size,
             destroy_on_drop: true,
+            usage: usages,
         }
     }
 
@@ -1436,6 +1448,7 @@ impl Swapchain {
                 format: self.format,
                 size: self.extent,
                 destroy_on_drop: false,
+                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
             },
             suboptimal,
             index: image_index,
@@ -1577,6 +1590,22 @@ impl From<ShaderStages> for ShaderStageFlags {
             flags |= ShaderStageFlags::FRAGMENT;
         }
 
+        flags
+    }
+}
+
+impl From<TextureUsage> for vk::ImageUsageFlags {
+    fn from(value: TextureUsage) -> Self {
+        let mut flags = vk::ImageUsageFlags::empty();
+        if value.contains(TextureUsage::TRANSFER_SRC) {
+            flags |= vk::ImageUsageFlags::TRANSFER_SRC;
+        }
+        if value.contains(TextureUsage::TRANSFER_DST) {
+            flags |= vk::ImageUsageFlags::TRANSFER_DST;
+        }
+        if value.contains(TextureUsage::TEXTURE_BINDING) {
+            flags |= vk::ImageUsageFlags::SAMPLED;
+        }
         flags
     }
 }
@@ -1982,11 +2011,17 @@ impl<'a> CommandEncoder<'a> {
             let (old_layout, src_access_flags) = convert_access_flags(barrier.src_access);
             let (new_layout, dst_access_flags) = convert_access_flags(barrier.dst_access);
 
+            let aspect_mask = if barrier.texture.format.is_depth() {
+                ImageAspectFlags::DEPTH
+            } else {
+                ImageAspectFlags::COLOR
+            };
+
             // Images cannot be transitioned into `UNDEFINED`.
             assert_ne!(new_layout, ImageLayout::UNDEFINED);
 
             let subresource_range = ImageSubresourceRange::default()
-                .aspect_mask(ImageAspectFlags::COLOR)
+                .aspect_mask(aspect_mask)
                 .base_mip_level(0)
                 .level_count(1)
                 .base_array_layer(0)
@@ -2170,7 +2205,7 @@ impl Drop for Semaphore {
 }
 
 pub struct SwapchainTexture<'a> {
-    texture: Texture,
+    pub texture: Texture,
     suboptimal: bool,
     index: u32,
     device: &'a Device,
@@ -2211,6 +2246,7 @@ pub struct Texture {
     image: vk::Image,
     format: TextureFormat,
     size: UVec2,
+    usage: vk::ImageUsageFlags,
     /// Whether to destroy the texture on drop.
     /// This is only used for swapchain textures.
     destroy_on_drop: bool,
@@ -2232,8 +2268,14 @@ impl Texture {
             .b(ComponentSwizzle::IDENTITY)
             .a(ComponentSwizzle::IDENTITY);
 
+        let aspect_mask = if self.format.is_depth() {
+            ImageAspectFlags::DEPTH
+        } else {
+            ImageAspectFlags::COLOR
+        };
+
         let subresource_range = ImageSubresourceRange::default()
-            .aspect_mask(ImageAspectFlags::COLOR)
+            .aspect_mask(aspect_mask)
             .base_mip_level(0)
             .level_count(1)
             .base_array_layer(0)
@@ -2264,6 +2306,7 @@ impl Drop for Texture {
     }
 }
 
+#[derive(Debug)]
 pub struct TextureView<'a> {
     device: &'a Device,
     view: vk::ImageView,
@@ -2459,8 +2502,9 @@ impl Drop for DescriptorSetLayout {
     }
 }
 
+#[derive(Debug)]
 pub struct DescriptorPool<'a> {
-    device: &'a ash::Device,
+    device: &'a DeviceShared,
     pool: vk::DescriptorPool,
 }
 
@@ -2480,6 +2524,7 @@ impl<'a> DescriptorPool<'a> {
         Ok(DescriptorSet {
             pool: self,
             set: sets[0],
+            bindings: layout.bindings.clone(),
         })
     }
 
@@ -2501,9 +2546,11 @@ impl<'a> Drop for DescriptorPool<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct DescriptorSet<'a> {
     pool: &'a DescriptorPool<'a>,
     set: vk::DescriptorSet,
+    bindings: Vec<super::DescriptorBinding>,
 }
 
 impl<'a> DescriptorSet<'a> {
@@ -2511,9 +2558,27 @@ impl<'a> DescriptorSet<'a> {
         let mut buffer_infos = Vec::new();
         let mut image_infos = Vec::new();
         let mut sampler_infos = Vec::new();
-        for binding in op.bindings {
+        for (index, binding) in op.bindings.iter().enumerate() {
+            let Some(layout_binding) = self.bindings.get(index) else {
+                panic!(
+                    "attempted to write to index {} of descriptor set with layout of {} elements",
+                    index,
+                    self.bindings.len()
+                );
+            };
+
             match &binding.resource {
-                WriteDescriptorResource::Buffer(buffer) => {
+                WriteDescriptorResource::UniformBuffer(buffer)
+                | WriteDescriptorResource::StorageBuffer(buffer) => {
+                    if layout_binding.kind != super::DescriptorType::Uniform
+                        && layout_binding.kind != super::DescriptorType::Storage
+                    {
+                        panic!(
+                            "type missmatch at index {}: op = {:?}, layout = {:?}",
+                            index, buffer, layout_binding.kind,
+                        );
+                    }
+
                     let buffer_info = vk::DescriptorBufferInfo::default()
                         .buffer(buffer.buffer().buffer)
                         .offset(buffer.offset())
@@ -2522,6 +2587,13 @@ impl<'a> DescriptorSet<'a> {
                     buffer_infos.push(buffer_info);
                 }
                 WriteDescriptorResource::Texture(texture) => {
+                    if layout_binding.kind != super::DescriptorType::Texture {
+                        panic!(
+                            "type missmatch at index {}: op = {:?}, layout = {:?}",
+                            index, texture, layout_binding.kind
+                        );
+                    }
+
                     let info = vk::DescriptorImageInfo::default()
                         .image_view(texture.view)
                         .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -2529,6 +2601,13 @@ impl<'a> DescriptorSet<'a> {
                     image_infos.push(info);
                 }
                 WriteDescriptorResource::Sampler(sampler) => {
+                    if layout_binding.kind != super::DescriptorType::Sampler {
+                        panic!(
+                            "type missmatch at index {}: op = {:?}, layout = {:?}",
+                            index, sampler, layout_binding.kind
+                        );
+                    }
+
                     let info = vk::DescriptorImageInfo::default()
                         .sampler(sampler.sampler)
                         .image_view(vk::ImageView::null());
@@ -2551,9 +2630,15 @@ impl<'a> DescriptorSet<'a> {
                 .descriptor_count(1);
 
             match &binding.resource {
-                WriteDescriptorResource::Buffer(_) => {
+                WriteDescriptorResource::UniformBuffer(_) => {
                     write = write
                         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                        .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
+                    next_buffer += 1;
+                }
+                WriteDescriptorResource::StorageBuffer(_) => {
+                    write = write
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                         .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
                     next_buffer += 1;
                 }
@@ -2653,6 +2738,7 @@ extern "system" fn debug_callback(
     match severity {
         DebugUtilsMessageSeverityFlagsEXT::ERROR => {
             println!("{:?} {} {}", typ, message, backtrace);
+            panic!();
         }
         DebugUtilsMessageSeverityFlagsEXT::WARNING => {
             println!("{:?} {}", typ, message);
@@ -2774,44 +2860,64 @@ where
 }
 
 fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFlags2) {
-    let transfer_write = flags.contains(super::AccessFlags::TRANSFER_WRITE);
-    let shader_read = flags.contains(super::AccessFlags::SHADER_READ);
-    let color_attachment_write = flags.contains(super::AccessFlags::COLOR_ATTACHMENT_WRITE);
-    let present = flags.contains(super::AccessFlags::PRESENT);
+    match flags {
+        flags if flags.is_empty() => {
+            return (ImageLayout::UNDEFINED, vk::AccessFlags2::empty());
+        }
+        super::AccessFlags::TRANSFER_WRITE => {
+            return (
+                ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::AccessFlags2::TRANSFER_WRITE,
+            );
+        }
+        super::AccessFlags::SHADER_READ => {
+            return (
+                ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                vk::AccessFlags2::SHADER_READ,
+            );
+        }
+        super::AccessFlags::COLOR_ATTACHMENT_WRITE => {
+            return (
+                ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            );
+        }
+        super::AccessFlags::PRESENT => {
+            return (ImageLayout::PRESENT_SRC_KHR, vk::AccessFlags2::empty());
+        }
+        _ => (),
+    }
 
-    match (transfer_write, shader_read, color_attachment_write, present) {
-        (false, false, false, false) => (ImageLayout::UNDEFINED, vk::AccessFlags2::empty()),
-        (true, false, false, false) => (
-            ImageLayout::TRANSFER_DST_OPTIMAL,
+    if flags.contains(super::AccessFlags::PRESENT) {
+        panic!("AccessFlags::PRESENT is mutually exclusive with all other flags");
+    }
+
+    let mut vk_flags = vk::AccessFlags2::empty();
+    for (flag, vk_flag) in [
+        (
+            super::AccessFlags::TRANSFER_WRITE,
             vk::AccessFlags2::TRANSFER_WRITE,
         ),
-        (false, true, false, false) => (
-            ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        (
+            super::AccessFlags::SHADER_READ,
             vk::AccessFlags2::SHADER_READ,
         ),
-        (false, false, true, false) => (
-            ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        (
+            super::AccessFlags::COLOR_ATTACHMENT_WRITE,
             vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
         ),
-        (false, false, false, true) => (ImageLayout::PRESENT_SRC_KHR, vk::AccessFlags2::empty()),
-        (_, _, _, true) => {
-            panic!("AccessFlags::PRESENT is mutually exclusive with all other flags")
-        }
-        _ => {
-            let mut flags = vk::AccessFlags2::empty();
-            if transfer_write {
-                flags |= vk::AccessFlags2::TRANSFER_WRITE;
-            }
-            if shader_read {
-                flags |= vk::AccessFlags2::SHADER_READ;
-            }
-            if color_attachment_write {
-                flags |= vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
-            }
-
-            (ImageLayout::GENERAL, flags)
+        (super::AccessFlags::INDEX, vk::AccessFlags2::INDEX_READ),
+        (
+            super::AccessFlags::INDIRECT,
+            vk::AccessFlags2::INDIRECT_COMMAND_READ,
+        ),
+    ] {
+        if flags.contains(flag) {
+            vk_flags |= vk_flag;
         }
     }
+
+    (ImageLayout::GENERAL, vk_flags)
 }
 
 fn validate_shader_bindings(shader: &super::ShaderModule, descriptors: &[&DescriptorSetLayout]) {

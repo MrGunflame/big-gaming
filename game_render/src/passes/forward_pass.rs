@@ -225,7 +225,7 @@ fn clear_pass(ctx: &mut RenderContext<'_, '_>, dst: SlotLabel) {
         size: UVec2::ONE,
         mip_levels: 1,
         format: TextureFormat::Rgba16Float,
-        usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
+        usage: TextureUsage::TEXTURE_BINDING | TextureUsage::RENDER_ATTACHMENT,
     });
 
     ctx.queue.run_render_pass(&RenderPassDescriptor {
@@ -262,7 +262,7 @@ impl DefaultTextures {
                 size: UVec2::splat(1),
                 mip_levels: 1,
                 format,
-                usage: TextureUsage::TRANSFER_DST,
+                usage: TextureUsage::TRANSFER_DST | TextureUsage::TEXTURE_BINDING,
             });
 
             queue.write_texture(

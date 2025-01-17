@@ -4,7 +4,7 @@ use game_common::cell::UnsafeRefCell;
 
 use crate::backend::vulkan::{DescriptorSetLayout, Pipeline, Sampler};
 use crate::backend::{
-    AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, FilterMode,
+    AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, Face, FilterMode,
     FragmentStage, FrontFace, PipelineDescriptor, PipelineStage, PrimitiveTopology,
     PushConstantRange, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
     TextureFormat, VertexStage,
