@@ -142,7 +142,7 @@ const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
 
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
 pub enum Error {
     #[error("device lost")]
     DeviceLost,

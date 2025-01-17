@@ -10,6 +10,7 @@ use super::{DescriptorPoolDescriptor, DescriptorType};
 
 const MIN_POOL_SIZE: NonZeroU32 = NonZeroU32::new(1).unwrap();
 const MAX_POOL_SIZE: NonZeroU32 = NonZeroU32::new(32).unwrap();
+const GROWTH_FACTOR: NonZeroU32 = NonZeroU32::new(2).unwrap();
 
 pub struct AllocatedDescriptorSet {
     set: DescriptorSet<'static>,
@@ -40,7 +41,10 @@ impl DescriptorSetAllocator {
         }
     }
 
-    pub unsafe fn alloc(&mut self, layout: &DescriptorSetLayout) -> AllocatedDescriptorSet {
+    pub unsafe fn alloc(
+        &mut self,
+        layout: &DescriptorSetLayout,
+    ) -> Result<AllocatedDescriptorSet, Error> {
         let _span = trace_span!("DescriptorSetAllocator::alloc").entered();
 
         let mut count = DescriptorSetResourceCount::default();
@@ -67,13 +71,20 @@ impl DescriptorSetAllocator {
             .entry(count)
             .or_insert_with(|| DescriptorPoolBucket::new());
 
-        let (set, pool) = unsafe { bucket.alloc(&self.device, &count, layout) };
-        let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'static>>(set) };
-
-        AllocatedDescriptorSet {
-            set,
-            bucket: count,
-            pool,
+        match unsafe { bucket.alloc(&self.device, &count, layout) } {
+            Ok((set, pool)) => {
+                let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'static>>(set) };
+                Ok(AllocatedDescriptorSet {
+                    set,
+                    bucket: count,
+                    pool,
+                })
+            }
+            Err(err) => {
+                // `alloc` should handle out-of-pool-memory errors internally.
+                debug_assert_ne!(err, Error::OutOfPoolMemory);
+                Err(err)
+            }
         }
     }
 
@@ -101,33 +112,44 @@ impl DescriptorPoolBucket {
         }
     }
 
+    /// Allocates a new [`DescriptorSet`] from the bucket.
+    ///
+    /// The `usize` value must be given to [`dealloc`] when the set is deallocated.
+    ///
+    /// # Safety
+    ///
+    /// The returned [`DescriptorSet`] must be dropped before the provided [`Device`] and `self`.
     unsafe fn alloc(
         &mut self,
         device: &Device,
         count: &DescriptorSetResourceCount,
         layout: &DescriptorSetLayout,
-    ) -> (DescriptorSet<'_>, usize) {
-        {
-            for (key, pool) in self.pools.iter_mut() {
-                let set = match pool.pool.create_descriptor_set(layout) {
-                    Ok(set) => set,
-                    Err(Error::OutOfPoolMemory) => continue,
-                    // TODO: Error handling
-                    Err(err) => panic!("{:?}", err),
-                };
-
-                pool.count += 1;
-                // Drop the lifetime.
-                let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'_>>(set) };
-                return (set, key);
+    ) -> Result<(DescriptorSet<'_>, usize), Error> {
+        for (key, pool) in self.pools.iter_mut() {
+            if pool.free == 0 {
+                continue;
             }
+
+            let set = match pool.pool.create_descriptor_set(layout) {
+                Ok(set) => set,
+                // The pool may still return out of pool memory errors,
+                // even after we have checked that it should have
+                // enough memory.
+                Err(Error::OutOfPoolMemory) => continue,
+                Err(err) => return Err(err),
+            };
+
+            pool.free -= 1;
+            pool.allocated += 1;
+
+            // Drop the lifetime.
+            let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'_>>(set) };
+            return Ok((set, key));
         }
 
         let pool_size = self.next_pool_size;
-        self.next_pool_size = (self
-            .next_pool_size
-            .saturating_mul(NonZeroU32::new(2).unwrap()))
-        .min(MAX_POOL_SIZE);
+        self.next_pool_size =
+            (self.next_pool_size.saturating_mul(GROWTH_FACTOR)).min(MAX_POOL_SIZE);
         let pool = device.create_descriptor_pool(&DescriptorPoolDescriptor {
             max_sets: pool_size,
             max_uniform_buffers: count.uniform_buffers * pool_size.get(),
@@ -138,7 +160,12 @@ impl DescriptorPoolBucket {
         // Drop the lifetime of the pool. The caller guarantees that `self` outlives
         // the passed `device` handle.
         let pool = unsafe { transmute::<DescriptorPool<'_>, DescriptorPool<'static>>(pool) };
-        let pool = Pool { pool, count: 1 };
+        let pool = Pool {
+            pool,
+            // We are immediately allocating a set from the pool.
+            free: pool_size.get() - 1,
+            allocated: 1,
+        };
 
         let key = self.pools.insert(pool);
         let set = self
@@ -146,17 +173,15 @@ impl DescriptorPoolBucket {
             .get_mut(key)
             .unwrap()
             .pool
-            .create_descriptor_set(layout)
-            .unwrap();
-        (set, key)
+            .create_descriptor_set(layout)?;
+        Ok((set, key))
     }
 
     unsafe fn dealloc(&mut self, pool_index: usize) {
         let pool = self.pools.get_mut(pool_index).unwrap();
-        pool.count -= 1;
-        if pool.count == 0 {
-            // The DescriptorPool is destroyed once the object
-            // is dropped.
+
+        pool.allocated -= 1;
+        if pool.free == 0 && pool.allocated == 0 {
             self.pools.remove(pool_index);
         }
     }
@@ -172,6 +197,6 @@ struct DescriptorSetResourceCount {
 
 struct Pool {
     pool: DescriptorPool<'static>,
-    /// Number of active descriptors in the pool.
-    count: usize,
+    free: u32,
+    allocated: u32,
 }

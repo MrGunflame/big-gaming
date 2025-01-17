@@ -519,7 +519,8 @@ pub fn execute<'a>(
 
                         physical_bindings.sort_by(|a, b| a.binding.cmp(&b.binding));
 
-                        let mut set = unsafe { scheduler.descriptors.alloc(&bind_group.layout) };
+                        let mut set =
+                            unsafe { scheduler.descriptors.alloc(&bind_group.layout).unwrap() };
                         set.raw_mut().update(&WriteDescriptorResources {
                             bindings: &physical_bindings,
                         });
