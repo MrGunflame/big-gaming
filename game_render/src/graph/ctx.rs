@@ -407,12 +407,9 @@ pub fn execute<'a>(
     for cmd in scheduler.cmds.drain(..) {
         match cmd {
             Command::CreateBuffer(buffer) => {
-                println!("CREATE_BUFFER {:?}", buffer)
                 // Nothing to do
             }
             Command::WriteBuffer(id, data) => {
-                println!("WRITE BUFFER {:?}", id);
-
                 let buffer = scheduler.buffers.get_mut(id).unwrap();
 
                 unsafe {
@@ -420,11 +417,9 @@ pub fn execute<'a>(
                 }
             }
             Command::CreateTexture(id) => {
-                println!("CREATE TEXTURE {:?}", id);
                 // Nothing to do
             }
             Command::WriteTexture(id, data, layout) => {
-                println!("WRITE TEXTURE {:?}", id);
                 let texture = scheduler.textures.get_mut(id).unwrap();
 
                 let mut staging_buffer = scheduler.allocator.create_buffer(
@@ -467,14 +462,10 @@ pub fn execute<'a>(
                 // Nothing to do
             }
             Command::RenderPass(cmd) => {
-                println!("RENDER PASS {:?}", cmd);
-
-                let mut buffer_barriers = Vec::new();
-                let mut texture_barriers = Vec::new();
-                let mut buffer_transition = Vec::new();
-                let mut texture_transition = Vec::new();
-
                 let mut sets = Vec::new();
+
+                let mut buffer_accesses = HashMap::<BufferId, AccessFlags>::new();
+                let mut texture_accesses = HashMap::<TextureId, AccessFlags>::new();
 
                 for (index, bind_group_e) in &cmd.bind_groups {
                     let bind_group = scheduler.bind_groups.get_mut(bind_group_e.id).unwrap();
@@ -486,16 +477,10 @@ pub fn execute<'a>(
                         let texture_views = ScratchBuffer::new(bind_group.textures.len());
 
                         for (binding, buffer) in &bind_group.buffers {
-                            buffer_transition.push((buffer.id, AccessFlags::SHADER_READ));
-                            let buffer = scheduler.buffers.get(buffer.id).unwrap();
+                            *buffer_accesses.entry(buffer.id).or_default() |=
+                                AccessFlags::SHADER_READ;
 
-                            buffer_barriers.push(BufferBarrier {
-                                buffer: buffer.buffer.buffer(),
-                                src_access: buffer.access,
-                                dst_access: AccessFlags::SHADER_READ,
-                                offset: 0,
-                                size: buffer.buffer.size(),
-                            });
+                            let buffer = scheduler.buffers.get(buffer.id).unwrap();
 
                             let view = buffer_views.insert(buffer.buffer.buffer_view());
 
@@ -506,19 +491,15 @@ pub fn execute<'a>(
                         }
 
                         for (binding, texture) in &bind_group.textures {
-                            texture_transition.push((texture.id, AccessFlags::SHADER_READ));
+                            *texture_accesses.entry(texture.id).or_default() |=
+                                AccessFlags::SHADER_READ;
+
                             let texture = scheduler.textures.get(texture.id).unwrap();
 
                             let physical_texture = match &texture.data {
                                 TextureData::Physical(data) => data,
                                 TextureData::Virtual(data) => data.texture(),
                             };
-
-                            texture_barriers.push(TextureBarrier {
-                                texture: physical_texture,
-                                src_access: texture.access,
-                                dst_access: AccessFlags::SHADER_READ,
-                            });
 
                             let view = physical_texture.create_view();
                             let view = texture_views.insert(view);
@@ -560,13 +541,8 @@ pub fn execute<'a>(
                         TextureData::Virtual(data) => data.texture(),
                     };
 
-                    texture_barriers.push(TextureBarrier {
-                        texture: physical_texture,
-                        src_access: texture.access,
-                        dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    });
-                    texture_transition
-                        .push((attachment.texture.id, AccessFlags::COLOR_ATTACHMENT_WRITE));
+                    *texture_accesses.entry(attachment.texture.id).or_default() |=
+                        AccessFlags::COLOR_ATTACHMENT_WRITE;
 
                     let view = color_attachment_views.insert(physical_texture.create_view());
 
@@ -576,6 +552,35 @@ pub fn execute<'a>(
                         view,
                         size: physical_texture.size(),
                         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    });
+                }
+
+                let mut buffer_barriers = Vec::new();
+                for (buffer_id, dst_access) in &buffer_accesses {
+                    let buffer = scheduler.buffers.get(*buffer_id).unwrap();
+
+                    buffer_barriers.push(BufferBarrier {
+                        buffer: buffer.buffer.buffer(),
+                        offset: 0,
+                        size: buffer.buffer.size(),
+                        src_access: buffer.access,
+                        dst_access: *dst_access,
+                    });
+                }
+
+                let mut texture_barriers = Vec::new();
+                for (texture_id, dst_access) in &texture_accesses {
+                    let texture = scheduler.textures.get(*texture_id).unwrap();
+
+                    let texture_data = match &texture.data {
+                        TextureData::Physical(data) => data,
+                        TextureData::Virtual(data) => data.texture(),
+                    };
+
+                    texture_barriers.push(TextureBarrier {
+                        texture: texture_data,
+                        src_access: texture.access,
+                        dst_access: *dst_access,
                     });
                 }
 
@@ -608,12 +613,14 @@ pub fn execute<'a>(
                 drop(render_pass);
                 frame_texture_views.push(color_attachment_views);
 
-                for (id, access) in buffer_transition {
-                    scheduler.buffers.get_mut(id).unwrap().access = access;
+                for (buffer_id, dst_access) in buffer_accesses {
+                    let buffer = scheduler.buffers.get_mut(buffer_id).unwrap();
+                    buffer.access = dst_access;
                 }
 
-                for (id, access) in texture_transition {
-                    scheduler.textures.get_mut(id).unwrap().access = access;
+                for (texture_id, dst_access) in texture_accesses {
+                    let texture = scheduler.textures.get_mut(texture_id).unwrap();
+                    texture.access = dst_access;
                 }
             }
             _ => todo!(),

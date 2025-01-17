@@ -368,7 +368,7 @@ pub struct TextureBarrier<'a> {
 }
 
 bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
     pub struct AccessFlags: u32 {
         /// Resource can be used as a destination for transfer operations.
         const TRANSFER_WRITE = 1 << 0;
