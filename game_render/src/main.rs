@@ -16,9 +16,6 @@ use game_render::backend::{
 };
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::Object;
-use game_render::graph::ctx::{
-    BindGroupDescriptor, BindGroupEntry, BufferDescriptor, CommandQueue, Resources, Scheduler,
-};
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};

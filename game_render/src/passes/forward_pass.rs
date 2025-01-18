@@ -1,13 +1,16 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use ash::qcom;
 use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::Mutex;
 
-use crate::backend::vulkan::{DescriptorSetLayout, Sampler};
+use crate::api::{
+    BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
+    DescriptorSet, DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
+    RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
+};
 use crate::backend::{
     BufferUsage, ImageDataLayout, IndexFormat, LoadOp, ShaderStages, StoreOp, TextureDescriptor,
     TextureFormat, TextureUsage,
@@ -20,14 +23,9 @@ use crate::entities::{
     Resources, SceneId, SpotLightId,
 };
 use crate::forward::ForwardPipeline;
-use crate::graph::ctx::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferInitDescriptor,
-    CommandQueue, DepthStencilAttachment, RenderPassColorAttachment, RenderPassDescriptor, Texture,
-};
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
 use crate::mesh::{Indices, Mesh};
-use crate::mipmap::MipMapGenerator;
 use crate::options::{MainPassOptions, MainPassOptionsEncoded};
 use crate::pbr::material::MaterialConstants;
 use crate::pbr::mesh::TransformUniform;
@@ -126,18 +124,18 @@ impl ForwardPass {
         let pipeline = &self.forward;
         let depth_stencils = self.depth_stencils.lock();
 
-        let light_bind_group = ctx.queue.create_bind_group(&BindGroupDescriptor {
+        let light_bind_group = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
             layout: &pipeline.lights_bind_group_layout,
             entries: &[
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 0,
                     resource: BindingResource::Buffer(&scene.directional_lights_buffer),
                 },
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 1,
                     resource: BindingResource::Buffer(&scene.point_lights_buffer),
                 },
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 2,
                     resource: BindingResource::Buffer(&scene.spot_lights_buffer),
                 },
@@ -211,10 +209,10 @@ impl ForwardPass {
             let (mesh_bg, index_buffer) = state.meshes.get(mesh).unwrap();
             let material_bg = state.materials.get(material).unwrap();
 
-            render_pass.set_bind_group(0, transform_bg);
-            render_pass.set_bind_group(1, mesh_bg);
-            render_pass.set_bind_group(2, material_bg);
-            render_pass.set_bind_group(3, &light_bind_group);
+            render_pass.set_descriptor_set(0, transform_bg);
+            render_pass.set_descriptor_set(1, mesh_bg);
+            render_pass.set_descriptor_set(2, material_bg);
+            render_pass.set_descriptor_set(3, &light_bind_group);
 
             render_pass.set_index_buffer(&index_buffer.buffer, index_buffer.format);
             render_pass.draw_indexed(0..index_buffer.len, 0, 0..1);
@@ -295,12 +293,12 @@ impl DefaultTextures {
 struct ForwardState {
     default_textures: DefaultTextures,
 
-    meshes: HashMap<MeshId, (BindGroup, IndexBuffer)>,
+    meshes: HashMap<MeshId, (DescriptorSet, IndexBuffer)>,
     images: HashMap<ImageId, Texture>,
-    materials: HashMap<MaterialId, BindGroup>,
+    materials: HashMap<MaterialId, DescriptorSet>,
 
     cameras: HashMap<CameraId, Camera>,
-    objects: HashMap<ObjectId, (MeshId, MaterialId, BindGroup)>,
+    objects: HashMap<ObjectId, (MeshId, MaterialId, DescriptorSet)>,
 
     scenes: HashMap<SceneId, Scene>,
     options: MainPassOptions,
@@ -376,10 +374,10 @@ impl ForwardState {
         resources: &Resources,
         events: &mut Vec<Event>,
         queue: &mut CommandQueue<'_>,
-        mesh_bind_group_layout: &Arc<DescriptorSetLayout>,
-        material_bind_group_layout: &Arc<DescriptorSetLayout>,
-        object_bind_group_layout: &Arc<DescriptorSetLayout>,
-        material_sampler: &Arc<Sampler>,
+        mesh_bind_group_layout: &DescriptorSetLayout,
+        material_bind_group_layout: &DescriptorSetLayout,
+        object_bind_group_layout: &DescriptorSetLayout,
+        material_sampler: &Sampler,
     ) {
         let meshes = unsafe { resources.meshes.viewer() };
         let images = unsafe { resources.images.viewer() };
@@ -439,9 +437,9 @@ impl ForwardState {
                         usage: BufferUsage::UNIFORM,
                     });
 
-                    let object_bind_group = queue.create_bind_group(&BindGroupDescriptor {
+                    let object_bind_group = queue.create_descriptor_set(&DescriptorSetDescriptor {
                         layout: object_bind_group_layout,
-                        entries: &[BindGroupEntry {
+                        entries: &[DescriptorSetEntry {
                             binding: 0,
                             resource: BindingResource::Buffer(&transform_buffer),
                         }],
@@ -636,8 +634,8 @@ impl ForwardState {
 fn upload_mesh(
     queue: &mut CommandQueue<'_>,
     mesh: &Mesh,
-    bind_group_layout: &Arc<DescriptorSetLayout>,
-) -> (BindGroup, IndexBuffer) {
+    bind_group_layout: &DescriptorSetLayout,
+) -> (DescriptorSet, IndexBuffer) {
     let _span = trace_span!("upload_mesh").entered();
     // FIXME: Since meshes are user controlled, we might not catch invalid
     // meshes with a panic and simply ignore them.
@@ -695,22 +693,22 @@ fn upload_mesh(
         usage: BufferUsage::STORAGE,
     });
 
-    let bind_group = queue.create_bind_group(&BindGroupDescriptor {
+    let bind_group = queue.create_descriptor_set(&DescriptorSetDescriptor {
         layout: bind_group_layout,
         entries: &[
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 0,
                 resource: BindingResource::Buffer(&positions),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 1,
                 resource: BindingResource::Buffer(&normals),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 2,
                 resource: BindingResource::Buffer(&tangents),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 3,
                 resource: BindingResource::Buffer(&uvs),
             },
@@ -722,13 +720,13 @@ fn upload_mesh(
 
 fn create_material(
     queue: &mut CommandQueue<'_>,
-    bind_group_layout: &Arc<DescriptorSetLayout>,
+    bind_group_layout: &DescriptorSetLayout,
     default_textures: &DefaultTextures,
     bound_textures: &mut HashMap<ImageId, Texture>,
     images: &Viewer<'_, Image>,
     material: &PbrMaterial,
-    sampler: &Arc<Sampler>,
-) -> BindGroup {
+    sampler: &Sampler,
+) -> DescriptorSet {
     let _span = trace_span!("create_material").entered();
 
     let constants = queue.create_buffer_init(&BufferInitDescriptor {
@@ -775,26 +773,26 @@ fn create_material(
         None => &default_textures.default_metallic_roughness,
     };
 
-    queue.create_bind_group(&BindGroupDescriptor {
+    queue.create_descriptor_set(&DescriptorSetDescriptor {
         layout: bind_group_layout,
         entries: &[
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 0,
                 resource: BindingResource::Buffer(&constants),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 1,
                 resource: BindingResource::Texture(base_color_texture),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 2,
                 resource: BindingResource::Texture(normal_texture),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 3,
                 resource: BindingResource::Texture(metallic_roughness_texture),
             },
-            BindGroupEntry {
+            DescriptorSetEntry {
                 binding: 4,
                 resource: BindingResource::Sampler(sampler),
             },

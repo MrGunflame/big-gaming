@@ -1,17 +1,15 @@
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::sync::Arc;
 
 use parking_lot::{RwLock, RwLockReadGuard};
 
-use crate::backend::vulkan::Pipeline;
+use crate::api::{CommandQueue, Pipeline};
 use crate::backend::TextureFormat;
-use crate::graph::ctx::CommandQueue;
 
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]
 pub struct PipelineCache<T> {
-    pipelines: RwLock<HashMap<TextureFormat, Arc<Pipeline>>>,
+    pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
 }
 
@@ -62,7 +60,7 @@ where
                 // as the mutex is locked.
                 // To guarantee this the mutex guard is attached to the
                 // returned struct.
-                let pipeline = unsafe { &*(pipeline as *const Arc<Pipeline>) };
+                let pipeline = unsafe { core::mem::transmute::<&'_ _, &'a _>(pipeline) };
                 PipelineRef {
                     pipeline,
                     _pipelines: pipelines,
@@ -81,14 +79,14 @@ pub struct PipelineRef<'a> {
     // The reference to the `pipeline` is attached to the read guard
     // of the cache.
     // The reference must not be acessed after the read guard was dropped.
-    pipeline: &'a Arc<Pipeline>,
+    pipeline: &'a Pipeline,
     // This must come at the end of the struct and guarantees that the
     // reference to the `pipeline` is invalidated once the struct is dropped.
-    _pipelines: RwLockReadGuard<'a, HashMap<TextureFormat, Arc<Pipeline>>>,
+    _pipelines: RwLockReadGuard<'a, HashMap<TextureFormat, Pipeline>>,
 }
 
 impl<'a> Deref for PipelineRef<'a> {
-    type Target = Arc<Pipeline>;
+    type Target = Pipeline;
 
     fn deref(&self) -> &Self::Target {
         self.pipeline
@@ -97,5 +95,5 @@ impl<'a> Deref for PipelineRef<'a> {
 
 pub trait PipelineBuilder {
     /// Returns a new pipeline with the requested [`TextureFormat`].
-    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Arc<Pipeline>;
+    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline;
 }

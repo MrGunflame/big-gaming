@@ -2,24 +2,22 @@ use std::sync::Arc;
 
 use game_common::cell::UnsafeRefCell;
 
-use crate::backend::vulkan::{DescriptorSetLayout, Pipeline, Sampler};
+use crate::api::{CommandQueue, DescriptorSetLayout, Pipeline, PipelineDescriptor, Sampler};
 use crate::backend::{
     AddressMode, CompareOp, DepthStencilState, DescriptorBinding, DescriptorSetDescriptor,
-    DescriptorType, Face, FilterMode, FragmentStage, FrontFace, PipelineDescriptor, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, TextureFormat, VertexStage,
+    DescriptorType, FilterMode, FragmentStage, FrontFace, PipelineStage, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderSource, ShaderStages, TextureFormat, VertexStage,
 };
 use crate::entities::{Event, Resources};
-use crate::graph::ctx::CommandQueue;
 
 #[derive(Debug)]
 pub struct ForwardPipeline {
-    pub pipeline: Arc<Pipeline>,
-    pub vs_bind_group_layout: Arc<DescriptorSetLayout>,
-    pub mesh_bind_group_layout: Arc<DescriptorSetLayout>,
-    pub material_bind_group_layout: Arc<DescriptorSetLayout>,
-    pub lights_bind_group_layout: Arc<DescriptorSetLayout>,
-    pub sampler: Arc<Sampler>,
+    pub pipeline: Pipeline,
+    pub vs_bind_group_layout: DescriptorSetLayout,
+    pub mesh_bind_group_layout: DescriptorSetLayout,
+    pub material_bind_group_layout: DescriptorSetLayout,
+    pub lights_bind_group_layout: DescriptorSetLayout,
+    pub sampler: Sampler,
     pub resources: Arc<Resources>,
     pub events: UnsafeRefCell<Vec<Event>>,
 }
@@ -233,12 +231,12 @@ impl ForwardPipeline {
         });
 
         Self {
-            pipeline: Arc::new(pipeline),
-            vs_bind_group_layout: Arc::new(vs_bind_group_layout),
-            mesh_bind_group_layout: Arc::new(mesh_bind_group_layout),
-            material_bind_group_layout: Arc::new(material_bind_group_layout),
-            lights_bind_group_layout: Arc::new(lights_bind_group_layout),
-            sampler: Arc::new(sampler),
+            pipeline: pipeline,
+            vs_bind_group_layout: vs_bind_group_layout,
+            mesh_bind_group_layout: mesh_bind_group_layout,
+            material_bind_group_layout: material_bind_group_layout,
+            lights_bind_group_layout: lights_bind_group_layout,
+            sampler: sampler,
             resources,
             events: UnsafeRefCell::new(Vec::new()),
         }

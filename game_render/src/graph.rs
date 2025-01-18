@@ -28,10 +28,10 @@ pub(crate) mod scheduler;
 
 use std::collections::HashMap;
 
-use ctx::{Buffer, CommandQueue, Texture};
 use glam::UVec2;
 use thiserror::Error;
 
+use crate::api::{Buffer, CommandQueue, Texture};
 use crate::camera::RenderTarget;
 
 pub trait Node: Send + Sync + 'static {

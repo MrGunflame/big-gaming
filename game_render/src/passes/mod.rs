@@ -4,8 +4,8 @@ use forward_pass::ForwardPass;
 use post_process::PostProcessPass;
 use wgpu::{Device, Queue};
 
+use crate::api::CommandQueue;
 use crate::forward::ForwardPipeline;
-use crate::graph::ctx::CommandQueue;
 use crate::graph::{Node, NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 
 pub mod forward_pass;

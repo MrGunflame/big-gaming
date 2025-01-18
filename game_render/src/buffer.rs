@@ -6,8 +6,8 @@ compile_error!("`DynamicBuffer` doesn't support big endian targets");
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec3};
 
+use crate::api::Buffer;
 use crate::backend::IndexFormat;
-use crate::graph::ctx::Buffer;
 
 #[derive(Debug)]
 pub struct IndexBuffer {

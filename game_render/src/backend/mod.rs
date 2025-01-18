@@ -134,7 +134,7 @@ pub struct PipelineDescriptor<'a> {
     pub depth_stencil_state: Option<DepthStencilState>,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct DepthStencilState {
     pub format: TextureFormat,
     pub depth_write_enabled: bool,

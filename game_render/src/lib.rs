@@ -1,4 +1,5 @@
 pub mod aabb;
+pub mod api;
 pub mod buffer;
 pub mod camera;
 pub mod entities;
@@ -21,12 +22,12 @@ mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
 
+use api::CommandQueue;
 use backend::vulkan::{Config, Device, Instance, Queue};
 use backend::{AdapterKind, QueueCapabilities};
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
 use game_common::cell::RefMut;
-use graph::ctx::CommandQueue;
 
 use std::collections::VecDeque;
 use std::future::Future;

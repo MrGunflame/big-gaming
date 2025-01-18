@@ -4,7 +4,7 @@ use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
-use crate::backend::vulkan::{Adapter, Device, Instance, Surface, Swapchain};
+use crate::backend::vulkan::{Adapter, Device, Instance, Semaphore, Surface, Swapchain};
 use crate::backend::{PresentMode, SwapchainConfig, TextureFormat};
 
 #[derive(Debug, Default)]
@@ -69,6 +69,8 @@ pub struct SurfaceData {
     pub surface: Surface,
     pub swapchain: Swapchain,
     pub config: SwapchainConfig,
+    pub image_avail_semaphore: Semaphore,
+    pub render_done_semaphore: Semaphore,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
@@ -130,6 +132,8 @@ fn create_surface(
         surface,
         config,
         window,
+        render_done_semaphore: device.create_semaphore(),
+        image_avail_semaphore: device.create_semaphore(),
     })
 }
 

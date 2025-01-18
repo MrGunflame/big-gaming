@@ -1,18 +1,14 @@
-use std::sync::Arc;
-
 use game_common::components::Color;
 use game_tracing::trace_span;
 
-use crate::backend::vulkan::{DescriptorSetLayout, Pipeline, Sampler};
+use crate::api::{
+    BindingResource, CommandQueue, DescriptorSetEntry, DescriptorSetLayout, Pipeline,
+    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
+};
 use crate::backend::{
     AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, FilterMode,
-    FragmentStage, FrontFace, LoadOp, PipelineDescriptor, PipelineStage, PrimitiveTopology,
-    SamplerDescriptor, ShaderModule, ShaderSource, ShaderStages, StoreOp, TextureFormat,
-    VertexStage,
-};
-use crate::graph::ctx::{
-    BindGroupDescriptor, BindGroupEntry, BindingResource, CommandQueue, RenderPassColorAttachment,
-    RenderPassDescriptor, Texture,
+    FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor,
+    ShaderModule, ShaderSource, ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -20,8 +16,8 @@ use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
 const SHADER: &str = include_str!("../../shaders/post_process.wgsl");
 
 pub struct PostProcessPass {
-    sampler: Arc<Sampler>,
-    bind_group_layout: Arc<DescriptorSetLayout>,
+    sampler: Sampler,
+    bind_group_layout: DescriptorSetLayout,
     pipelines: PipelineCache<PostProcessPipelineBuilder>,
     src: SlotLabel,
     dst: SlotLabel,
@@ -29,22 +25,20 @@ pub struct PostProcessPass {
 
 impl PostProcessPass {
     pub fn new(queue: &mut CommandQueue<'_>, src: SlotLabel, dst: SlotLabel) -> Self {
-        let bind_group_layout = Arc::new(queue.create_descriptor_set_layout(
-            &DescriptorSetDescriptor {
-                bindings: &[
-                    DescriptorBinding {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Texture,
-                    },
-                    DescriptorBinding {
-                        binding: 1,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Sampler,
-                    },
-                ],
-            },
-        ));
+        let bind_group_layout = queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
+            bindings: &[
+                DescriptorBinding {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    kind: DescriptorType::Texture,
+                },
+                DescriptorBinding {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    kind: DescriptorType::Sampler,
+                },
+            ],
+        });
 
         let shader = queue.create_shader_module(ShaderSource::Wgsl(SHADER));
 
@@ -63,7 +57,7 @@ impl PostProcessPass {
 
         Self {
             bind_group_layout,
-            sampler: Arc::new(sampler),
+            sampler,
             pipelines,
             src,
             dst,
@@ -80,19 +74,21 @@ impl Node for PostProcessPass {
 
         let pipeline = self.pipelines.get(&mut ctx.queue, output.format());
 
-        let bind_group = ctx.queue.create_bind_group(&BindGroupDescriptor {
-            layout: &self.bind_group_layout,
-            entries: &[
-                BindGroupEntry {
-                    binding: 0,
-                    resource: BindingResource::Texture(&input),
-                },
-                BindGroupEntry {
-                    binding: 1,
-                    resource: BindingResource::Sampler(&self.sampler),
-                },
-            ],
-        });
+        let bind_group = ctx
+            .queue
+            .create_descriptor_set(&crate::api::DescriptorSetDescriptor {
+                layout: &self.bind_group_layout,
+                entries: &[
+                    DescriptorSetEntry {
+                        binding: 0,
+                        resource: BindingResource::Texture(&input),
+                    },
+                    DescriptorSetEntry {
+                        binding: 1,
+                        resource: BindingResource::Sampler(&self.sampler),
+                    },
+                ],
+            });
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
@@ -104,7 +100,7 @@ impl Node for PostProcessPass {
         });
 
         render_pass.set_pipeline(&pipeline);
-        render_pass.set_bind_group(0, &bind_group);
+        render_pass.set_descriptor_set(0, &bind_group);
         render_pass.draw(0..3, 0..1);
     }
 }
@@ -112,14 +108,14 @@ impl Node for PostProcessPass {
 #[derive(Debug)]
 struct PostProcessPipelineBuilder {
     shader: ShaderModule,
-    descriptor_set_layout: Arc<DescriptorSetLayout>,
+    descriptor_set_layout: DescriptorSetLayout,
 }
 
 impl PipelineBuilder for PostProcessPipelineBuilder {
-    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Arc<Pipeline> {
+    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline {
         let _span = trace_span!("PostProcessPipelineBuilder::build").entered();
 
-        Arc::new(queue.create_pipeline(&PipelineDescriptor {
+        queue.create_pipeline(&PipelineDescriptor {
             topology: PrimitiveTopology::TriangleList,
             front_face: FrontFace::Ccw,
             cull_mode: None,
@@ -137,6 +133,6 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
             ],
             depth_stencil_state: None,
             push_constant_ranges: &[],
-        }))
+        })
     }
 }
