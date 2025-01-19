@@ -3,24 +3,23 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
+use game_render::api::{
+    BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
+    DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
+    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
+    RenderPassDescriptor, Sampler, Texture,
+};
+use game_render::backend::{
+    AddressMode, BufferUsage, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage,
+    FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
+    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStage,
+    ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
+};
 use game_render::camera::RenderTarget;
-use game_render::graph::{Node, RenderContext};
+use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::{Mutex, RwLock};
-use wgpu::util::{BufferInitDescriptor, DeviceExt, DrawIndexedIndirectArgs};
-use wgpu::{
-    AddressMode, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, BlendState, Buffer, BufferBindingType,
-    BufferUsages, ColorTargetState, ColorWrites, Device, Extent3d, Face, FilterMode, FragmentState,
-    FrontFace, ImageCopyTexture, ImageDataLayout, IndexFormat, LoadOp, MultisampleState,
-    Operations, Origin3d, PipelineLayout, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderModule,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureView,
-    TextureViewDescriptor, TextureViewDimension, VertexState,
-};
 
 use super::remap::remap;
 use super::{DrawCommand, GpuDrawCommandState, SurfaceDrawCommands};
@@ -35,75 +34,55 @@ const CAPACITY_GROWTH_FACTOR: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(2)
 
 #[derive(Debug)]
 struct UiPipeline {
-    bind_group_layout: BindGroupLayout,
+    descriptor_set_layout: DescriptorSetLayout,
     sampler: Sampler,
     capacity: NonZeroU32,
-    pipeline_layout: PipelineLayout,
-    pipelines: HashMap<TextureFormat, RenderPipeline>,
+    pipelines: HashMap<TextureFormat, Pipeline>,
     shader: ShaderModule,
 }
 
 impl UiPipeline {
-    pub fn new(device: &Device) -> Self {
-        Self::new_with_capacity(device, DEFAULT_TEXTURE_CAPACITY)
+    pub fn new(queue: &mut CommandQueue<'_>) -> Self {
+        Self::new_with_capacity(queue, DEFAULT_TEXTURE_CAPACITY)
     }
 
-    fn new_with_capacity(device: &Device, capacity: NonZeroU32) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("ui_layout"),
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+    fn new_with_capacity(queue: &mut CommandQueue<'_>, capacity: NonZeroU32) -> Self {
+        let descriptor_set_layout =
+            queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
+                bindings: &[
+                    DescriptorBinding {
+                        binding: 0,
+                        visibility: ShaderStages::VERTEX,
+                        kind: DescriptorType::Storage,
+                        count: NonZeroU32::MIN,
                     },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Texture {
-                        sample_type: TextureSampleType::Float { filterable: true },
-                        view_dimension: TextureViewDimension::D2,
-                        multisampled: false,
+                    DescriptorBinding {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        kind: DescriptorType::Sampler,
+                        count: NonZeroU32::MIN,
                     },
-                    count: Some(capacity),
-                },
-                BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+                    DescriptorBinding {
+                        binding: 2,
+                        visibility: ShaderStages::FRAGMENT,
+                        kind: DescriptorType::Texture,
+                        count: capacity,
+                    },
+                ],
+            });
 
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("ui_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let shader = queue.create_shader_module(ShaderSource::Wgsl(UI_SHADER));
 
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("ui_shader"),
-            source: ShaderSource::Wgsl(UI_SHADER.into()),
-        });
-
-        let sampler = device.create_sampler(&SamplerDescriptor {
+        let sampler = queue.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
             address_mode_w: AddressMode::ClampToEdge,
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Nearest,
-            ..Default::default()
         });
 
         Self {
-            bind_group_layout,
-            pipeline_layout,
+            descriptor_set_layout,
             pipelines: HashMap::new(),
             sampler,
             capacity,
@@ -111,40 +90,25 @@ impl UiPipeline {
         }
     }
 
-    fn build_pipeline(&self, format: TextureFormat, device: &Device) -> RenderPipeline {
-        device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("ui_pipeline"),
-            layout: Some(&self.pipeline_layout),
-            vertex: VertexState {
-                module: &self.shader,
-                entry_point: "vs_main",
-                buffers: &[],
-            },
-            fragment: Some(FragmentState {
-                module: &self.shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                polygon_mode: PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
+    fn build_pipeline(&self, format: TextureFormat, queue: &mut CommandQueue<'_>) -> Pipeline {
+        queue.create_pipeline(&PipelineDescriptor {
+            topology: PrimitiveTopology::TriangleList,
+            front_face: FrontFace::Ccw,
+            cull_mode: Some(Face::Back),
+            stages: &[
+                PipelineStage::Vertex(VertexStage {
+                    shader: &self.shader,
+                    entry: "vs_main",
+                }),
+                PipelineStage::Fragment(FragmentStage {
+                    shader: &self.shader,
+                    entry: "fs_main",
+                    targets: &[format],
+                }),
+            ],
+            depth_stencil_state: None,
+            descriptors: &[&self.descriptor_set_layout],
+            push_constant_ranges: &[],
         })
     }
 }
@@ -165,41 +129,39 @@ pub struct UiPass {
     pipeline: Mutex<UiPipeline>,
     elements: Arc<RwLock<HashMap<RenderTarget, SurfaceDrawCommands>>>,
     vertex_buffer: Mutex<Vec<u8>>,
-    texture_buffer: Mutex<Vec<TextureView>>,
+    textures: Mutex<Vec<Texture>>,
     instance_count: Mutex<u32>,
     index_buffer: Buffer,
 }
 
 impl UiPass {
     pub(super) fn new(
-        device: &Device,
+        queue: &mut CommandQueue<'_>,
         elems: Arc<RwLock<HashMap<RenderTarget, SurfaceDrawCommands>>>,
     ) -> Self {
-        let index_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+        let index_buffer = queue.create_buffer_init(&BufferInitDescriptor {
             contents: bytemuck::cast_slice(INDICES),
-            usage: BufferUsages::INDEX,
+            usage: BufferUsage::INDEX,
         });
 
         Self {
-            pipeline: Mutex::new(UiPipeline::new(device)),
+            pipeline: Mutex::new(UiPipeline::new(queue)),
             elements: elems,
             vertex_buffer: Mutex::new(Vec::new()),
-            texture_buffer: Mutex::new(Vec::new()),
             instance_count: Mutex::new(0),
             index_buffer,
+            textures: Mutex::new(Vec::new()),
         }
     }
 
     fn update_buffers(
         &self,
         target: RenderTarget,
-        device: &Device,
-        queue: &Queue,
+        queue: &mut CommandQueue<'_>,
         viewport_size: UVec2,
     ) {
         let mut vertex_buffer = self.vertex_buffer.lock();
-        let mut texture_buffer = self.texture_buffer.lock();
+        let mut texture_buffer = self.textures.lock();
         let mut instance_count = self.instance_count.lock();
 
         vertex_buffer.clear();
@@ -219,18 +181,18 @@ impl UiPass {
                 // This can happen when the window is rapidly resized and the
                 // ui state and renderer temporarily report different window sizes.
                 Some(state) if state.size != viewport_size => {
-                    let gpu_state = create_element(&cmd.cmd, viewport_size, device, queue);
+                    let gpu_state = create_element(&cmd.cmd, viewport_size, queue);
                     cmd.gpu_state.insert(gpu_state)
                 }
                 None => {
-                    let gpu_state = create_element(&cmd.cmd, viewport_size, device, queue);
+                    let gpu_state = create_element(&cmd.cmd, viewport_size, queue);
                     cmd.gpu_state.insert(gpu_state)
                 }
                 Some(state) => state,
             };
 
             let texture_index = texture_buffer.len() as u32;
-            texture_buffer.push(state.texture.create_view(&TextureViewDescriptor::default()));
+            texture_buffer.push(state.texture.clone());
 
             for vertex in &mut state.vertices {
                 vertex.texture_index = texture_index;
@@ -247,11 +209,11 @@ impl Node for UiPass {
     fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("UiPass::render").entered();
 
-        self.update_buffers(ctx.render_target, ctx.device, ctx.queue, ctx.size);
+        self.update_buffers(ctx.render_target, ctx.queue, ctx.size);
 
         let mut pipeline = self.pipeline.lock();
         let vertex_buffer = self.vertex_buffer.lock();
-        let texture_buffer = self.texture_buffer.lock();
+        let texture_buffer = self.textures.lock();
         let instance_count = *self.instance_count.lock();
 
         if instance_count == 0 {
@@ -277,77 +239,70 @@ impl Node for UiPass {
             }
 
             tracing::debug!("recreating UiPipeline with capacity {}", new_capacity);
-            *pipeline = UiPipeline::new_with_capacity(&ctx.device, new_capacity);
+            *pipeline = UiPipeline::new_with_capacity(&mut ctx.queue, new_capacity);
         }
 
-        let vertex_buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+        let vertex_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
             contents: &vertex_buffer,
-            usage: BufferUsages::STORAGE,
+            usage: BufferUsage::STORAGE,
         });
 
-        let texture_views: Vec<&TextureView> = texture_buffer.iter().collect();
+        let texture_views: Vec<&Texture> = texture_buffer.iter().collect();
 
-        let bind_group = ctx.device.create_bind_group(&BindGroupDescriptor {
-            label: None,
-            layout: &pipeline.bind_group_layout,
+        let bind_group = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
+            layout: &pipeline.descriptor_set_layout,
             entries: &[
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 0,
-                    resource: vertex_buffer.as_entire_binding(),
+                    resource: BindingResource::Buffer(&vertex_buffer),
                 },
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 1,
-                    resource: BindingResource::TextureViewArray(&texture_views),
-                },
-                BindGroupEntry {
-                    binding: 2,
                     resource: BindingResource::Sampler(&pipeline.sampler),
+                },
+                DescriptorSetEntry {
+                    binding: 2,
+                    resource: BindingResource::TextureArray(&texture_views),
                 },
             ],
         });
 
-        let indirect_buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: DrawIndexedIndirectArgs {
-                index_count: INDICES.len() as u32,
-                instance_count,
-                first_index: 0,
-                base_vertex: 0,
-                first_instance: 0,
-            }
-            .as_bytes(),
-            usage: BufferUsages::INDIRECT,
-        });
+        // let indirect_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
+        //     contents: DrawIndexedIndirectArgs {
+        //         index_count: INDICES.len() as u32,
+        //         instance_count,
+        //         first_index: 0,
+        //         base_vertex: 0,
+        //         first_instance: 0,
+        //     }
+        //     .as_bytes(),
+        //     usage: BufferUsage::INDIRECT,
+        // });
 
         let render_pipeline = match pipeline.pipelines.get(&ctx.format) {
             Some(pl) => pl,
             None => {
-                let pl = pipeline.build_pipeline(ctx.format, ctx.device);
+                let pl = pipeline.build_pipeline(ctx.format, ctx.queue);
                 pipeline.pipelines.insert(ctx.format, pl);
                 pipeline.pipelines.get(&ctx.format).unwrap()
             }
         };
 
-        let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("ui_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: ctx.target,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Load,
-                    store: StoreOp::Store,
-                },
-            })],
+        let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
+        let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+            color_attachments: &[RenderPassColorAttachment {
+                texture: &surface_texture,
+                load_op: LoadOp::Load,
+                store_op: StoreOp::Store,
+            }],
             depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
         });
 
         render_pass.set_pipeline(&render_pipeline);
-        render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint16);
-        render_pass.set_bind_group(0, &bind_group, &[]);
-        render_pass.draw_indexed_indirect(&indirect_buffer, 0);
+        render_pass.set_index_buffer(&self.index_buffer, IndexFormat::U16);
+        render_pass.set_descriptor_set(0, &bind_group);
+        // render_pass.draw_indexed_indirect(&indirect_buffer, 0);
+        render_pass.draw_indexed(0..INDICES.len() as u32, 0, 0..instance_count);
     }
 }
 
@@ -356,8 +311,7 @@ const INDICES: &[u16] = &[0, 1, 2, 3, 0, 2];
 fn create_element(
     cmd: &DrawCommand,
     viewport_size: UVec2,
-    device: &Device,
-    queue: &Queue,
+    queue: &mut CommandQueue<'_>,
 ) -> GpuDrawCommandState {
     let _span = trace_span!("create_element").entered();
 
@@ -369,38 +323,19 @@ fn create_element(
         );
     }
 
-    let texture = device.create_texture(&TextureDescriptor {
-        label: None,
-        size: Extent3d {
-            width: cmd.image.width(),
-            height: cmd.image.height(),
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: TextureDimension::D2,
+    let texture = queue.create_texture(&TextureDescriptor {
+        size: UVec2::new(cmd.image.width(), cmd.image.height()),
+        mip_levels: 1,
         format: TextureFormat::Rgba8UnormSrgb,
-        usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-        view_formats: &[],
+        usage: TextureUsage::TEXTURE_BINDING | TextureUsage::TRANSFER_DST,
     });
 
     queue.write_texture(
-        ImageCopyTexture {
-            texture: &texture,
-            mip_level: 0,
-            origin: Origin3d::ZERO,
-            aspect: TextureAspect::All,
-        },
+        &texture,
         &cmd.image,
         ImageDataLayout {
-            offset: 0,
-            bytes_per_row: Some(4 * cmd.image.width()),
-            rows_per_image: Some(cmd.image.height()),
-        },
-        Extent3d {
-            width: cmd.image.width(),
-            height: cmd.image.height(),
-            depth_or_array_layers: 1,
+            rows_per_image: 4 * cmd.image.width(),
+            bytes_per_row: cmd.image.height(),
         },
     );
 

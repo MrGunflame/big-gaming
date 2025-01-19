@@ -1,110 +1,81 @@
 use std::collections::HashMap;
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
+use game_render::api::{
+    BindingResource, BufferInitDescriptor, CommandQueue, DescriptorSetDescriptor,
+    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
+    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Texture,
+};
+use game_render::backend::{
+    BufferUsage, DescriptorBinding, DescriptorType, Face, FragmentStage, FrontFace, LoadOp,
+    PipelineStage, PrimitiveTopology, ShaderModule, ShaderSource, ShaderStages, StoreOp,
+    TextureFormat, VertexStage,
+};
 use game_render::camera::{Camera, CameraUniform};
-use game_render::graph::{Node, RenderContext};
+use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_tracing::trace_span;
 use parking_lot::{Mutex, RwLock};
-use wgpu::util::{BufferInitDescriptor, DeviceExt, DrawIndirectArgs};
-use wgpu::{
-    BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, BlendState, BufferBindingType, BufferUsages,
-    ColorTargetState, ColorWrites, Device, Face, FragmentState, FrontFace, LoadOp,
-    MultisampleState, Operations, PipelineLayout, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages, StoreOp, TextureFormat, VertexState,
-};
 
 use super::DrawCommand;
 
 const SHADER: &str = include_str!("../../shaders/line.wgsl");
 
 pub struct GizmoPipeline {
-    bind_group_layout: BindGroupLayout,
-    pipeline_layout: PipelineLayout,
-    pipelines: Mutex<HashMap<TextureFormat, RenderPipeline>>,
+    descriptor_set_layout: DescriptorSetLayout,
+    pipelines: Mutex<HashMap<TextureFormat, Pipeline>>,
     shader: ShaderModule,
 }
 
 impl GizmoPipeline {
-    pub fn new(device: &Device) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("gizmo_layout"),
-            entries: &[
-                BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+    pub fn new(queue: &mut CommandQueue<'_>) -> Self {
+        let bind_group_layout =
+            queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
+                bindings: &[
+                    DescriptorBinding {
+                        binding: 0,
+                        visibility: ShaderStages::VERTEX,
+                        kind: DescriptorType::Uniform,
+                        count: NonZeroU32::MIN,
                     },
-                    count: None,
-                },
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::VERTEX,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    DescriptorBinding {
+                        binding: 1,
+                        visibility: ShaderStages::VERTEX,
+                        kind: DescriptorType::Storage,
+                        count: NonZeroU32::MIN,
                     },
-                    count: None,
-                },
-            ],
-        });
+                ],
+            });
 
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("gizmo_pipeline_layout"),
-            bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[],
-        });
-
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("gizmo_shader"),
-            source: ShaderSource::Wgsl(SHADER.into()),
-        });
+        let shader = queue.create_shader_module(ShaderSource::Wgsl(SHADER));
 
         Self {
-            bind_group_layout,
-            pipeline_layout,
+            descriptor_set_layout: bind_group_layout,
             pipelines: Mutex::new(HashMap::new()),
             shader,
         }
     }
 
-    fn build_pipeline(&self, format: TextureFormat, device: &Device) -> RenderPipeline {
-        device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("gizmo_pipeline"),
-            layout: Some(&self.pipeline_layout),
-            vertex: VertexState {
-                module: &self.shader,
-                entry_point: "vs_main",
-                buffers: &[],
-            },
-            fragment: Some(FragmentState {
-                module: &self.shader,
-                entry_point: "fs_main",
-                targets: &[Some(ColorTargetState {
-                    format,
-                    blend: Some(BlendState::ALPHA_BLENDING),
-                    write_mask: ColorWrites::ALL,
-                })],
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::LineList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                conservative: false,
-                polygon_mode: PolygonMode::Fill,
-                unclipped_depth: false,
-            },
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            multiview: None,
+    fn build_pipeline(&self, format: TextureFormat, queue: &mut CommandQueue<'_>) -> Pipeline {
+        queue.create_pipeline(&PipelineDescriptor {
+            topology: PrimitiveTopology::LineList,
+            front_face: FrontFace::Ccw,
+            cull_mode: Some(Face::Back),
+            descriptors: &[&self.descriptor_set_layout],
+            stages: &[
+                PipelineStage::Vertex(VertexStage {
+                    shader: &self.shader,
+                    entry: "vs_main",
+                }),
+                PipelineStage::Fragment(FragmentStage {
+                    shader: &self.shader,
+                    entry: "fs_main",
+                    targets: &[format],
+                }),
+            ],
+            depth_stencil_state: None,
+            push_constant_ranges: &[],
         })
     }
 }
@@ -118,12 +89,12 @@ pub struct GizmoPass {
 
 impl GizmoPass {
     pub(crate) fn new(
-        device: &Device,
+        queue: &mut CommandQueue<'_>,
         elements: Arc<RwLock<Vec<DrawCommand>>>,
         camera: Arc<Mutex<Option<Camera>>>,
     ) -> Self {
         Self {
-            pipeline: GizmoPipeline::new(device),
+            pipeline: GizmoPipeline::new(queue),
             elements,
             camera,
             vertex_buffer: Mutex::new(Vec::new()),
@@ -168,77 +139,69 @@ impl Node for GizmoPass {
             return;
         }
 
-        let camera_buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+        let camera_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
             contents: bytemuck::cast_slice(&[CameraUniform::new(
                 camera.transform,
                 camera.projection,
             )]),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            usage: BufferUsage::UNIFORM,
         });
 
-        let vertices = ctx.device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
+        let vertices = ctx.queue.create_buffer_init(&BufferInitDescriptor {
             contents: bytemuck::cast_slice(&vertex_buffer),
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            usage: BufferUsage::STORAGE,
         });
 
-        let bg = ctx.device.create_bind_group(&BindGroupDescriptor {
-            label: None,
-            layout: &self.pipeline.bind_group_layout,
+        let bg = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
+            layout: &self.pipeline.descriptor_set_layout,
             entries: &[
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 0,
-                    resource: camera_buffer.as_entire_binding(),
+                    resource: BindingResource::Buffer(&camera_buffer),
                 },
-                BindGroupEntry {
+                DescriptorSetEntry {
                     binding: 1,
-                    resource: vertices.as_entire_binding(),
+                    resource: BindingResource::Buffer(&vertices),
                 },
             ],
         });
 
-        let indirect_buffer = ctx.device.create_buffer_init(&BufferInitDescriptor {
-            label: None,
-            contents: DrawIndirectArgs {
-                vertex_count: 2,
-                instance_count: (vertex_buffer.len() / 2) as u32,
-                first_vertex: 0,
-                first_instance: 0,
-            }
-            .as_bytes(),
-            usage: BufferUsages::INDIRECT,
-        });
+        // let indirect_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
+        //     contents: DrawIndirectArgs {
+        //         vertex_count: 2,
+        //         instance_count: (vertex_buffer.len() / 2) as u32,
+        //         first_vertex: 0,
+        //         first_instance: 0,
+        //     }
+        //     .as_bytes(),
+        //     usage: BufferUsage::INDIRECT,
+        // });
 
         let mut pipelines = self.pipeline.pipelines.lock();
         let render_pipeline = match pipelines.get(&ctx.format) {
             Some(pl) => pl,
             None => {
-                let pl = self.pipeline.build_pipeline(ctx.format, ctx.device);
+                let pl = self.pipeline.build_pipeline(ctx.format, ctx.queue);
                 pipelines.insert(ctx.format, pl);
                 pipelines.get(&ctx.format).unwrap()
             }
         };
 
-        let mut render_pass = ctx.encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("gizmo_pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view: ctx.target,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Load,
-                    store: StoreOp::Store,
-                },
-            })],
+        let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
+        let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+            color_attachments: &[RenderPassColorAttachment {
+                texture: &surface_texture,
+                load_op: LoadOp::Load,
+                store_op: StoreOp::Store,
+            }],
             depth_stencil_attachment: None,
-            occlusion_query_set: None,
-            timestamp_writes: None,
         });
 
         render_pass.set_pipeline(render_pipeline);
 
-        render_pass.set_bind_group(0, &bg, &[]);
-        render_pass.draw_indirect(&indirect_buffer, 0);
+        render_pass.set_descriptor_set(0, &bg);
+        // render_pass.draw_indirect(&indirect_buffer, 0);
+        render_pass.draw(0..2, 0..(vertex_buffer.len() / 2) as u32);
     }
 }
 

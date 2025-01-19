@@ -1,9 +1,9 @@
 @group(0) @binding(0)
 var<storage> vertices: array<Vertex>;
 @group(0) @binding(1)
-var textures: binding_array<texture_2d<f32>>;
-@group(0) @binding(2)
 var sprite_sampler: sampler;
+@group(0) @binding(2)
+var textures: binding_array<texture_2d<f32>>;
 
 struct Vertex {
     color: vec4<f32>,

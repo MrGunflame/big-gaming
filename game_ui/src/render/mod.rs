@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use ::image::{ImageBuffer, Rgba};
 use game_common::components::Color;
+use game_render::api::Texture;
 use game_render::camera::RenderTarget;
 use game_render::graph::{NodeLabel, SlotFlags, SlotKind, SlotLabel};
 use game_render::{Renderer, FINAL_RENDER_PASS};
@@ -17,7 +18,6 @@ use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::RwLock;
 use pipeline::Vertex;
-use wgpu::Texture;
 
 use crate::layout::{Key, Layout};
 use crate::primitive::Primitive;
@@ -33,22 +33,21 @@ pub struct UiRenderer {
 
 impl UiRenderer {
     pub fn new(renderer: &mut Renderer) -> Self {
-        let device = renderer.device();
-
         let elements = Arc::new(RwLock::new(HashMap::new()));
 
-        let ui_pass = UiPass::new(device, elements.clone());
-        const UI_PASS: NodeLabel = NodeLabel::new("UI_PASS");
+        renderer.with_command_queue_and_graph(|graph, queue| {
+            let ui_pass = UiPass::new(queue, elements.clone());
+            const UI_PASS: NodeLabel = NodeLabel::new("UI_PASS");
 
-        let mut graph = renderer.graph_mut();
-        graph.add_node(UI_PASS, ui_pass);
-        graph.add_node_dependency(UI_PASS, FINAL_RENDER_PASS);
-        graph.add_slot_dependency(
-            UI_PASS,
-            SlotLabel::SURFACE,
-            SlotKind::Texture,
-            SlotFlags::WRITE,
-        );
+            graph.add_node(UI_PASS, ui_pass);
+            graph.add_node_dependency(UI_PASS, FINAL_RENDER_PASS);
+            graph.add_slot_dependency(
+                UI_PASS,
+                SlotLabel::SURFACE,
+                SlotKind::Texture,
+                SlotFlags::READ | SlotFlags::WRITE,
+            );
+        });
 
         Self {
             targets: HashMap::new(),

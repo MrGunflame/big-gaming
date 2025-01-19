@@ -37,10 +37,11 @@ impl Gizmos {
         let elements = Arc::new(RwLock::new(Vec::new()));
         let camera = Arc::new(Mutex::new(None));
 
-        let node = GizmoPass::new(renderer.device(), elements.clone(), camera.clone());
-        let mut graph = renderer.graph_mut();
-        graph.add_node(GIZMO_PASS, node);
-        graph.add_node_dependency(GIZMO_PASS, FINAL_RENDER_PASS);
+        renderer.with_command_queue_and_graph(|graph, queue| {
+            let node = GizmoPass::new(queue, elements.clone(), camera.clone());
+            graph.add_node(GIZMO_PASS, node);
+            graph.add_node_dependency(GIZMO_PASS, FINAL_RENDER_PASS);
+        });
 
         Self {
             current: elements,
