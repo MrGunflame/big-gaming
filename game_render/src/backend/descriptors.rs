@@ -53,16 +53,16 @@ impl DescriptorSetAllocator {
         for binding in layout.bindings() {
             match binding.kind {
                 DescriptorType::Uniform => {
-                    count.uniform_buffers += 1;
+                    count.uniform_buffers += binding.count.get();
                 }
                 DescriptorType::Storage => {
-                    count.storage_buffers += 1;
+                    count.storage_buffers += binding.count.get();
                 }
                 DescriptorType::Sampler => {
-                    count.samplers += 1;
+                    count.samplers += binding.count.get();
                 }
                 DescriptorType::Texture => {
-                    count.textures += 1;
+                    count.textures += binding.count.get();
                 }
             }
         }

@@ -332,6 +332,7 @@ pub enum WriteDescriptorResource<'a> {
     StorageBuffer(&'a BufferView<'a>),
     Texture(&'a TextureView<'a>),
     Sampler(&'a Sampler),
+    TextureArray(&'a [&'a TextureView<'a>]),
 }
 
 #[derive(Clone, Debug)]

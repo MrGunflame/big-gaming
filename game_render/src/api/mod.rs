@@ -204,6 +204,7 @@ impl<'a> CommandQueue<'a> {
         let mut buffers = Vec::new();
         let mut samplers = Vec::new();
         let mut textures = Vec::new();
+        let mut texture_arrays = Vec::new();
         for entry in descriptor.entries {
             match entry.resource {
                 BindingResource::Buffer(buffer) => {
@@ -226,7 +227,19 @@ impl<'a> CommandQueue<'a> {
 
                     textures.push((entry.binding, texture.clone()));
                 }
-                BindingResource::TextureArray(textures) => todo!(),
+                BindingResource::TextureArray(textures) => {
+                    for texture in textures {
+                        assert!(
+                            texture.usage.contains(TextureUsage::TEXTURE_BINDING),
+                            "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
+                        );
+                    }
+
+                    texture_arrays.push((
+                        entry.binding,
+                        textures.into_iter().map(|t| (*t).clone()).collect(),
+                    ));
+                }
             }
         }
 
@@ -234,6 +247,7 @@ impl<'a> CommandQueue<'a> {
             buffers,
             samplers,
             textures,
+            texture_arrays,
             descriptor_set: None,
             layout: descriptor.layout.clone(),
             physical_texture_views: Vec::new(),
@@ -436,6 +450,7 @@ pub struct DescriptorSetInner {
     buffers: Vec<(u32, Buffer)>,
     samplers: Vec<(u32, Sampler)>,
     textures: Vec<(u32, Texture)>,
+    texture_arrays: Vec<(u32, Vec<Texture>)>,
     descriptor_set: Option<AllocatedDescriptorSet>,
     layout: DescriptorSetLayout,
     physical_texture_views: Vec<TextureView<'static>>,
@@ -682,6 +697,10 @@ pub fn execute<'a>(
 
                         let buffer_views = ScratchBuffer::new(bind_group.buffers.len());
                         let texture_views = ScratchBuffer::new(bind_group.textures.len());
+                        let texture_array_views =
+                            ScratchBuffer::new(bind_group.texture_arrays.len());
+                        let texture_array_view_refs =
+                            ScratchBuffer::new(bind_group.texture_arrays.len());
 
                         for (binding, buffer) in &bind_group.buffers {
                             *buffer_accesses.entry(buffer.id).or_default() |=
@@ -732,6 +751,32 @@ pub fn execute<'a>(
                             physical_bindings.push(WriteDescriptorBinding {
                                 binding: *binding,
                                 resource: WriteDescriptorResource::Sampler(&sampler.inner),
+                            });
+                        }
+
+                        for (binding, textures) in &bind_group.texture_arrays {
+                            let views =
+                                texture_array_views.insert(ScratchBuffer::new(textures.len()));
+
+                            for texture in textures {
+                                *texture_accesses.entry(texture.id).or_default() |=
+                                    AccessFlags::SHADER_READ;
+
+                                let texture = scheduler.textures.get(texture.id).unwrap();
+                                let physical_texture = match &texture.data {
+                                    TextureData::Physical(data) => data,
+                                    TextureData::Virtual(data) => data.texture(),
+                                };
+
+                                views.insert(physical_texture.create_view());
+                            }
+
+                            let view_refs = views.iter_mut().map(|v| &*v).collect::<Vec<_>>();
+                            let view_refs = texture_array_view_refs.insert(view_refs);
+
+                            physical_bindings.push(WriteDescriptorBinding {
+                                binding: *binding,
+                                resource: WriteDescriptorResource::TextureArray(&*view_refs),
                             });
                         }
 

@@ -2677,6 +2677,8 @@ impl<'a> DescriptorSet<'a> {
         let mut buffer_infos = Vec::new();
         let mut image_infos = Vec::new();
         let mut sampler_infos = Vec::new();
+        let mut image_array_infos = Vec::new();
+
         for (index, binding) in op.bindings.iter().enumerate() {
             let Some(layout_binding) = self.bindings.get(index) else {
                 panic!(
@@ -2733,6 +2735,25 @@ impl<'a> DescriptorSet<'a> {
 
                     sampler_infos.push(info);
                 }
+                WriteDescriptorResource::TextureArray(textures) => {
+                    if layout_binding.kind != super::DescriptorType::Texture {
+                        panic!(
+                            "type missmatch at index {}: op = {:?}, layout = {:?}",
+                            index, textures, layout_binding.kind
+                        );
+                    }
+
+                    let mut infos = Vec::new();
+                    for texture in *textures {
+                        let info = vk::DescriptorImageInfo::default()
+                            .image_view(texture.view)
+                            .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                            .sampler(vk::Sampler::null());
+                        infos.push(info);
+                    }
+
+                    image_array_infos.push(infos);
+                }
             }
         }
 
@@ -2741,6 +2762,7 @@ impl<'a> DescriptorSet<'a> {
         let mut next_buffer = 0;
         let mut next_image = 0;
         let mut next_sampler = 0;
+        let mut next_image_array = 0;
         for binding in op.bindings {
             let mut write = vk::WriteDescriptorSet::default()
                 .dst_set(self.set)
@@ -2772,6 +2794,12 @@ impl<'a> DescriptorSet<'a> {
                         .descriptor_type(vk::DescriptorType::SAMPLER)
                         .image_info(core::slice::from_ref(&sampler_infos[next_sampler]));
                     next_sampler += 1;
+                }
+                WriteDescriptorResource::TextureArray(_) => {
+                    write = write
+                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                        .image_info(&image_array_infos[next_image_array]);
+                    next_image_array += 1;
                 }
             }
 
