@@ -530,3 +530,35 @@ impl DrawIndirectArgs {
         bytemuck::bytes_of(self)
     }
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BarrierPipelineStage {
+    /// ALL
+    Top,
+    /// TRANSFR/COMPUTE/GRAPHICS
+    DrawIndirect,
+    /// TRANSFER
+    Transfer,
+    /// COMPUTE
+    Compute,
+    /// GRAPHICS
+    VertexInput,
+    /// GRAPHICS
+    VertexShader,
+    /// GRAPHICS
+    TessellationControlShader,
+    /// GRAPHICS
+    TesselationEvaluationShader,
+    /// GRAPHICS
+    GeometryShader,
+    /// GRAPHICS
+    EarlyFragmentTests,
+    /// GRAPHICS
+    FragmentShader,
+    /// GRAPHICS
+    LateFragmentTests,
+    /// GRAPHICS
+    ColorAttachmentOutput,
+    /// ALL
+    Bottom,
+}

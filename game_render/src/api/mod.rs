@@ -1,5 +1,7 @@
 //! Rendering API
 
+mod scheduler;
+
 use std::collections::HashMap;
 use std::ops::Range;
 
@@ -152,7 +154,7 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    pub fn import_texture(
+    pub(crate) fn import_texture(
         &mut self,
         texture: &'static vulkan::Texture,
         access: AccessFlags,
@@ -456,7 +458,7 @@ pub struct DescriptorSetInner {
     physical_texture_views: Vec<TextureView<'static>>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct RenderPassCmd {
     pipeline: PipelineId,
     descriptor_sets: HashMap<u32, DescriptorSet>,
