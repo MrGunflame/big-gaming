@@ -29,8 +29,20 @@ pub enum AllocationError {
 }
 
 pub trait Allocator {
+    /// Allocates a new memory region using this allocator.
+    ///
+    /// The returned [`Region`] may be bigger than the size requested. Returns `None` if the
+    /// allocator does not have enough free memory to allocate the given [`Layout`].
     fn alloc(&mut self, layout: Layout) -> Option<Region>;
 
+    /// Deallocates a previously allocated memory region.
+    ///
+    /// # Safety
+    ///
+    /// The [`Region`] must have been previously been returned by [`alloc`] on this allocator
+    /// instance. Every [`Region`] returned by [`alloc`] must only be used in `dealloc` once.
+    ///
+    /// [`alloc`]: Allocator::alloc
     unsafe fn dealloc(&mut self, region: Region);
 }
 

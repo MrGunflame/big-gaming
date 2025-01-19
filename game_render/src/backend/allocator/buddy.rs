@@ -4,12 +4,13 @@ use std::collections::VecDeque;
 use game_tracing::trace_span;
 use slab::Slab;
 
-use super::Region;
+use super::{Allocator, Region};
 
 #[derive(Clone, Debug)]
 pub struct BuddyAllocator {
     region: Region,
     blocks: Slab<Block>,
+    root: usize,
 }
 
 impl BuddyAllocator {
@@ -17,83 +18,94 @@ impl BuddyAllocator {
         assert!(region.size.is_power_of_two());
 
         let mut blocks = Slab::new();
-        blocks.insert(Block {
-            size: region.size,
+        let root = blocks.insert(Block {
             offset: 0,
-            is_free: true,
-            children: None,
+            size: region.size,
+            state: State::Free,
             parent: None,
         });
 
-        Self { region, blocks }
+        Self {
+            region,
+            blocks,
+            root,
+        }
     }
+}
 
-    pub fn alloc(&mut self, layout: Layout) -> Option<Region> {
+impl Allocator for BuddyAllocator {
+    fn alloc(&mut self, layout: Layout) -> Option<Region> {
         let _span = trace_span!("BuddyAllocator::alloc").entered();
 
         let size = layout.size().next_power_of_two();
+        debug_assert_ne!(size, 0);
 
         let mut queue = VecDeque::new();
-        queue.push_back(0);
+        queue.push_back(self.root);
 
         while let Some(index) = queue.pop_front() {
             let block = &mut self.blocks[index];
 
-            if block.is_free && block.size == size {
-                debug_assert!(block.children.is_none());
-
-                block.is_free = false;
-                return Some(Region::new(self.region.offset + block.offset, block.size));
-            }
-
-            if block.size < block.size {
+            if size > block.size {
                 continue;
             }
 
-            let children = match block.children {
-                Some((left, right)) => [left, right],
-                None => {
-                    // Cannot divide this block further.
-                    // Or the block is already occupied.
-                    if block.size == 1 || !block.is_free {
-                        continue;
-                    }
-
-                    // Split the block.
-                    block.is_free = false;
-
-                    let left = Block {
-                        offset: block.offset,
-                        size: block.size / 2,
-                        is_free: true,
-                        children: None,
-                        parent: Some(index),
-                    };
-                    let right = Block {
-                        offset: block.offset + block.size / 2,
-                        size: block.size / 2,
-                        is_free: true,
-                        children: None,
-                        parent: Some(index),
-                    };
-
-                    let left = self.blocks.insert(left);
-                    let right = self.blocks.insert(right);
-
-                    let block = &mut self.blocks[index];
-                    block.children = Some((left, right));
-
-                    [left, right]
+            match block.state {
+                State::Free => (),
+                State::Used => continue,
+                State::Split { left, right } => {
+                    // Walk down the left subtree first.
+                    // This will keep smaller allocations on the left side.
+                    queue.push_back(left);
+                    queue.push_back(right);
+                    continue;
                 }
+            }
+
+            // Block is as small as possible for the allocation.
+            // Note that this will always match at some point
+            // since both `block.size` and `size` are power-of-twos.
+            if block.size == size {
+                block.state = State::Used;
+                return Some(Region {
+                    offset: block.offset,
+                    size: block.size,
+                });
+            }
+
+            // Split the block into two equally sized blocks.
+            let left = Block {
+                offset: block.offset,
+                size: block.size / 2,
+                state: State::Free,
+                parent: Some(index),
+            };
+            let right = Block {
+                offset: block.offset + block.size / 2,
+                size: block.size / 2,
+                state: State::Free,
+                parent: Some(index),
             };
 
-            queue.extend(children);
+            let left = self.blocks.insert(left);
+            let right = self.blocks.insert(right);
+
+            // Mark the block as split.
+            let block = &mut self.blocks[index];
+            block.state = State::Split { left, right };
+
+            // Since the parent block that we just split is bigger
+            // than the requested size, either of the split blocks
+            // will be big enough for `size`.
+            // This means we only need to walk down the left side.
+            debug_assert!(block.size >= size);
+            queue.push_back(left);
         }
 
         None
     }
 
-    pub unsafe fn dealloc(&mut self, region: Region) {
+    unsafe fn dealloc(&mut self, region: Region) {
         let _span = trace_span!("BuddyAllocator::dealloc").entered();
 
         let (mut index, _) = self
@@ -102,37 +114,38 @@ impl BuddyAllocator {
             .find(|(_, block)| block.offset == region.offset && block.size == region.size)
             .unwrap();
 
+        // Mark the deallocated block as free.
         let block = &mut self.blocks[index];
+        debug_assert!(matches!(block.state, State::Used));
+        block.state = State::Free;
 
-        debug_assert!(!block.is_free);
-        debug_assert!(block.children.is_none());
-
-        block.is_free = true;
+        // Attempt to merge the freed block.
         let mut block = &self.blocks[index];
-
         while let Some(parent_index) = block.parent {
             let parent = &self.blocks[parent_index];
 
-            let (left, right) = parent.children.unwrap();
-            debug_assert!(index == left || index == right);
-            let other = if left == index { right } else { left };
+            let (left, right) = match parent.state {
+                State::Split { left, right } => (left, right),
+                _ => unreachable!(),
+            };
+
+            let other = if index == left { right } else { left };
             debug_assert_ne!(index, other);
 
-            // If our buddy is not free we cannot merge further.
-            if !self.blocks[other].is_free {
+            // If our boddy is not free we cannot merge any further.
+            if !self.blocks[other].state.is_free() {
                 break;
             }
 
+            // Merge left and right back into parent.
             self.blocks.remove(left);
             self.blocks.remove(right);
 
             let parent = &mut self.blocks[parent_index];
-            parent.children = None;
-            parent.is_free = true;
-            let parent = &self.blocks[parent_index];
+            parent.state = State::Free;
 
             index = parent_index;
-            block = parent;
+            block = &self.blocks[parent_index];
         }
     }
 }
@@ -141,16 +154,28 @@ impl BuddyAllocator {
 struct Block {
     size: usize,
     offset: usize,
-    is_free: bool,
-    children: Option<(usize, usize)>,
+    state: State,
     parent: Option<usize>,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum State {
+    Free,
+    Used,
+    Split { left: usize, right: usize },
+}
+
+impl State {
+    const fn is_free(&self) -> bool {
+        matches!(self, Self::Free)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::alloc::Layout;
 
-    use crate::backend::allocator::Region;
+    use crate::backend::allocator::{Allocator, Region};
 
     use super::BuddyAllocator;
 
