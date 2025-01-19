@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use game_common::components::Color;
 use game_tracing::trace_span;
 
@@ -31,11 +33,13 @@ impl PostProcessPass {
                     binding: 0,
                     visibility: ShaderStages::FRAGMENT,
                     kind: DescriptorType::Texture,
+                    count: NonZeroU32::MIN,
                 },
                 DescriptorBinding {
                     binding: 1,
                     visibility: ShaderStages::FRAGMENT,
                     kind: DescriptorType::Sampler,
+                    count: NonZeroU32::MIN,
                 },
             ],
         });

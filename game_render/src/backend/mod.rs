@@ -11,7 +11,7 @@ use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
 use glam::UVec2;
-use shader::ShaderInfo;
+use shader::Shader;
 use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, TextureView};
 
 #[derive(Clone, Debug)]
@@ -150,6 +150,7 @@ pub struct PushConstantRange {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PrimitiveTopology {
     TriangleList,
+    LineList,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -237,6 +238,7 @@ pub struct DescriptorBinding {
     pub binding: u32,
     pub visibility: ShaderStages,
     pub kind: DescriptorType,
+    pub count: NonZeroU32,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -491,17 +493,15 @@ pub enum IndexFormat {
 
 #[derive(Debug)]
 pub struct ShaderModule {
-    inner: vulkan::ShaderModule,
-    info: ShaderInfo,
+    shader: Shader,
 }
 
 impl ShaderModule {
     pub fn new(source: &ShaderSource<'_>, device: &vulkan::Device) -> Self {
         match source {
             ShaderSource::Wgsl(src) => {
-                let (spirv, info) = shader::wgsl_to_spirv(&src);
-                let inner = unsafe { device.create_shader(&spirv) };
-                Self { inner, info }
+                let shader = Shader::from_wgsl(&src);
+                Self { shader }
             }
         }
     }

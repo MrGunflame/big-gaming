@@ -22,6 +22,8 @@ use crate::backend::{
     WriteDescriptorResources,
 };
 
+pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
+
 type PipelineId = Key;
 type BufferId = Key;
 type TextureId = Key;
@@ -224,6 +226,7 @@ impl<'a> CommandQueue<'a> {
 
                     textures.push((entry.binding, texture.clone()));
                 }
+                BindingResource::TextureArray(textures) => todo!(),
             }
         }
 
@@ -240,7 +243,7 @@ impl<'a> CommandQueue<'a> {
 
     pub fn create_descriptor_set_layout(
         &mut self,
-        descriptor: &backend::DescriptorSetDescriptor<'_>,
+        descriptor: &DescriptorSetLayoutDescriptor<'_>,
     ) -> DescriptorSetLayout {
         let inner = self.scheduler.device.create_descriptor_layout(descriptor);
         let id = self
@@ -414,6 +417,7 @@ pub enum BindingResource<'a> {
     Buffer(&'a Buffer),
     Sampler(&'a Sampler),
     Texture(&'a Texture),
+    TextureArray(&'a [&'a Texture]),
 }
 
 #[derive(Debug)]

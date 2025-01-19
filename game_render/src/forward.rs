@@ -1,3 +1,4 @@
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use game_common::cell::UnsafeRefCell;
@@ -31,6 +32,7 @@ impl ForwardPipeline {
                     binding: 0,
                     visibility: ShaderStages::VERTEX,
                     kind: DescriptorType::Uniform,
+                    count: NonZeroU32::MIN,
                 },
             ],
         });
@@ -42,24 +44,28 @@ impl ForwardPipeline {
                     binding: 0,
                     visibility: ShaderStages::VERTEX,
                     kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
                 },
                 // NORMALS
                 DescriptorBinding {
                     binding: 1,
                     visibility: ShaderStages::VERTEX,
                     kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
                 },
                 // TANGENTS
                 DescriptorBinding {
                     binding: 2,
                     visibility: ShaderStages::VERTEX,
                     kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
                 },
                 // UVS
                 DescriptorBinding {
                     binding: 3,
                     visibility: ShaderStages::VERTEX,
                     kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
                 },
             ],
         });
@@ -72,29 +78,34 @@ impl ForwardPipeline {
                         binding: 0,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Uniform,
+                        count: NonZeroU32::MIN,
                     },
                     // ALBEDO
                     DescriptorBinding {
                         binding: 1,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Texture,
+                        count: NonZeroU32::MIN,
                     },
                     // NORMAL
                     DescriptorBinding {
                         binding: 2,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Texture,
+                        count: NonZeroU32::MIN,
                     },
                     // METALLIC-ROUGHNESS
                     DescriptorBinding {
                         binding: 3,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Texture,
+                        count: NonZeroU32::MIN,
                     },
                     DescriptorBinding {
                         binding: 4,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Sampler,
+                        count: NonZeroU32::MIN,
                     },
                 ],
             });
@@ -115,18 +126,21 @@ impl ForwardPipeline {
                         binding: 0,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Storage,
+                        count: NonZeroU32::MIN,
                     },
                     // POINT LIGHTS
                     DescriptorBinding {
                         binding: 1,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Storage,
+                        count: NonZeroU32::MIN,
                     },
                     // SPOT LIGHTS
                     DescriptorBinding {
                         binding: 2,
                         visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Storage,
+                        count: NonZeroU32::MIN,
                     },
                 ],
             });

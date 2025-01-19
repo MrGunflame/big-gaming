@@ -32,6 +32,7 @@ use glam::UVec2;
 use thiserror::Error;
 
 use crate::api::{Buffer, CommandQueue, Texture};
+use crate::backend::TextureFormat;
 use crate::camera::RenderTarget;
 
 pub trait Node: Send + Sync + 'static {
@@ -44,7 +45,10 @@ pub struct RenderContext<'a, 'b> {
     pub render_target: RenderTarget,
     pub queue: &'b mut CommandQueue<'a>,
     // TODO: Remove
+    #[deprecated = "Get the size from SlatLabel::SURFACE instead"]
     pub size: UVec2,
+    #[deprecated = "Get the format from SlatLabel::SURFACE instead"]
+    pub format: TextureFormat,
     pub(crate) resource_permissions: &'a HashMap<SlotLabel, SlotFlags>,
     pub(crate) resources: &'b mut HashMap<SlotLabel, SlotValueInner<'a>>,
 }
