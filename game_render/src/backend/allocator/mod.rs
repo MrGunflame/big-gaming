@@ -186,7 +186,7 @@ impl GeneralPurposeAllocator {
             // multiple times, so we use contains_key and get instead.
             if !inner.pools.contains_key(&mem_typ) {
                 let size = core::cmp::max(MIN_SIZE, req.size.checked_next_power_of_two().unwrap());
-                let mut memory = self.device.allocate_memory(size, mem_typ);
+                let mut memory = self.device.allocate_memory(size, mem_typ).unwrap();
                 let memory_host_ptr = if host_visible {
                     unsafe { memory.map(..).as_mut_ptr() }
                 } else {
@@ -229,7 +229,7 @@ impl GeneralPurposeAllocator {
                 prev_size.saturating_mul(GROWTH_FACTOR),
                 req.size.checked_next_power_of_two().unwrap(),
             );
-            let mut memory = self.device.allocate_memory(new_size, mem_typ);
+            let mut memory = self.device.allocate_memory(new_size, mem_typ).unwrap();
 
             let memory_host_ptr = if host_visible {
                 unsafe { memory.map(..).as_mut_ptr() }

@@ -55,6 +55,7 @@ bitflags! {
         const HOST_VISIBLE = 1 << 1;
         /// If not set the CPU needs to flush the host cache.
         const HOST_COHERENT = 1 << 2;
+        const _VK_PROTECTED = 1 << 3;
     }
 }
 

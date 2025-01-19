@@ -7,6 +7,7 @@ use std::mem::ManuallyDrop;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -151,6 +152,8 @@ pub enum Error {
     OutOfDeviceMemory,
     #[error("out of pool memory")]
     OutOfPoolMemory,
+    #[error("no allocations left")]
+    NoAllocationsLeft,
     #[error("missing layer: {0:?}")]
     MissingLayer(&'static CStr),
     #[error("missing extension: {0:?}")]
@@ -494,6 +497,9 @@ impl Adapter {
                 {
                     flags |= MemoryTypeFlags::HOST_COHERENT;
                 }
+                if typ.property_flags.contains(MemoryPropertyFlags::PROTECTED) {
+                    flags |= MemoryTypeFlags::_VK_PROTECTED;
+                }
 
                 MemoryType {
                     id: id as u32,
@@ -608,6 +614,7 @@ impl Adapter {
                 limits: self.device_limits(),
                 memory_properties: self.memory_properties(),
                 queue_family_index: queue_id,
+                num_allocations: Arc::new(AtomicU32::new(0)),
             }),
         }
     }
@@ -622,6 +629,7 @@ impl Adapter {
         DeviceLimits {
             max_push_constants_size: props.limits.max_push_constants_size,
             max_bound_descriptor_sets: props.limits.max_bound_descriptor_sets,
+            max_memory_allocation_count: props.limits.max_memory_allocation_count,
         }
     }
 }
@@ -690,20 +698,67 @@ impl Device {
         }
     }
 
-    pub fn allocate_memory(&self, size: NonZeroU64, memory_type_index: u32) -> DeviceMemory {
-        // TODO: If the protectedMemory feature is not enabled, the VkMemoryAllocateInfo::memoryTypeIndex must not indicate a memory type that reports VK_MEMORY_PROPERTY_PROTECTED_BIT.
+    pub fn allocate_memory(
+        &self,
+        size: NonZeroU64,
+        memory_type_index: u32,
+    ) -> Result<DeviceMemory, Error> {
+        let heap = self.device.memory_properties.types[memory_type_index as usize].heap;
+
+        assert!(
+            !self.device.memory_properties.types[memory_type_index as usize]
+                .flags
+                .contains(MemoryTypeFlags::_VK_PROTECTED),
+        );
+
         let info = MemoryAllocateInfo::default()
             // - `allocationSize` must be greater than 0.
             .allocation_size(size.get())
+            // - memoryTypeIndex must not indicate a memory type that reports `VK_MEMORY_PROPERTY_PROTECTED_BIT`.
             .memory_type_index(memory_type_index);
 
-        let memory = unsafe { self.device.allocate_memory(&info, None).unwrap() };
-        DeviceMemory {
-            memory,
-            device: self.device.clone(),
-            size,
-            flags: self.device.memory_properties.types[memory_type_index as usize].flags,
-            mapped_range: None,
+        assert!(size.get() <= u64::from(self.device.memory_properties.heaps[heap as usize].size));
+
+        if let Err(_) = self.device.num_allocations.fetch_update(
+            Ordering::Release,
+            Ordering::Acquire,
+            |count| {
+                // Unreachable using the CAS logic.
+                debug_assert!(count <= self.device.limits.max_memory_allocation_count);
+
+                // Increase the allocation count by one, but don't go over
+                // `max_memory_allocation_count`.
+                count
+                    .checked_add(1)
+                    .filter(|count| *count <= self.device.limits.max_memory_allocation_count)
+            },
+        ) {
+            return Err(Error::NoAllocationsLeft);
+        }
+
+        let res = unsafe {
+            // - `allocationSize` must be less than or equal to `memoryHeaps[heap].size`.
+            // - `memoryTypeIndex` must be less than `VkPhysicalDeviceMemoryProperties::memoryTypeCount`.
+            // - There must be less than `VkPhysicalDeviceLimits::maxMemoryAllocationCount` active.
+            self.device.allocate_memory(&info, None)
+        };
+
+        match res {
+            Ok(memory) => Ok(DeviceMemory {
+                memory,
+                device: self.device.clone(),
+                size,
+                flags: self.device.memory_properties.types[memory_type_index as usize].flags,
+                mapped_range: None,
+            }),
+            Err(err) => {
+                // If the allocation does not succeed it does not count
+                // towards the active allocation count.
+                // Since we have incremented the count by one this decrement
+                // will never overflow.
+                self.device.num_allocations.fetch_sub(1, Ordering::Release);
+                Err(err.into())
+            }
         }
     }
 
@@ -2589,6 +2644,8 @@ impl Drop for DeviceMemory {
         unsafe {
             self.device.free_memory(self.memory, None);
         }
+
+        self.device.num_allocations.fetch_sub(1, Ordering::Release);
     }
 }
 
@@ -2950,6 +3007,8 @@ struct DeviceShared {
     queue_family_index: u32,
     limits: DeviceLimits,
     memory_properties: AdapterMemoryProperties,
+    /// Number of currently active allocations.
+    num_allocations: Arc<AtomicU32>,
 }
 
 impl Debug for DeviceShared {
@@ -2979,6 +3038,7 @@ impl Drop for DeviceShared {
 struct DeviceLimits {
     max_push_constants_size: u32,
     max_bound_descriptor_sets: u32,
+    max_memory_allocation_count: u32,
 }
 
 trait RangeBoundsExt {
