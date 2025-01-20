@@ -69,6 +69,7 @@ impl CommandExecutor {
 
         let steps = scheduler::schedule(&mut self.resources, &self.cmds);
         let tmp = executor::execute(&mut self.resources, steps, encoder);
+        self.cmds.clear();
 
         tmp
     }
