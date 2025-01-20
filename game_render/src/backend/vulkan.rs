@@ -2192,6 +2192,18 @@ impl<'a> CommandEncoder<'a> {
             // Images cannot be transitioned into `UNDEFINED`.
             assert_ne!(new_layout, ImageLayout::UNDEFINED);
 
+            if old_layout == ImageLayout::UNDEFINED
+                && new_layout == ImageLayout::SHADER_READ_ONLY_OPTIMAL
+            {
+                dbg!(
+                    &old_layout,
+                    &new_layout,
+                    &barrier.src_access,
+                    &barrier.dst_access
+                );
+                panic!();
+            }
+
             let subresource_range = ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
                 .base_mip_level(0)
@@ -3071,6 +3083,12 @@ fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFl
         flags if flags.is_empty() => {
             return (ImageLayout::UNDEFINED, vk::AccessFlags2::empty());
         }
+        super::AccessFlags::TRANSFER_READ => {
+            return (
+                ImageLayout::TRANSFER_SRC_OPTIMAL,
+                vk::AccessFlags2::TRANSFER_READ,
+            );
+        }
         super::AccessFlags::TRANSFER_WRITE => {
             return (
                 ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -3131,6 +3149,10 @@ fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFl
 
     let mut vk_flags = vk::AccessFlags2::empty();
     for (flag, vk_flag) in [
+        (
+            super::AccessFlags::TRANSFER_READ,
+            vk::AccessFlags2::TRANSFER_READ,
+        ),
         (
             super::AccessFlags::TRANSFER_WRITE,
             vk::AccessFlags2::TRANSFER_WRITE,

@@ -423,16 +423,34 @@ bitflags! {
         const INDIRECT = 1 << 5;
         const DEPTH_ATTACHMENT_WRITE = 1 << 6;
         const DEPTH_ATTACHMENT_READ = 1 << 7;
+        const TRANSFER_READ = 1 << 8;
     }
 }
 
 impl AccessFlags {
-    fn is_readable(&self) -> bool {
-        matches!(*self, Self::SHADER_READ | Self::INDEX | Self::INDIRECT)
+    /// Returns `true` if the flags specify only read-only operations.
+    ///
+    /// An empty set of flags is also classified as read-only.
+    pub(crate) fn is_read_only(&self) -> bool {
+        !self.is_writable()
     }
 
-    fn is_writable(&self) -> bool {
-        matches!(*self, Self::TRANSFER_WRITE | Self::COLOR_ATTACHMENT_WRITE)
+    pub(crate) fn is_readable(&self) -> bool {
+        matches!(
+            *self,
+            Self::SHADER_READ
+                | Self::INDEX
+                | Self::INDIRECT
+                | Self::DEPTH_ATTACHMENT_READ
+                | Self::TRANSFER_READ
+        )
+    }
+
+    pub(crate) fn is_writable(&self) -> bool {
+        matches!(
+            *self,
+            Self::TRANSFER_WRITE | Self::COLOR_ATTACHMENT_WRITE | Self::DEPTH_ATTACHMENT_WRITE
+        )
     }
 }
 

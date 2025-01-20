@@ -10,7 +10,7 @@ use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 
-use crate::api::Scheduler;
+use crate::api::CommandExecutor;
 use crate::backend::vulkan::{Adapter, CommandPool, Device, Instance, Queue};
 use crate::backend::{AccessFlags, PipelineBarriers, QueueSubmit, TextureBarrier, TextureUsage};
 use crate::camera::RenderTarget;
@@ -37,7 +37,7 @@ pub struct SharedState {
     pub jobs: UnsafeRefCell<VecDeque<Job>>,
     fps_limiter: UnsafeRefCell<FpsLimiter>,
     shutdown: AtomicBool,
-    pub scheduler: UnsafeRefCell<Scheduler>,
+    pub scheduler: UnsafeRefCell<CommandExecutor>,
 }
 
 pub struct RenderThreadHandle {
@@ -56,7 +56,7 @@ impl RenderThreadHandle {
         let main_parker = Arc::new(Parker::new());
         let main_unparker = main_parker.clone();
 
-        let scheduler = Scheduler::new(device.clone(), adapter.memory_properties());
+        let executor = CommandExecutor::new(device.clone(), adapter.memory_properties());
 
         let shared = Arc::new(SharedState {
             instance,
@@ -70,7 +70,7 @@ impl RenderThreadHandle {
             jobs: UnsafeRefCell::new(VecDeque::new()),
             fps_limiter: UnsafeRefCell::new(FpsLimiter::new(FpsLimit::UNLIMITED)),
             shutdown: AtomicBool::new(false),
-            scheduler: UnsafeRefCell::new(scheduler),
+            scheduler: UnsafeRefCell::new(executor),
         });
 
         let render_unparker = start_render_thread(shared.clone(), queue);

@@ -1,131 +1,141 @@
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::marker::PhantomData;
 
 use crate::backend::{AccessFlags, BarrierPipelineStage};
 
-pub struct GraphScheduler<T> {
-    t: PhantomData<T>,
-}
-
-impl<T> GraphScheduler<T>
+pub(super) fn schedule<'a, T, M>(
+    resources: &mut M,
+    nodes: &'a [T],
+) -> Vec<Step<&'a T, T::ResourceId>>
 where
-    T: Node + std::fmt::Debug,
-    T::Id: Copy + Hash + Eq + std::fmt::Debug,
+    T: Node<M>,
+    T::ResourceId: Copy + Hash + Eq,
+    M: ResourceMap<Id = T::ResourceId>,
 {
-    pub fn new() -> Self {
-        Self { t: PhantomData }
-    }
+    let mut resource_accesses = HashMap::<_, Vec<_>>::new();
+    let mut predecessors = HashMap::<_, Vec<_>>::new();
 
-    pub fn schedule<'a>(
-        &mut self,
-        resources: &mut HashMap<T::Id, Resource<u64>>,
-        nodes: &'a [T],
-    ) -> Vec<Step<&'a T, u64>> {
-        let mut resource_accesses = HashMap::<_, Vec<_>>::new();
-        let mut predecessors = HashMap::<_, Vec<_>>::new();
+    for (index, node) in nodes.iter().enumerate() {
+        let mut node_preds = Vec::new();
 
-        for (index, node) in nodes.iter().enumerate() {
-            let mut node_preds = Vec::new();
-
-            for resource in node.resources() {
-                if let Some(preds) = resource_accesses.get(&resource.id) {
-                    for pred in preds {
-                        node_preds.push(*pred);
-                    }
+        for resource in node.resources(&resources) {
+            if let Some(preds) = resource_accesses.get(&resource.id) {
+                for pred in preds {
+                    node_preds.push(*pred);
                 }
-
-                resource_accesses
-                    .entry(resource.id)
-                    .or_default()
-                    .push(index);
             }
 
-            predecessors.insert(index, node_preds);
+            resource_accesses
+                .entry(resource.id)
+                .or_default()
+                .push(index);
         }
 
-        let mut steps = Vec::new();
-        loop {
-            // Gather all nodes that have no more predecessors,
-            // i.e. all nodes that can be executed now.
-            let mut indices: Vec<_> = predecessors
-                .iter_mut()
-                .filter_map(|(index, preds)| preds.is_empty().then_some(*index))
-                .collect();
+        predecessors.insert(index, node_preds);
+    }
 
-            // Since we have no cycles in predecessors, this loop will always
-            // terminate at some point.
-            if indices.is_empty() {
-                debug_assert!(predecessors.is_empty());
-                break;
+    let mut steps = Vec::new();
+    loop {
+        // Gather all nodes that have no more predecessors,
+        // i.e. all nodes that can be executed now.
+        let mut indices: Vec<_> = predecessors
+            .iter_mut()
+            .filter_map(|(index, preds)| preds.is_empty().then_some(*index))
+            .collect();
+
+        // Since we have no cycles in predecessors, this loop will always
+        // terminate at some point.
+        if indices.is_empty() {
+            debug_assert!(predecessors.is_empty());
+            break;
+        }
+
+        // We should keep the order of nodes if possible.
+        indices.sort();
+
+        // We batch all barriers required to run all nodes.
+        // This allows the caller to insert all barriers
+        // using a single call.
+
+        for &index in &indices {
+            predecessors.remove(&index);
+            for preds in predecessors.values_mut() {
+                preds.retain(|pred| *pred != index);
             }
 
-            // We should keep the order of nodes if possible.
-            indices.sort();
+            let node = &nodes[index];
+            for res in node.resources(&resources) {
+                let access = resources.access(res.id);
 
-            // We batch all barriers required to run all nodes.
-            // This allows the caller to insert all barriers
-            // using a single call.
-
-            for &index in &indices {
-                predecessors.remove(&index);
-                for preds in predecessors.values_mut() {
-                    preds.retain(|pred| *pred != index);
+                // We can skip a barrier if the resource is already tagged with the
+                // required access flags, but this is only possible for read-only
+                // access since a WRITE->WRITE still requires the previous write to
+                // become visible to prevent WRITE-AFTER-WRITE hazards.
+                if res.access == access && res.access.is_read_only() {
+                    continue;
                 }
 
-                let node = &nodes[index];
-                for res in node.resources() {
-                    let resource = resources.get_mut(&res.id).unwrap();
+                steps.push(Step::Barrier(Barrier {
+                    resource: res.id,
+                    src_access: access,
+                    dst_access: res.access,
+                }));
 
-                    if res.access == resource.access {
-                        continue;
-                    }
-
-                    steps.push(Step::Barrier(Barrier {
-                        resource: resource.id,
-                        src_access: resource.access,
-                        dst_access: res.access,
-                    }));
-
-                    resource.access = res.access;
-                }
-            }
-
-            for index in &indices {
-                steps.push(Step::Node(&nodes[*index]));
+                resources.set_access(res.id, res.access);
             }
         }
 
-        steps
+        for index in &indices {
+            steps.push(Step::Node(&nodes[*index]));
+        }
     }
+
+    steps
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum Step<N, R> {
+pub(super) enum Step<N, R> {
     Node(N),
     Barrier(Barrier<R>),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-struct Barrier<T> {
-    resource: T,
-    src_access: AccessFlags,
-    dst_access: AccessFlags,
+impl<N, R> Step<N, R> {
+    #[inline]
+    pub const fn is_node(&self) -> bool {
+        matches!(self, Self::Node(_))
+    }
+
+    #[inline]
+    pub const fn is_barrier(&self) -> bool {
+        matches!(self, Self::Barrier(_))
+    }
 }
 
-pub(crate) trait Node {
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(super) struct Barrier<T> {
+    pub(super) resource: T,
+    pub(super) src_access: AccessFlags,
+    pub(super) dst_access: AccessFlags,
+}
+
+pub trait ResourceMap {
     type Id;
 
-    fn id(&self) -> Self::Id;
+    fn access(&self, id: Self::Id) -> AccessFlags;
 
-    fn resources(&self) -> Vec<Resource<Self::Id>>;
+    fn set_access(&mut self, id: Self::Id, access: AccessFlags);
+}
+
+pub(super) trait Node<M> {
+    type ResourceId;
+
+    fn resources(&self, resources: &M) -> Vec<Resource<Self::ResourceId>>;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Resource<T> {
-    id: T,
-    access: AccessFlags,
-    stage: BarrierPipelineStage,
+pub(super) struct Resource<T> {
+    pub(super) id: T,
+    pub(super) access: AccessFlags,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -141,9 +151,9 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::api::scheduler::{Barrier, Step};
-    use crate::backend::{AccessFlags, BarrierPipelineStage};
+    use crate::backend::AccessFlags;
 
-    use super::{GraphScheduler, Node, Resource};
+    use super::{schedule, Node, Resource, ResourceMap};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct TestNode {
@@ -151,22 +161,31 @@ mod tests {
         resources: Vec<Resource<u64>>,
     }
 
-    impl Node for TestNode {
-        type Id = u64;
+    impl Node<HashMap<u64, Resource<u64>>> for TestNode {
+        type ResourceId = u64;
 
-        fn id(&self) -> Self::Id {
-            self.id
-        }
-
-        fn resources(&self) -> Vec<Resource<Self::Id>> {
+        fn resources(
+            &self,
+            _resources: &HashMap<u64, Resource<u64>>,
+        ) -> Vec<Resource<Self::ResourceId>> {
             self.resources.clone()
         }
     }
 
-    #[test]
-    fn scheduler_single_frame() {
-        let mut scheduler = GraphScheduler::new();
+    impl ResourceMap for HashMap<u64, Resource<u64>> {
+        type Id = u64;
 
+        fn access(&self, id: Self::Id) -> AccessFlags {
+            self.get(&id).unwrap().access
+        }
+
+        fn set_access(&mut self, id: Self::Id, access: AccessFlags) {
+            self.get_mut(&id).unwrap().access = access;
+        }
+    }
+
+    #[test]
+    fn schedule_simple() {
         // |---|     |---|
         // | 0 | --> | 2 |
         // |---|     |---| -> |---|
@@ -178,7 +197,6 @@ mod tests {
                 Resource {
                     id: index as u64,
                     access: AccessFlags::empty(),
-                    stage: BarrierPipelineStage::Top,
                 },
             )
         }));
@@ -188,7 +206,6 @@ mod tests {
                 resources: vec![Resource {
                     id: 0,
                     access: AccessFlags::TRANSFER_WRITE,
-                    stage: BarrierPipelineStage::Transfer,
                 }],
             },
             TestNode {
@@ -196,7 +213,6 @@ mod tests {
                 resources: vec![Resource {
                     id: 1,
                     access: AccessFlags::TRANSFER_WRITE,
-                    stage: BarrierPipelineStage::Transfer,
                 }],
             },
             TestNode {
@@ -204,7 +220,6 @@ mod tests {
                 resources: vec![Resource {
                     id: 0,
                     access: AccessFlags::SHADER_READ,
-                    stage: BarrierPipelineStage::Top,
                 }],
             },
             TestNode {
@@ -213,17 +228,15 @@ mod tests {
                     Resource {
                         id: 0,
                         access: AccessFlags::SHADER_READ,
-                        stage: BarrierPipelineStage::Top,
                     },
                     Resource {
                         id: 1,
                         access: AccessFlags::SHADER_READ,
-                        stage: BarrierPipelineStage::Top,
                     },
                 ],
             },
         ];
-        let steps: Vec<_> = scheduler.schedule(&mut resources, &nodes);
+        let steps: Vec<_> = schedule(&mut resources, &nodes);
         assert_eq!(
             steps,
             [
@@ -251,6 +264,143 @@ mod tests {
                     dst_access: AccessFlags::SHADER_READ,
                 }),
                 Step::Node(&nodes[3])
+            ]
+        );
+    }
+
+    #[test]
+    fn schedule_read_and_write() {
+        // |---|     |---|     |---|
+        // | 0 | --> | 1 | --> | 2 |
+        // |---|     |---|     |---|
+        let mut resources = HashMap::from(core::array::from_fn::<_, 2, _>(|index| {
+            (
+                index as u64,
+                Resource {
+                    id: index as u64,
+                    access: AccessFlags::empty(),
+                },
+            )
+        }));
+        let nodes = vec![
+            TestNode {
+                id: 0,
+                resources: vec![Resource {
+                    id: 0,
+                    access: AccessFlags::TRANSFER_WRITE,
+                }],
+            },
+            TestNode {
+                id: 1,
+                resources: vec![
+                    Resource {
+                        id: 0,
+                        access: AccessFlags::TRANSFER_READ,
+                    },
+                    Resource {
+                        id: 1,
+                        access: AccessFlags::TRANSFER_WRITE,
+                    },
+                ],
+            },
+            TestNode {
+                id: 2,
+                resources: vec![Resource {
+                    id: 1,
+                    access: AccessFlags::SHADER_READ,
+                }],
+            },
+        ];
+
+        let steps: Vec<_> = schedule(&mut resources, &nodes);
+        assert_eq!(
+            steps,
+            [
+                Step::Barrier(Barrier {
+                    resource: 0,
+                    src_access: AccessFlags::empty(),
+                    dst_access: AccessFlags::TRANSFER_WRITE,
+                }),
+                Step::Node(&nodes[0]),
+                Step::Barrier(Barrier {
+                    resource: 0,
+                    src_access: AccessFlags::TRANSFER_WRITE,
+                    dst_access: AccessFlags::TRANSFER_READ,
+                }),
+                Step::Barrier(Barrier {
+                    resource: 1,
+                    src_access: AccessFlags::empty(),
+                    dst_access: AccessFlags::TRANSFER_WRITE,
+                }),
+                Step::Node(&nodes[1]),
+                Step::Barrier(Barrier {
+                    resource: 1,
+                    src_access: AccessFlags::TRANSFER_WRITE,
+                    dst_access: AccessFlags::SHADER_READ,
+                }),
+                Step::Node(&nodes[2]),
+            ]
+        );
+    }
+
+    #[test]
+    fn schedule_write_after_write() {
+        // |---|     |---|     |---|
+        // | 0 | --> | 1 | --> | 2 |
+        // |---|     |---|     |---|
+        let mut resources = HashMap::from([(
+            0,
+            Resource {
+                id: 0,
+                access: AccessFlags::empty(),
+            },
+        )]);
+        let nodes = vec![
+            TestNode {
+                id: 0,
+                resources: vec![Resource {
+                    id: 0,
+                    access: AccessFlags::TRANSFER_WRITE,
+                }],
+            },
+            TestNode {
+                id: 1,
+                resources: vec![Resource {
+                    id: 0,
+                    access: AccessFlags::TRANSFER_WRITE,
+                }],
+            },
+            TestNode {
+                id: 2,
+                resources: vec![Resource {
+                    id: 0,
+                    access: AccessFlags::TRANSFER_WRITE,
+                }],
+            },
+        ];
+
+        let steps: Vec<_> = schedule(&mut resources, &nodes);
+        assert_eq!(
+            steps,
+            [
+                Step::Barrier(Barrier {
+                    resource: 0,
+                    src_access: AccessFlags::empty(),
+                    dst_access: AccessFlags::TRANSFER_WRITE
+                }),
+                Step::Node(&nodes[0]),
+                Step::Barrier(Barrier {
+                    resource: 0,
+                    src_access: AccessFlags::TRANSFER_WRITE,
+                    dst_access: AccessFlags::TRANSFER_WRITE
+                }),
+                Step::Node(&nodes[1]),
+                Step::Barrier(Barrier {
+                    resource: 0,
+                    src_access: AccessFlags::TRANSFER_WRITE,
+                    dst_access: AccessFlags::TRANSFER_WRITE
+                }),
+                Step::Node(&nodes[2]),
             ]
         );
     }

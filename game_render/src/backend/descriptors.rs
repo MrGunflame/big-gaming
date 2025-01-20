@@ -42,6 +42,7 @@ impl DescriptorSetAllocator {
         }
     }
 
+    // FIXME: Why is this unsafe again?
     pub unsafe fn alloc(
         &mut self,
         layout: &DescriptorSetLayout,

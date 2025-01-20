@@ -1,16 +1,18 @@
 //! Rendering API
 
+mod executor;
 mod scheduler;
 
 use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::Arc;
 
-use ash::vk;
 use game_common::collections::arena::{Arena, Key};
-use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
+use parking_lot::Mutex;
+use scheduler::{Node, Resource, ResourceMap};
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc, UsageFlags};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
@@ -33,66 +35,94 @@ type DescriptorSetId = Key;
 type DescriptorSetLayoutId = Key;
 type SamplerId = Key;
 
-pub struct Scheduler {
-    buffers: Arena<BufferInner>,
-    textures: Arena<TextureInner>,
-    descriptor_sets: Arena<DescriptorSetInner>,
-    allocator: GeneralPurposeAllocator,
-    descriptors: DescriptorSetAllocator,
-    pipelines: Arena<PipelineInner>,
-    samplers: Arena<SamplerInner>,
-    descriptor_set_layouts: Arena<DescriptorSetLayoutInner>,
+pub struct CommandExecutor {
+    resources: Resources,
     cmds: Vec<Command>,
     device: Device,
 }
 
-impl Scheduler {
+impl CommandExecutor {
     pub fn new(device: Device, memory_props: AdapterMemoryProperties) -> Self {
         Self {
-            pipelines: Arena::new(),
-            buffers: Arena::new(),
-            textures: Arena::new(),
-            descriptor_sets: Arena::new(),
-            descriptor_set_layouts: Arena::new(),
-            allocator: GeneralPurposeAllocator::new(device.clone(), memory_props),
-            descriptors: DescriptorSetAllocator::new(device.clone()),
-            samplers: Arena::new(),
+            resources: Resources {
+                pipelines: Arena::new(),
+                buffers: Arena::new(),
+                textures: Arena::new(),
+                descriptor_sets: Arena::new(),
+                descriptor_set_layouts: Arena::new(),
+                allocator: GeneralPurposeAllocator::new(device.clone(), memory_props),
+                descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
+                samplers: Arena::new(),
+                drop_cmds: Arc::new(Mutex::new(Vec::new())),
+            },
             cmds: Vec::new(),
             device,
         }
     }
 
     pub fn queue(&mut self) -> CommandQueue<'_> {
-        CommandQueue { scheduler: self }
+        CommandQueue { executor: self }
     }
 
-    pub fn execute(&mut self, encoder: &mut CommandEncoder<'_>) -> InflightResources<'_> {
-        let _span = trace_span!("Scheduler::execute").entered();
-        execute(self, encoder)
+    pub fn execute(&mut self, encoder: &mut CommandEncoder<'_>) -> executor::TemporaryResources {
+        let _span = trace_span!("CommandExecutor::execute").entered();
+
+        let steps = scheduler::schedule(&mut self.resources, &self.cmds);
+        let tmp = executor::execute(&mut self.resources, steps, encoder);
+
+        tmp
     }
 }
 
-pub struct Resources {
-    pub buffers: Arena<BufferInner>,
-    pub textures: Arena<TextureInner>,
-    pub bind_groups: Arena<DescriptorSetInner>,
-    pub allocator: GeneralPurposeAllocator,
-    pub descriptors: DescriptorSetAllocator,
+struct Resources {
+    buffers: Arena<BufferInner>,
+    textures: Arena<TextureInner>,
+    samplers: Arena<SamplerInner>,
+    descriptor_set_layouts: Arena<DescriptorSetLayoutInner>,
+    descriptor_sets: Arena<DescriptorSetInner>,
+    pipelines: Arena<PipelineInner>,
+    allocator: GeneralPurposeAllocator,
+    descriptor_allocator: DescriptorSetAllocator,
+    drop_cmds: Arc<Mutex<Vec<Command>>>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum ResourceId {
+    Buffer(BufferId),
+    Texture(TextureId),
+}
+
+impl ResourceMap for Resources {
+    type Id = ResourceId;
+
+    fn access(&self, id: Self::Id) -> AccessFlags {
+        match id {
+            ResourceId::Buffer(id) => self.buffers.get(id).unwrap().access,
+            ResourceId::Texture(id) => self.textures.get(id).unwrap().access,
+        }
+    }
+
+    fn set_access(&mut self, id: Self::Id, access: AccessFlags) {
+        match id {
+            ResourceId::Buffer(id) => self.buffers.get_mut(id).unwrap().access = access,
+            ResourceId::Texture(id) => self.textures.get_mut(id).unwrap().access = access,
+        }
+    }
 }
 
 pub struct CommandQueue<'a> {
-    scheduler: &'a mut Scheduler,
+    executor: &'a mut CommandExecutor,
 }
 
 impl<'a> CommandQueue<'a> {
     pub fn create_buffer(&mut self, descriptor: &BufferDescriptor) -> Buffer {
-        let buffer = self.scheduler.allocator.create_buffer(
+        let buffer = self.executor.resources.allocator.create_buffer(
             descriptor.size.try_into().unwrap(),
             BufferUsage::all(),
             UsageFlags::HOST_VISIBLE,
         );
 
-        let id = self.scheduler.buffers.insert(BufferInner {
+        let id = self.executor.resources.buffers.insert(BufferInner {
             buffer,
             access: AccessFlags::empty(),
             flags: BufferUsage::all(),
@@ -120,11 +150,11 @@ impl<'a> CommandQueue<'a> {
         );
 
         {
-            let buffer = self.scheduler.buffers.get(buffer.id).unwrap();
+            let buffer = self.executor.resources.buffers.get(buffer.id).unwrap();
             assert!(buffer.flags.contains(BufferUsage::TRANSFER_DST));
         }
 
-        self.scheduler
+        self.executor
             .cmds
             .push(Command::WriteBuffer(buffer.id, data.to_vec()));
     }
@@ -137,11 +167,12 @@ impl<'a> CommandQueue<'a> {
         );
 
         let texture = self
-            .scheduler
+            .executor
+            .resources
             .allocator
             .create_texture(&descriptor, UsageFlags::HOST_VISIBLE);
 
-        let id = self.scheduler.textures.insert(TextureInner {
+        let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Virtual(texture),
             access: AccessFlags::empty(),
         });
@@ -162,7 +193,7 @@ impl<'a> CommandQueue<'a> {
         format: TextureFormat,
         usage: TextureUsage,
     ) -> Texture {
-        let id = self.scheduler.textures.insert(TextureInner {
+        let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
             access,
         });
@@ -176,14 +207,17 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub(crate) fn remove_imported_texture(&mut self, texture: &Texture) {
-        for (_, bind_groups) in self.scheduler.descriptor_sets.iter() {
+        for (_, descriptor_set) in self.executor.resources.descriptor_sets.iter() {
             assert!(
-                !bind_groups.textures.iter().any(|(_, t)| t.id == texture.id),
+                !descriptor_set
+                    .textures
+                    .iter()
+                    .any(|(_, t)| t.id == texture.id),
                 "Texture cannot be removed: it is used in a descriptor set",
             );
         }
 
-        self.scheduler.textures.remove(texture.id);
+        self.executor.resources.textures.remove(texture.id);
     }
 
     #[track_caller]
@@ -193,9 +227,19 @@ impl<'a> CommandQueue<'a> {
             "Texture cannot be written to: TRANSFER_DST usage not set",
         );
 
-        self.scheduler
+        let staging_buffer = self.create_buffer_init(&BufferInitDescriptor {
+            contents: data,
+            usage: BufferUsage::empty(),
+        });
+
+        self.executor
             .cmds
-            .push(Command::WriteTexture(texture.id, data.to_vec(), layout));
+            .push(Command::CopyBufferToTexture(CopyBufferToTexture {
+                buffer: staging_buffer,
+                offset: 0,
+                layout,
+                texture: texture.clone(),
+            }));
     }
 
     #[track_caller]
@@ -245,15 +289,19 @@ impl<'a> CommandQueue<'a> {
             }
         }
 
-        let id = self.scheduler.descriptor_sets.insert(DescriptorSetInner {
-            buffers,
-            samplers,
-            textures,
-            texture_arrays,
-            descriptor_set: None,
-            layout: descriptor.layout.clone(),
-            physical_texture_views: Vec::new(),
-        });
+        let id = self
+            .executor
+            .resources
+            .descriptor_sets
+            .insert(DescriptorSetInner {
+                buffers,
+                samplers,
+                textures,
+                texture_arrays,
+                descriptor_set: None,
+                layout: descriptor.layout.clone(),
+                physical_texture_views: Vec::new(),
+            });
         DescriptorSet { id }
     }
 
@@ -261,9 +309,10 @@ impl<'a> CommandQueue<'a> {
         &mut self,
         descriptor: &DescriptorSetLayoutDescriptor<'_>,
     ) -> DescriptorSetLayout {
-        let inner = self.scheduler.device.create_descriptor_layout(descriptor);
+        let inner = self.executor.device.create_descriptor_layout(descriptor);
         let id = self
-            .scheduler
+            .executor
+            .resources
             .descriptor_set_layouts
             .insert(DescriptorSetLayoutInner { inner });
         DescriptorSetLayout { id }
@@ -271,7 +320,8 @@ impl<'a> CommandQueue<'a> {
 
     pub fn create_pipeline(&mut self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
         let descriptors = self
-            .scheduler
+            .executor
+            .resources
             .descriptor_set_layouts
             .iter()
             .filter_map(|(id, layout)| {
@@ -284,7 +334,7 @@ impl<'a> CommandQueue<'a> {
             .collect::<Vec<_>>();
 
         let inner = self
-            .scheduler
+            .executor
             .device
             .create_pipeline(&backend::PipelineDescriptor {
                 topology: descriptor.topology,
@@ -295,13 +345,21 @@ impl<'a> CommandQueue<'a> {
                 stages: descriptor.stages,
                 push_constant_ranges: descriptor.push_constant_ranges,
             });
-        let id = self.scheduler.pipelines.insert(PipelineInner { inner });
+        let id = self
+            .executor
+            .resources
+            .pipelines
+            .insert(PipelineInner { inner });
         Pipeline { id }
     }
 
     pub fn create_sampler(&mut self, descriptor: &SamplerDescriptor) -> Sampler {
-        let inner = self.scheduler.device.create_sampler(descriptor);
-        let id = self.scheduler.samplers.insert(SamplerInner { inner });
+        let inner = self.executor.device.create_sampler(descriptor);
+        let id = self
+            .executor
+            .resources
+            .samplers
+            .insert(SamplerInner { inner });
         Sampler { id }
     }
 
@@ -345,7 +403,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub fn create_shader_module(&mut self, src: ShaderSource<'_>) -> ShaderModule {
-        ShaderModule::new(&src, &self.scheduler.device)
+        ShaderModule::new(&src, &self.executor.device)
     }
 }
 
@@ -437,17 +495,106 @@ pub enum BindingResource<'a> {
 }
 
 #[derive(Debug)]
-pub enum Command {
+enum Command {
     DestroyBuffer(BufferId),
     DestroyTexture(TextureId),
     DestroySampler(Sampler),
     WriteBuffer(BufferId, Vec<u8>),
-    WriteTexture(TextureId, Vec<u8>, ImageDataLayout),
+    CopyBufferToTexture(CopyBufferToTexture),
     RenderPass(RenderPassCmd),
 }
 
+impl Node<Resources> for Command {
+    type ResourceId = ResourceId;
+
+    fn resources(&self, resources: &Resources) -> Vec<Resource<Self::ResourceId>> {
+        match self {
+            Self::WriteBuffer(id, _) => {
+                vec![Resource {
+                    id: ResourceId::Buffer(*id),
+                    access: AccessFlags::TRANSFER_WRITE,
+                }]
+            }
+            Self::CopyBufferToTexture(cmd) => {
+                vec![
+                    Resource {
+                        id: ResourceId::Buffer(cmd.buffer.id),
+                        access: AccessFlags::TRANSFER_READ,
+                    },
+                    Resource {
+                        id: ResourceId::Texture(cmd.texture.id),
+                        access: AccessFlags::TRANSFER_WRITE,
+                    },
+                ]
+            }
+            Self::RenderPass(cmd) => {
+                let mut accesses = Vec::new();
+
+                if let Some((buffer, _)) = &cmd.index_buffer {
+                    accesses.push(Resource {
+                        id: ResourceId::Buffer(buffer.id),
+                        access: AccessFlags::INDEX,
+                    });
+                }
+
+                for descriptor_set in cmd.descriptor_sets.values() {
+                    let descriptor_set = resources.descriptor_sets.get(descriptor_set.id).unwrap();
+                    for (_, buffer) in &descriptor_set.buffers {
+                        accesses.push(Resource {
+                            id: ResourceId::Buffer(buffer.id),
+                            access: AccessFlags::SHADER_READ,
+                        });
+                    }
+
+                    for (_, texture) in &descriptor_set.textures {
+                        accesses.push(Resource {
+                            id: ResourceId::Texture(texture.id),
+                            access: AccessFlags::SHADER_READ,
+                        });
+                    }
+
+                    for (_, textures) in &descriptor_set.texture_arrays {
+                        for texture in textures {
+                            accesses.push(Resource {
+                                id: ResourceId::Texture(texture.id),
+                                access: AccessFlags::SHADER_READ,
+                            });
+                        }
+                    }
+                }
+
+                for attachment in &cmd.color_attachments {
+                    accesses.push(Resource {
+                        id: ResourceId::Texture(attachment.texture.id),
+                        access: AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    });
+                }
+
+                if let Some(attachment) = &cmd.depth_stencil_attachment {
+                    accesses.push(Resource {
+                        id: ResourceId::Texture(attachment.texture.id),
+                        access: AccessFlags::DEPTH_ATTACHMENT_READ
+                            | AccessFlags::DEPTH_ATTACHMENT_WRITE,
+                    });
+                }
+
+                accesses
+            }
+            _ => vec![],
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CopyBufferToTexture {
+    buffer: Buffer,
+    offset: u64,
+    layout: ImageDataLayout,
+    texture: Texture,
+}
+
 #[derive(Debug)]
-pub struct DescriptorSetInner {
+struct DescriptorSetInner {
     // (Binding, Resource)
     buffers: Vec<(u32, Buffer)>,
     samplers: Vec<(u32, Sampler)>,
@@ -497,6 +644,15 @@ pub struct TextureInner {
 enum TextureData {
     Physical(&'static vulkan::Texture),
     Virtual(TextureAlloc),
+}
+
+impl TextureData {
+    fn texture(&self) -> &vulkan::Texture {
+        match self {
+            Self::Physical(data) => data,
+            Self::Virtual(data) => data.texture(),
+        }
+    }
 }
 
 pub struct RenderPass<'a, 'b> {
@@ -559,7 +715,7 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
     fn drop(&mut self) {
         if let Some(pipeline) = &self.pipeline {
             self.ctx
-                .scheduler
+                .executor
                 .cmds
                 .push(Command::RenderPass(RenderPassCmd {
                     pipeline: pipeline.clone(),
@@ -625,332 +781,332 @@ struct DrawIndexed {
     instances: Range<u32>,
 }
 
-pub fn execute<'a>(
-    scheduler: &'a mut Scheduler,
-    encoder: &mut CommandEncoder<'_>,
-) -> InflightResources<'a> {
-    let mut staging_buffers = Vec::new();
-    let mut frame_texture_views = Vec::new();
-    let mut frame_descriptor_sets = Vec::new();
+// pub fn execute<'a>(
+//     scheduler: &'a mut Scheduler,
+//     encoder: &mut CommandEncoder<'_>,
+// ) -> InflightResources<'a> {
+//     let mut staging_buffers = Vec::new();
+//     let mut frame_texture_views = Vec::new();
+//     let mut frame_descriptor_sets = Vec::new();
 
-    for cmd in scheduler.cmds.drain(..) {
-        match cmd {
-            Command::WriteBuffer(id, data) => {
-                let buffer = scheduler.buffers.get_mut(id).unwrap();
+//     for cmd in scheduler.cmds.drain(..) {
+//         match cmd {
+//             Command::WriteBuffer(id, data) => {
+//                 let buffer = scheduler.buffers.get_mut(id).unwrap();
 
-                unsafe {
-                    buffer.buffer.map().copy_from_slice(&data);
-                }
-            }
-            Command::WriteTexture(id, data, layout) => {
-                let texture = scheduler.textures.get_mut(id).unwrap();
+//                 unsafe {
+//                     buffer.buffer.map().copy_from_slice(&data);
+//                 }
+//             }
+//             Command::WriteTexture(id, data, layout) => {
+//                 let texture = scheduler.textures.get_mut(id).unwrap();
 
-                let mut staging_buffer = scheduler.allocator.create_buffer(
-                    (data.len() as u64).try_into().unwrap(),
-                    BufferUsage::TRANSFER_SRC,
-                    UsageFlags::HOST_VISIBLE,
-                );
+//                 let mut staging_buffer = scheduler.allocator.create_buffer(
+//                     (data.len() as u64).try_into().unwrap(),
+//                     BufferUsage::TRANSFER_SRC,
+//                     UsageFlags::HOST_VISIBLE,
+//                 );
 
-                unsafe {
-                    staging_buffer.map().copy_from_slice(&data);
-                }
+//                 unsafe {
+//                     staging_buffer.map().copy_from_slice(&data);
+//                 }
 
-                match &mut texture.data {
-                    TextureData::Physical(_) => todo!(),
-                    TextureData::Virtual(tex) => {
-                        encoder.insert_pipeline_barriers(&PipelineBarriers {
-                            buffer: &[],
-                            texture: &[TextureBarrier {
-                                src_access: texture.access,
-                                dst_access: AccessFlags::TRANSFER_WRITE,
-                                texture: tex.texture(),
-                            }],
-                        });
+//                 match &mut texture.data {
+//                     TextureData::Physical(_) => todo!(),
+//                     TextureData::Virtual(tex) => {
+//                         encoder.insert_pipeline_barriers(&PipelineBarriers {
+//                             buffer: &[],
+//                             texture: &[TextureBarrier {
+//                                 src_access: texture.access,
+//                                 dst_access: AccessFlags::TRANSFER_WRITE,
+//                                 texture: tex.texture(),
+//                             }],
+//                         });
 
-                        encoder.copy_buffer_to_texture(
-                            CopyBuffer {
-                                buffer: staging_buffer.buffer(),
-                                offset: 0,
-                                layout,
-                            },
-                            tex.texture(),
-                        );
+//                         encoder.copy_buffer_to_texture(
+//                             CopyBuffer {
+//                                 buffer: staging_buffer.buffer(),
+//                                 offset: 0,
+//                                 layout,
+//                             },
+//                             tex.texture(),
+//                         );
 
-                        texture.access = AccessFlags::TRANSFER_WRITE;
-                        staging_buffers.push(staging_buffer);
-                    }
-                }
-            }
-            Command::RenderPass(cmd) => {
-                let mut sets = Vec::new();
+//                         texture.access = AccessFlags::TRANSFER_WRITE;
+//                         staging_buffers.push(staging_buffer);
+//                     }
+//                 }
+//             }
+//             Command::RenderPass(cmd) => {
+//                 let mut sets = Vec::new();
 
-                let mut buffer_accesses = HashMap::<BufferId, AccessFlags>::new();
-                let mut texture_accesses = HashMap::<TextureId, AccessFlags>::new();
+//                 let mut buffer_accesses = HashMap::<BufferId, AccessFlags>::new();
+//                 let mut texture_accesses = HashMap::<TextureId, AccessFlags>::new();
 
-                for (index, bind_group_e) in &cmd.descriptor_sets {
-                    let bind_group = scheduler.descriptor_sets.get_mut(bind_group_e.id).unwrap();
-                    let layout = scheduler
-                        .descriptor_set_layouts
-                        .get(bind_group.layout.id)
-                        .unwrap();
+//                 for (index, bind_group_e) in &cmd.descriptor_sets {
+//                     let bind_group = scheduler.descriptor_sets.get_mut(bind_group_e.id).unwrap();
+//                     let layout = scheduler
+//                         .descriptor_set_layouts
+//                         .get(bind_group.layout.id)
+//                         .unwrap();
 
-                    bind_group.descriptor_set.get_or_insert_with(|| {
-                        let mut physical_bindings = Vec::new();
+//                     bind_group.descriptor_set.get_or_insert_with(|| {
+//                         let mut physical_bindings = Vec::new();
 
-                        let buffer_views = ScratchBuffer::new(bind_group.buffers.len());
-                        let texture_views = ScratchBuffer::new(bind_group.textures.len());
-                        let texture_array_views =
-                            ScratchBuffer::new(bind_group.texture_arrays.len());
-                        let texture_array_view_refs =
-                            ScratchBuffer::new(bind_group.texture_arrays.len());
+//                         let buffer_views = ScratchBuffer::new(bind_group.buffers.len());
+//                         let texture_views = ScratchBuffer::new(bind_group.textures.len());
+//                         let texture_array_views =
+//                             ScratchBuffer::new(bind_group.texture_arrays.len());
+//                         let texture_array_view_refs =
+//                             ScratchBuffer::new(bind_group.texture_arrays.len());
 
-                        for (binding, buffer) in &bind_group.buffers {
-                            *buffer_accesses.entry(buffer.id).or_default() |=
-                                AccessFlags::SHADER_READ;
+//                         for (binding, buffer) in &bind_group.buffers {
+//                             *buffer_accesses.entry(buffer.id).or_default() |=
+//                                 AccessFlags::SHADER_READ;
 
-                            let buffer = scheduler.buffers.get(buffer.id).unwrap();
+//                             let buffer = scheduler.buffers.get(buffer.id).unwrap();
 
-                            let view = buffer_views.insert(buffer.buffer.buffer_view());
+//                             let view = buffer_views.insert(buffer.buffer.buffer_view());
 
-                            match layout.inner.bindings()[*binding as usize].kind {
-                                DescriptorType::Uniform => {
-                                    physical_bindings.push(WriteDescriptorBinding {
-                                        binding: *binding,
-                                        resource: WriteDescriptorResource::UniformBuffer(view),
-                                    });
-                                }
-                                DescriptorType::Storage => {
-                                    physical_bindings.push(WriteDescriptorBinding {
-                                        binding: *binding,
-                                        resource: WriteDescriptorResource::StorageBuffer(view),
-                                    });
-                                }
-                                _ => unreachable!(),
-                            }
-                        }
+//                             match layout.inner.bindings()[*binding as usize].kind {
+//                                 DescriptorType::Uniform => {
+//                                     physical_bindings.push(WriteDescriptorBinding {
+//                                         binding: *binding,
+//                                         resource: WriteDescriptorResource::UniformBuffer(view),
+//                                     });
+//                                 }
+//                                 DescriptorType::Storage => {
+//                                     physical_bindings.push(WriteDescriptorBinding {
+//                                         binding: *binding,
+//                                         resource: WriteDescriptorResource::StorageBuffer(view),
+//                                     });
+//                                 }
+//                                 _ => unreachable!(),
+//                             }
+//                         }
 
-                        for (binding, texture) in &bind_group.textures {
-                            *texture_accesses.entry(texture.id).or_default() |=
-                                AccessFlags::SHADER_READ;
+//                         for (binding, texture) in &bind_group.textures {
+//                             *texture_accesses.entry(texture.id).or_default() |=
+//                                 AccessFlags::SHADER_READ;
 
-                            let texture = scheduler.textures.get(texture.id).unwrap();
+//                             let texture = scheduler.textures.get(texture.id).unwrap();
 
-                            let physical_texture = match &texture.data {
-                                TextureData::Physical(data) => data,
-                                TextureData::Virtual(data) => data.texture(),
-                            };
+//                             let physical_texture = match &texture.data {
+//                                 TextureData::Physical(data) => data,
+//                                 TextureData::Virtual(data) => data.texture(),
+//                             };
 
-                            let view = texture_views.insert(physical_texture.create_view());
+//                             let view = texture_views.insert(physical_texture.create_view());
 
-                            physical_bindings.push(WriteDescriptorBinding {
-                                binding: *binding,
-                                resource: WriteDescriptorResource::Texture(view),
-                            });
-                        }
+//                             physical_bindings.push(WriteDescriptorBinding {
+//                                 binding: *binding,
+//                                 resource: WriteDescriptorResource::Texture(view),
+//                             });
+//                         }
 
-                        for (binding, sampler) in &bind_group.samplers {
-                            let sampler = scheduler.samplers.get(sampler.id).unwrap();
-                            physical_bindings.push(WriteDescriptorBinding {
-                                binding: *binding,
-                                resource: WriteDescriptorResource::Sampler(&sampler.inner),
-                            });
-                        }
+//                         for (binding, sampler) in &bind_group.samplers {
+//                             let sampler = scheduler.samplers.get(sampler.id).unwrap();
+//                             physical_bindings.push(WriteDescriptorBinding {
+//                                 binding: *binding,
+//                                 resource: WriteDescriptorResource::Sampler(&sampler.inner),
+//                             });
+//                         }
 
-                        for (binding, textures) in &bind_group.texture_arrays {
-                            let views =
-                                texture_array_views.insert(ScratchBuffer::new(textures.len()));
+//                         for (binding, textures) in &bind_group.texture_arrays {
+//                             let views =
+//                                 texture_array_views.insert(ScratchBuffer::new(textures.len()));
 
-                            for texture in textures {
-                                *texture_accesses.entry(texture.id).or_default() |=
-                                    AccessFlags::SHADER_READ;
+//                             for texture in textures {
+//                                 *texture_accesses.entry(texture.id).or_default() |=
+//                                     AccessFlags::SHADER_READ;
 
-                                let texture = scheduler.textures.get(texture.id).unwrap();
-                                let physical_texture = match &texture.data {
-                                    TextureData::Physical(data) => data,
-                                    TextureData::Virtual(data) => data.texture(),
-                                };
+//                                 let texture = scheduler.textures.get(texture.id).unwrap();
+//                                 let physical_texture = match &texture.data {
+//                                     TextureData::Physical(data) => data,
+//                                     TextureData::Virtual(data) => data.texture(),
+//                                 };
 
-                                views.insert(physical_texture.create_view());
-                            }
+//                                 views.insert(physical_texture.create_view());
+//                             }
 
-                            let view_refs = views.iter_mut().map(|v| &*v).collect::<Vec<_>>();
-                            let view_refs = texture_array_view_refs.insert(view_refs);
+//                             let view_refs = views.iter_mut().map(|v| &*v).collect::<Vec<_>>();
+//                             let view_refs = texture_array_view_refs.insert(view_refs);
 
-                            physical_bindings.push(WriteDescriptorBinding {
-                                binding: *binding,
-                                resource: WriteDescriptorResource::TextureArray(&*view_refs),
-                            });
-                        }
+//                             physical_bindings.push(WriteDescriptorBinding {
+//                                 binding: *binding,
+//                                 resource: WriteDescriptorResource::TextureArray(&*view_refs),
+//                             });
+//                         }
 
-                        physical_bindings.sort_by(|a, b| a.binding.cmp(&b.binding));
+//                         physical_bindings.sort_by(|a, b| a.binding.cmp(&b.binding));
 
-                        let mut set =
-                            unsafe { scheduler.descriptors.alloc(&layout.inner).unwrap() };
-                        set.raw_mut().update(&WriteDescriptorResources {
-                            bindings: &physical_bindings,
-                        });
+//                         let mut set =
+//                             unsafe { scheduler.descriptors.alloc(&layout.inner).unwrap() };
+//                         set.raw_mut().update(&WriteDescriptorResources {
+//                             bindings: &physical_bindings,
+//                         });
 
-                        bind_group.physical_texture_views.extend(texture_views);
+//                         bind_group.physical_texture_views.extend(texture_views);
 
-                        set
-                    });
+//                         set
+//                     });
 
-                    sets.push((*index, bind_group_e.id));
-                }
+//                     sets.push((*index, bind_group_e.id));
+//                 }
 
-                let attachment_views = ScratchBuffer::new(
-                    cmd.color_attachments.len()
-                        + usize::from(cmd.depth_stencil_attachment.is_some()),
-                );
-                let mut color_attachments = Vec::new();
-                for attachment in cmd.color_attachments {
-                    let texture = scheduler.textures.get(attachment.texture.id).unwrap();
-                    let physical_texture = match &texture.data {
-                        TextureData::Physical(data) => data,
-                        TextureData::Virtual(data) => data.texture(),
-                    };
+//                 let attachment_views = ScratchBuffer::new(
+//                     cmd.color_attachments.len()
+//                         + usize::from(cmd.depth_stencil_attachment.is_some()),
+//                 );
+//                 let mut color_attachments = Vec::new();
+//                 for attachment in cmd.color_attachments {
+//                     let texture = scheduler.textures.get(attachment.texture.id).unwrap();
+//                     let physical_texture = match &texture.data {
+//                         TextureData::Physical(data) => data,
+//                         TextureData::Virtual(data) => data.texture(),
+//                     };
 
-                    *texture_accesses.entry(attachment.texture.id).or_default() |=
-                        AccessFlags::COLOR_ATTACHMENT_WRITE;
+//                     *texture_accesses.entry(attachment.texture.id).or_default() |=
+//                         AccessFlags::COLOR_ATTACHMENT_WRITE;
 
-                    let view = attachment_views.insert(physical_texture.create_view());
+//                     let view = attachment_views.insert(physical_texture.create_view());
 
-                    color_attachments.push(crate::backend::RenderPassColorAttachment {
-                        load_op: attachment.load_op,
-                        store_op: attachment.store_op,
-                        view,
-                        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                    });
-                }
+//                     color_attachments.push(crate::backend::RenderPassColorAttachment {
+//                         load_op: attachment.load_op,
+//                         store_op: attachment.store_op,
+//                         view,
+//                         layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+//                     });
+//                 }
 
-                let depth_attachment = cmd.depth_stencil_attachment.map(|attachment| {
-                    let texture = scheduler.textures.get(attachment.texture.id).unwrap();
-                    let physical_texture = match &texture.data {
-                        TextureData::Physical(data) => data,
-                        TextureData::Virtual(data) => data.texture(),
-                    };
+//                 let depth_attachment = cmd.depth_stencil_attachment.map(|attachment| {
+//                     let texture = scheduler.textures.get(attachment.texture.id).unwrap();
+//                     let physical_texture = match &texture.data {
+//                         TextureData::Physical(data) => data,
+//                         TextureData::Virtual(data) => data.texture(),
+//                     };
 
-                    *texture_accesses.entry(attachment.texture.id).or_default() |=
-                        AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
+//                     *texture_accesses.entry(attachment.texture.id).or_default() |=
+//                         AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
 
-                    let view = attachment_views.insert(physical_texture.create_view());
+//                     let view = attachment_views.insert(physical_texture.create_view());
 
-                    crate::backend::RenderPassDepthStencilAttachment {
-                        depth_load_op: attachment.load_op,
-                        depth_store_op: attachment.store_op,
-                        view,
-                        layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                    }
-                });
+//                     crate::backend::RenderPassDepthStencilAttachment {
+//                         depth_load_op: attachment.load_op,
+//                         depth_store_op: attachment.store_op,
+//                         view,
+//                         layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+//                     }
+//                 });
 
-                if let Some((buffer, _)) = &cmd.index_buffer {
-                    *buffer_accesses.entry(buffer.id).or_default() |= AccessFlags::INDEX;
-                }
+//                 if let Some((buffer, _)) = &cmd.index_buffer {
+//                     *buffer_accesses.entry(buffer.id).or_default() |= AccessFlags::INDEX;
+//                 }
 
-                let mut buffer_barriers = Vec::new();
-                for (buffer_id, dst_access) in &buffer_accesses {
-                    let buffer = scheduler.buffers.get(*buffer_id).unwrap();
+//                 let mut buffer_barriers = Vec::new();
+//                 for (buffer_id, dst_access) in &buffer_accesses {
+//                     let buffer = scheduler.buffers.get(*buffer_id).unwrap();
 
-                    buffer_barriers.push(BufferBarrier {
-                        buffer: buffer.buffer.buffer(),
-                        offset: 0,
-                        size: buffer.buffer.size(),
-                        src_access: buffer.access,
-                        dst_access: *dst_access,
-                    });
-                }
+//                     buffer_barriers.push(BufferBarrier {
+//                         buffer: buffer.buffer.buffer(),
+//                         offset: 0,
+//                         size: buffer.buffer.size(),
+//                         src_access: buffer.access,
+//                         dst_access: *dst_access,
+//                     });
+//                 }
 
-                let mut texture_barriers = Vec::new();
-                for (texture_id, dst_access) in &texture_accesses {
-                    let texture = scheduler.textures.get(*texture_id).unwrap();
+//                 let mut texture_barriers = Vec::new();
+//                 for (texture_id, dst_access) in &texture_accesses {
+//                     let texture = scheduler.textures.get(*texture_id).unwrap();
 
-                    let texture_data = match &texture.data {
-                        TextureData::Physical(data) => data,
-                        TextureData::Virtual(data) => data.texture(),
-                    };
+//                     let texture_data = match &texture.data {
+//                         TextureData::Physical(data) => data,
+//                         TextureData::Virtual(data) => data.texture(),
+//                     };
 
-                    texture_barriers.push(TextureBarrier {
-                        texture: texture_data,
-                        src_access: texture.access,
-                        dst_access: *dst_access,
-                    });
-                }
+//                     texture_barriers.push(TextureBarrier {
+//                         texture: texture_data,
+//                         src_access: texture.access,
+//                         dst_access: *dst_access,
+//                     });
+//                 }
 
-                encoder.insert_pipeline_barriers(&PipelineBarriers {
-                    buffer: &buffer_barriers,
-                    texture: &texture_barriers,
-                });
+//                 encoder.insert_pipeline_barriers(&PipelineBarriers {
+//                     buffer: &buffer_barriers,
+//                     texture: &texture_barriers,
+//                 });
 
-                let mut render_pass =
-                    encoder.begin_render_pass(&crate::backend::RenderPassDescriptor {
-                        color_attachments: &color_attachments,
-                        depth_stencil_attachment: depth_attachment.as_ref(),
-                    });
+//                 let mut render_pass =
+//                     encoder.begin_render_pass(&crate::backend::RenderPassDescriptor {
+//                         color_attachments: &color_attachments,
+//                         depth_stencil_attachment: depth_attachment.as_ref(),
+//                     });
 
-                let pipeline = scheduler.pipelines.get_mut(cmd.pipeline).unwrap();
-                render_pass.bind_pipeline(&pipeline.inner);
-                for (index, set) in sets {
-                    let set = scheduler
-                        .descriptor_sets
-                        .get(set)
-                        .unwrap()
-                        .descriptor_set
-                        .as_ref()
-                        .unwrap();
-                    render_pass.bind_descriptor_set(index, set.raw());
-                }
+//                 let pipeline = scheduler.pipelines.get_mut(cmd.pipeline).unwrap();
+//                 render_pass.bind_pipeline(&pipeline.inner);
+//                 for (index, set) in sets {
+//                     let set = scheduler
+//                         .descriptor_sets
+//                         .get(set)
+//                         .unwrap()
+//                         .descriptor_set
+//                         .as_ref()
+//                         .unwrap();
+//                     render_pass.bind_descriptor_set(index, set.raw());
+//                 }
 
-                for (data, stages, offset) in cmd.push_constants {
-                    render_pass.set_push_constants(stages, offset, &data);
-                }
+//                 for (data, stages, offset) in cmd.push_constants {
+//                     render_pass.set_push_constants(stages, offset, &data);
+//                 }
 
-                if let Some((buffer, format)) = cmd.index_buffer {
-                    let buffer = scheduler.buffers.get(buffer.id).unwrap();
-                    render_pass.bind_index_buffer(buffer.buffer.buffer_view(), format);
-                }
+//                 if let Some((buffer, format)) = cmd.index_buffer {
+//                     let buffer = scheduler.buffers.get(buffer.id).unwrap();
+//                     render_pass.bind_index_buffer(buffer.buffer.buffer_view(), format);
+//                 }
 
-                for call in cmd.draw_calls {
-                    match call {
-                        DrawCall::Draw(call) => {
-                            render_pass.draw(call.vertices, call.instances);
-                        }
-                        DrawCall::DrawIndexed(call) => {
-                            render_pass.draw_indexed(
-                                call.indices,
-                                call.vertex_offset,
-                                call.instances,
-                            );
-                        }
-                    }
-                }
+//                 for call in cmd.draw_calls {
+//                     match call {
+//                         DrawCall::Draw(call) => {
+//                             render_pass.draw(call.vertices, call.instances);
+//                         }
+//                         DrawCall::DrawIndexed(call) => {
+//                             render_pass.draw_indexed(
+//                                 call.indices,
+//                                 call.vertex_offset,
+//                                 call.instances,
+//                             );
+//                         }
+//                     }
+//                 }
 
-                drop(render_pass);
-                frame_texture_views.push(attachment_views);
+//                 drop(render_pass);
+//                 frame_texture_views.push(attachment_views);
 
-                for (buffer_id, dst_access) in buffer_accesses {
-                    let buffer = scheduler.buffers.get_mut(buffer_id).unwrap();
-                    buffer.access = dst_access;
-                }
+//                 for (buffer_id, dst_access) in buffer_accesses {
+//                     let buffer = scheduler.buffers.get_mut(buffer_id).unwrap();
+//                     buffer.access = dst_access;
+//                 }
 
-                for (texture_id, dst_access) in texture_accesses {
-                    let texture = scheduler.textures.get_mut(texture_id).unwrap();
-                    texture.access = dst_access;
-                }
-            }
-            _ => todo!(),
-        }
-    }
+//                 for (texture_id, dst_access) in texture_accesses {
+//                     let texture = scheduler.textures.get_mut(texture_id).unwrap();
+//                     texture.access = dst_access;
+//                 }
+//             }
+//             _ => todo!(),
+//         }
+//     }
 
-    InflightResources {
-        texture_views: frame_texture_views,
-        staging_buffers,
-        frame_descriptor_sets,
-    }
-}
+//     InflightResources {
+//         texture_views: frame_texture_views,
+//         staging_buffers,
+//         frame_descriptor_sets,
+//     }
+// }
 
-#[derive(Debug)]
-pub struct InflightResources<'a> {
-    texture_views: Vec<ScratchBuffer<TextureView<'a>>>,
-    staging_buffers: Vec<BufferAlloc>,
-    frame_descriptor_sets: Vec<DescriptorSetId>,
-}
+// #[derive(Debug)]
+// pub struct InflightResources<'a> {
+//     texture_views: Vec<ScratchBuffer<TextureView<'a>>>,
+//     staging_buffers: Vec<BufferAlloc>,
+//     frame_descriptor_sets: Vec<DescriptorSetId>,
+// }
