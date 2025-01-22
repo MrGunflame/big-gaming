@@ -13,6 +13,7 @@ use bitflags::bitflags;
 pub use block::BlockAllocator;
 pub use buddy::BuddyAllocator;
 use futures_lite::stream::Map;
+use game_tracing::trace_span;
 use parking_lot::Mutex;
 use slab::Slab;
 
@@ -67,7 +68,7 @@ impl Region {
 }
 
 const MIN_SIZE: NonZeroU64 = NonZeroU64::new(8192).unwrap();
-const MAX_SIZE: NonZeroU64 = NonZeroU64::new(u32::MAX as u64).unwrap();
+const MAX_SIZE: NonZeroU64 = NonZeroU64::new(u32::MAX as u64 + 1).unwrap();
 const GROWTH_FACTOR: NonZeroU64 = NonZeroU64::new(2).unwrap();
 
 #[derive(Clone, Debug)]
@@ -137,6 +138,8 @@ impl GeneralPurposeAllocator {
     }
 
     pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
+        let _span = trace_span!("GeneralPurposeAllocator::alloc").entered();
+
         let inner = &mut *self.inner.lock();
 
         let host_visible = flags.contains(UsageFlags::HOST_VISIBLE);
@@ -228,7 +231,8 @@ impl GeneralPurposeAllocator {
             let new_size = core::cmp::max(
                 prev_size.saturating_mul(GROWTH_FACTOR),
                 req.size.checked_next_power_of_two().unwrap(),
-            );
+            )
+            .min(MAX_SIZE);
             let mut memory = self.device.allocate_memory(new_size, mem_typ).unwrap();
 
             let memory_host_ptr = if host_visible {
@@ -268,9 +272,9 @@ impl GeneralPurposeAllocator {
     }
 
     unsafe fn dealloc(&self, mem_typ: u32, block_index: usize, region: Region) {
-        let mut inner = self.inner.lock();
+        let _span = trace_span!("GeneralPurposeAllocator::dealloc").entered();
 
-        return;
+        let mut inner = self.inner.lock();
 
         let pool = inner.pools.get_mut(&mem_typ).unwrap();
         let block = pool.blocks.get_mut(block_index).unwrap();

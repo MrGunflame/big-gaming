@@ -11,6 +11,7 @@ use crate::api::{
     DescriptorSet, DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
     RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
 };
+use crate::backend::allocator::UsageFlags;
 use crate::backend::{
     BufferUsage, ImageDataLayout, IndexFormat, LoadOp, ShaderStages, StoreOp, TextureDescriptor,
     TextureFormat, TextureUsage,
@@ -321,16 +322,19 @@ impl Scene {
         let directional_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<DirectionalLightUniform>::new().as_bytes(),
             usage: BufferUsage::STORAGE,
+            flags: UsageFlags::empty(),
         });
 
         let point_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<PointLightUniform>::new().as_bytes(),
             usage: BufferUsage::STORAGE,
+            flags: UsageFlags::empty(),
         });
 
         let spot_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<SpotLightUniform>::new().as_bytes(),
             usage: BufferUsage::STORAGE,
+            flags: UsageFlags::empty(),
         });
 
         Self {
@@ -435,6 +439,7 @@ impl ForwardState {
                     let transform_buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: bytemuck::bytes_of(&TransformUniform::from(object.transform)),
                         usage: BufferUsage::UNIFORM,
+                        flags: UsageFlags::empty(),
                     });
 
                     let object_bind_group = queue.create_descriptor_set(&DescriptorSetDescriptor {
@@ -487,6 +492,7 @@ impl ForwardState {
                     let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: buffer.as_bytes(),
                         usage: BufferUsage::STORAGE,
+                        flags: UsageFlags::empty(),
                     });
 
                     scene.directional_lights_buffer = buffer;
@@ -512,6 +518,7 @@ impl ForwardState {
                         let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                             contents: buffer.as_bytes(),
                             usage: BufferUsage::STORAGE,
+                            flags: UsageFlags::empty(),
                         });
 
                         scene.directional_lights_buffer = buffer;
@@ -538,6 +545,7 @@ impl ForwardState {
                     let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: buffer.as_bytes(),
                         usage: BufferUsage::STORAGE,
+                        flags: UsageFlags::empty(),
                     });
 
                     scene.point_lights_buffer = buffer;
@@ -563,6 +571,7 @@ impl ForwardState {
                         let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                             contents: buffer.as_bytes(),
                             usage: BufferUsage::STORAGE,
+                            flags: UsageFlags::empty(),
                         });
 
                         scene.point_lights_buffer = buffer;
@@ -589,6 +598,7 @@ impl ForwardState {
                     let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                         contents: buffer.as_bytes(),
                         usage: BufferUsage::STORAGE,
+                        flags: UsageFlags::empty(),
                     });
 
                     scene.spot_lights_buffer = buffer;
@@ -614,6 +624,7 @@ impl ForwardState {
                         let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                             contents: buffer.as_bytes(),
                             usage: BufferUsage::STORAGE,
+                            flags: UsageFlags::empty(),
                         });
 
                         scene.spot_lights_buffer = buffer;
@@ -650,6 +661,7 @@ fn upload_mesh(
             let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                 contents: bytemuck::must_cast_slice(&indices),
                 usage: BufferUsage::INDEX,
+                flags: UsageFlags::empty(),
             });
 
             IndexBuffer {
@@ -662,6 +674,7 @@ fn upload_mesh(
             let buffer = queue.create_buffer_init(&BufferInitDescriptor {
                 contents: bytemuck::must_cast_slice(&indices),
                 usage: BufferUsage::INDEX,
+                flags: UsageFlags::empty(),
             });
 
             IndexBuffer {
@@ -676,21 +689,25 @@ fn upload_mesh(
     let positions = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.positions()),
         usage: BufferUsage::STORAGE,
+        flags: UsageFlags::empty(),
     });
 
     let normals = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.normals()),
         usage: BufferUsage::STORAGE,
+        flags: UsageFlags::empty(),
     });
 
     let tangents = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.tangents()),
         usage: BufferUsage::STORAGE,
+        flags: UsageFlags::empty(),
     });
 
     let uvs = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::must_cast_slice(mesh.uvs()),
         usage: BufferUsage::STORAGE,
+        flags: UsageFlags::empty(),
     });
 
     let bind_group = queue.create_descriptor_set(&DescriptorSetDescriptor {
@@ -738,6 +755,7 @@ fn create_material(
             _pad: [0; 1],
         }),
         usage: BufferUsage::UNIFORM,
+        flags: UsageFlags::empty(),
     });
 
     // Ensure all textures exist before we try to access them.

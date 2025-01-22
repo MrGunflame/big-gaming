@@ -5,6 +5,7 @@ mod scheduler;
 
 use std::collections::{HashMap, VecDeque};
 use std::mem::ManuallyDrop;
+use std::num::NonZeroU64;
 use std::ops::Range;
 use std::sync::{mpsc, Arc};
 
@@ -185,7 +186,6 @@ impl CommandExecutor {
                     let set = self.resources.descriptor_sets.get_mut(id).unwrap();
                     set.ref_count += 1;
                 }
-                _ => unreachable!(),
             }
         }
     }
@@ -249,7 +249,9 @@ impl<'a> CommandQueue<'a> {
 
         Buffer {
             id,
+            size: descriptor.size,
             usage: descriptor.usage,
+            flags: descriptor.flags,
             events: self.executor.resources.lifecycle_events_tx.clone(),
         }
     }
@@ -258,6 +260,7 @@ impl<'a> CommandQueue<'a> {
         let buffer = self.create_buffer(&BufferDescriptor {
             size: descriptor.contents.len() as u64,
             usage: descriptor.usage | BufferUsage::TRANSFER_DST,
+            flags: descriptor.flags,
         });
         self.write_buffer(&buffer, descriptor.contents);
         buffer
@@ -269,21 +272,46 @@ impl<'a> CommandQueue<'a> {
             "Buffer cannot be written to: TRANSFER_DST not set",
         );
 
-        self.executor
-            .resources
-            .buffers
-            .get_mut(buffer.id)
-            .unwrap()
-            .ref_count += 1;
+        // If the buffer is host visible we can map and write
+        // to it directly.
+        if buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
+            // The destination buffer must be kept alive until
+            // the memcpy is complete.
+            self.executor
+                .resources
+                .buffers
+                .get_mut(buffer.id)
+                .unwrap()
+                .ref_count += 1;
 
-        {
-            let buffer = self.executor.resources.buffers.get(buffer.id).unwrap();
-            assert!(buffer.flags.contains(BufferUsage::TRANSFER_DST));
+            self.executor
+                .cmds
+                .push(Command::WriteBuffer(buffer.id, data.to_vec()));
+        } else {
+            // Otherwise we cannot access the buffer directly and
+            // need to go through a host visible staging buffer.
+            let staging_buffer = self.create_buffer(&BufferDescriptor {
+                size: data.len() as u64,
+                usage: BufferUsage::TRANSFER_SRC,
+                flags: UsageFlags::HOST_VISIBLE,
+            });
+
+            // The staging buffer must be kept alive until
+            // the memcpy is complete.
+            self.executor
+                .resources
+                .buffers
+                .get_mut(staging_buffer.id)
+                .unwrap()
+                .ref_count += 1;
+
+            // Write the data into the staging buffer.
+            self.executor
+                .cmds
+                .push(Command::WriteBuffer(staging_buffer.id, data.to_vec()));
+
+            self.copy_buffer_to_buffer(&staging_buffer, buffer);
         }
-
-        self.executor
-            .cmds
-            .push(Command::WriteBuffer(buffer.id, data.to_vec()));
     }
 
     #[track_caller]
@@ -375,9 +403,59 @@ impl<'a> CommandQueue<'a> {
         let staging_buffer = self.create_buffer_init(&BufferInitDescriptor {
             contents: data,
             usage: BufferUsage::TRANSFER_SRC,
+            flags: UsageFlags::HOST_VISIBLE,
         });
 
         self.copy_buffer_to_texture(&staging_buffer, texture, layout);
+    }
+
+    pub fn copy_buffer_to_buffer(&mut self, src: &Buffer, dst: &Buffer) {
+        assert!(
+            src.usage.contains(BufferUsage::TRANSFER_SRC),
+            "Buffer cannot be read from: TRANSFER_SRC usage not set",
+        );
+        assert!(
+            dst.usage.contains(BufferUsage::TRANSFER_DST),
+            "Buffer cannot be written to: TRANSFER_DST not set",
+        );
+
+        assert!(
+            src.size >= dst.size,
+            "invalid buffer copy: source buffer (size={}) is smaller than destination buffer (size={})",
+            src.size,
+            dst.size,
+        );
+
+        // We don't actually have to copy anything if the destination is
+        // empty.
+        let Some(count) = NonZeroU64::new(dst.size) else {
+            return;
+        };
+
+        // The source and destination buffer must be kept alive
+        // for this command.
+        self.executor
+            .resources
+            .buffers
+            .get_mut(src.id)
+            .unwrap()
+            .ref_count += 1;
+        self.executor
+            .resources
+            .buffers
+            .get_mut(dst.id)
+            .unwrap()
+            .ref_count += 1;
+
+        self.executor
+            .cmds
+            .push(Command::CopyBufferToBuffer(CopyBufferToBuffer {
+                src: src.id,
+                src_offset: 0,
+                dst: dst.id,
+                dst_offset: 0,
+                count,
+            }));
     }
 
     pub fn copy_buffer_to_texture(&mut self, src: &Buffer, dst: &Texture, layout: ImageDataLayout) {
@@ -776,7 +854,9 @@ struct PipelineInner {
 #[derive(Debug)]
 pub struct Buffer {
     id: BufferId,
+    size: u64,
     usage: BufferUsage,
+    flags: UsageFlags,
     events: mpsc::Sender<LifecycleEvent>,
 }
 
@@ -788,7 +868,9 @@ impl Clone for Buffer {
 
         Self {
             id: self.id,
+            size: self.size,
             usage: self.usage,
+            flags: self.flags,
             events: self.events.clone(),
         }
     }
@@ -814,12 +896,14 @@ pub struct BufferInner {
 pub struct BufferDescriptor {
     pub size: u64,
     pub usage: BufferUsage,
+    pub flags: UsageFlags,
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct BufferInitDescriptor<'a> {
     pub contents: &'a [u8],
     pub usage: BufferUsage,
+    pub flags: UsageFlags,
 }
 
 pub struct DescriptorSetDescriptor<'a> {
@@ -858,6 +942,7 @@ enum LifecycleEvent {
 #[derive(Debug)]
 enum Command {
     WriteBuffer(BufferId, Vec<u8>),
+    CopyBufferToBuffer(CopyBufferToBuffer),
     CopyBufferToTexture(CopyBufferToTexture),
     RenderPass(RenderPassCmd),
 }
@@ -872,6 +957,18 @@ impl Node<Resources> for Command {
                     id: ResourceId::Buffer(*id),
                     access: AccessFlags::TRANSFER_WRITE,
                 }]
+            }
+            Self::CopyBufferToBuffer(cmd) => {
+                vec![
+                    Resource {
+                        id: ResourceId::Buffer(cmd.src),
+                        access: AccessFlags::TRANSFER_READ,
+                    },
+                    Resource {
+                        id: ResourceId::Buffer(cmd.dst),
+                        access: AccessFlags::TRANSFER_WRITE,
+                    },
+                ]
             }
             Self::CopyBufferToTexture(cmd) => {
                 vec![
@@ -938,9 +1035,17 @@ impl Node<Resources> for Command {
 
                 accesses
             }
-            _ => vec![],
         }
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct CopyBufferToBuffer {
+    src: BufferId,
+    src_offset: u64,
+    dst: BufferId,
+    dst_offset: u64,
+    count: NonZeroU64,
 }
 
 #[derive(Clone, Debug)]

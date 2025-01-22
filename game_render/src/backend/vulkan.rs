@@ -717,7 +717,12 @@ impl Device {
             // - memoryTypeIndex must not indicate a memory type that reports `VK_MEMORY_PROPERTY_PROTECTED_BIT`.
             .memory_type_index(memory_type_index);
 
-        assert!(size.get() <= u64::from(self.device.memory_properties.heaps[heap as usize].size));
+        assert!(
+            size.get() <= u64::from(self.device.memory_properties.heaps[heap as usize].size),
+            "attempted to allocate more than heap size: heap size = {}, allocation = {}",
+            self.device.memory_properties.heaps[heap as usize].size,
+            size,
+        );
 
         if let Err(_) = self.device.num_allocations.fetch_update(
             Ordering::Release,

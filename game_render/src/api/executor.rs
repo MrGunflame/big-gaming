@@ -17,9 +17,9 @@ use crate::backend::{
 
 use super::scheduler::{Barrier, Step};
 use super::{
-    Buffer, BufferId, Command, CopyBufferToTexture, DescriptorSet, DescriptorSetId, DrawCall,
-    LifecycleEvent, PipelineId, RenderPassCmd, ResourceId, Resources, SamplerId, Texture,
-    TextureData, TextureId,
+    Buffer, BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, DescriptorSet,
+    DescriptorSetId, DrawCall, LifecycleEvent, PipelineId, RenderPassCmd, ResourceId, Resources,
+    SamplerId, Texture, TextureData, TextureId,
 };
 
 pub fn execute<'a, I>(
@@ -46,13 +46,15 @@ where
             Step::Node(Command::WriteBuffer(id, data)) => {
                 write_buffer(resources, *id, data);
             }
+            Step::Node(Command::CopyBufferToBuffer(cmd)) => {
+                copy_buffer_to_buffer(resources, &mut tmp, cmd, encoder);
+            }
             Step::Node(Command::CopyBufferToTexture(cmd)) => {
                 copy_buffer_to_texture(resources, &mut tmp, cmd, encoder);
             }
             Step::Node(Command::RenderPass(cmd)) => {
                 run_render_pass(resources, &mut tmp, &cmd, encoder);
             }
-            Step::Node(_) => (),
             Step::Barrier(barrier) => {
                 barriers.push(barrier);
             }
@@ -73,6 +75,29 @@ fn write_buffer(resources: &mut Resources, id: BufferId, data: &[u8]) {
     unsafe {
         buffer.buffer.map().copy_from_slice(&data);
     }
+}
+
+fn copy_buffer_to_buffer(
+    resources: &mut Resources,
+    tmp: &mut TemporaryResources,
+    cmd: &CopyBufferToBuffer,
+    encoder: &mut CommandEncoder<'_>,
+) {
+    let src = resources.buffers.get(cmd.src).unwrap();
+    let dst = resources.buffers.get(cmd.dst).unwrap();
+
+    encoder.copy_buffer_to_buffer(
+        src.buffer.buffer(),
+        cmd.src_offset,
+        dst.buffer.buffer(),
+        cmd.dst_offset,
+        cmd.count.get(),
+    );
+
+    // Both buffers must be kept alive until the copy
+    // operation is complete.
+    tmp.buffers.insert(cmd.src);
+    tmp.buffers.insert(cmd.dst);
 }
 
 fn copy_buffer_to_texture(
