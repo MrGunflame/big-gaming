@@ -215,7 +215,6 @@ impl RenderThread {
                 output.texture().format(),
                 TextureUsage::RENDER_ATTACHMENT,
             );
-            dbg!(&swapchain_texture);
 
             let mut resources = HashMap::new();
             resources.insert(
@@ -292,14 +291,13 @@ impl RenderThread {
             self.command_pool.reset();
         }
 
-        dbg!(&res);
-        drop(res);
+        scheduler.destroy(res);
         drop(render_done_sems);
         drop(image_avail_sems);
 
         for texture in swapchain_textures {
             let mut queue = scheduler.queue();
-            queue.remove_imported_texture(&texture);
+            queue.remove_imported_texture(texture);
         }
     }
 }

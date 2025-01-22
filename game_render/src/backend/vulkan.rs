@@ -2192,17 +2192,17 @@ impl<'a> CommandEncoder<'a> {
             // Images cannot be transitioned into `UNDEFINED`.
             assert_ne!(new_layout, ImageLayout::UNDEFINED);
 
-            if old_layout == ImageLayout::UNDEFINED
-                && new_layout == ImageLayout::SHADER_READ_ONLY_OPTIMAL
-            {
-                dbg!(
-                    &old_layout,
-                    &new_layout,
-                    &barrier.src_access,
-                    &barrier.dst_access
-                );
-                panic!();
-            }
+            // if old_layout == ImageLayout::UNDEFINED
+            //     && new_layout == ImageLayout::SHADER_READ_ONLY_OPTIMAL
+            // {
+            //     dbg!(
+            //         &old_layout,
+            //         &new_layout,
+            //         &barrier.src_access,
+            //         &barrier.dst_access
+            //     );
+            //     panic!();
+            // }
 
             let subresource_range = ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
