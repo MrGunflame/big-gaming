@@ -38,6 +38,7 @@ type DescriptorSetId = Key;
 type DescriptorSetLayoutId = Key;
 type SamplerId = Key;
 
+#[derive(Debug)]
 pub struct CommandExecutor {
     resources: Resources,
     cmds: Vec<Command>,
@@ -82,6 +83,15 @@ impl CommandExecutor {
     pub fn destroy(&mut self, tmp: TemporaryResources) {
         tmp.destroy(&mut self.resources);
         self.cleanup();
+        dbg!(self.resources.buffers.len());
+        dbg!(self.resources.textures.len());
+        dbg!(self.resources.samplers.len());
+        dbg!(self.resources.descriptor_sets.len());
+        dbg!(self.resources.descriptor_set_layouts.len());
+        if self.resources.textures.len() > 20 {
+            dbg!(&self.resources.textures);
+            panic!();
+        }
     }
 
     fn cleanup(&mut self) {
@@ -89,6 +99,7 @@ impl CommandExecutor {
 
         let rx = self.resources.lifecycle_events_rx.lock();
         while let Ok(cmd) = rx.try_recv() {
+            dbg!(&cmd);
             match cmd {
                 LifecycleEvent::DestroyBufferHandle(id) => {
                     let buffer = self.resources.buffers.get_mut(id).unwrap();
@@ -191,6 +202,7 @@ impl CommandExecutor {
     }
 }
 
+#[derive(Debug)]
 struct Resources {
     buffers: Arena<BufferInner>,
     textures: Arena<TextureInner>,
@@ -228,6 +240,7 @@ impl ResourceMap for Resources {
     }
 }
 
+#[derive(Debug)]
 pub struct CommandQueue<'a> {
     executor: &'a mut CommandExecutor,
 }
@@ -236,14 +249,13 @@ impl<'a> CommandQueue<'a> {
     pub fn create_buffer(&mut self, descriptor: &BufferDescriptor) -> Buffer {
         let buffer = self.executor.resources.allocator.create_buffer(
             descriptor.size.try_into().unwrap(),
-            BufferUsage::all(),
+            descriptor.usage,
             UsageFlags::HOST_VISIBLE,
         );
 
         let id = self.executor.resources.buffers.insert(BufferInner {
             buffer,
             access: AccessFlags::empty(),
-            flags: BufferUsage::all(),
             ref_count: 1,
         });
 
@@ -339,10 +351,11 @@ impl<'a> CommandQueue<'a> {
             format: descriptor.format,
             usage: descriptor.usage,
             events: self.executor.resources.lifecycle_events_tx.clone(),
-            destroy_on_drop: true,
+            auto_destroy: true,
         }
     }
 
+    #[track_caller]
     pub(crate) fn import_texture(
         &mut self,
         texture: &'static vulkan::Texture,
@@ -363,7 +376,7 @@ impl<'a> CommandQueue<'a> {
             format,
             usage,
             events: self.executor.resources.lifecycle_events_tx.clone(),
-            destroy_on_drop: true,
+            auto_destroy: false,
         }
     }
 
@@ -390,7 +403,7 @@ impl<'a> CommandQueue<'a> {
         }
 
         self.executor.resources.textures.remove(texture.id);
-        texture.forget();
+        debug_assert!(!texture.auto_destroy);
     }
 
     #[track_caller]
@@ -846,6 +859,7 @@ impl Drop for Pipeline {
     }
 }
 
+#[derive(Debug)]
 struct PipelineInner {
     inner: vulkan::Pipeline,
     ref_count: usize,
@@ -887,7 +901,6 @@ impl Drop for Buffer {
 #[derive(Debug)]
 pub struct BufferInner {
     buffer: BufferAlloc,
-    flags: BufferUsage,
     access: AccessFlags,
     ref_count: usize,
 }
@@ -1087,7 +1100,7 @@ pub struct Texture {
     format: TextureFormat,
     usage: TextureUsage,
     events: mpsc::Sender<LifecycleEvent>,
-    destroy_on_drop: bool,
+    auto_destroy: bool,
 }
 
 impl Texture {
@@ -1098,18 +1111,15 @@ impl Texture {
     pub fn format(&self) -> TextureFormat {
         self.format
     }
-
-    fn forget(mut self) {
-        self.destroy_on_drop = false;
-        drop(self);
-    }
 }
 
 impl Clone for Texture {
     fn clone(&self) -> Self {
-        self.events
-            .send(LifecycleEvent::CloneTextureHandle(self.id))
-            .ok();
+        if self.auto_destroy {
+            self.events
+                .send(LifecycleEvent::CloneTextureHandle(self.id))
+                .ok();
+        }
 
         Self {
             id: self.id,
@@ -1117,20 +1127,18 @@ impl Clone for Texture {
             format: self.format,
             usage: self.usage,
             events: self.events.clone(),
-            destroy_on_drop: self.destroy_on_drop,
+            auto_destroy: self.auto_destroy,
         }
     }
 }
 
 impl Drop for Texture {
     fn drop(&mut self) {
-        if !self.destroy_on_drop {
-            return;
+        if self.auto_destroy {
+            self.events
+                .send(LifecycleEvent::DestroyTextureHandle(self.id))
+                .ok();
         }
-
-        self.events
-            .send(LifecycleEvent::DestroyTextureHandle(self.id))
-            .ok();
     }
 }
 
@@ -1235,24 +1243,79 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             instances,
         }));
     }
+
+    fn abort(&mut self) {
+        debug_assert!(self.pipeline.is_none());
+
+        for set in self.descriptor_sets.values() {
+            let set = self
+                .ctx
+                .executor
+                .resources
+                .descriptor_sets
+                .get_mut(*set)
+                .unwrap();
+            set.ref_count -= 1;
+            assert_ne!(set.ref_count, 0);
+        }
+
+        for attachment in &self.color_attachments {
+            let texture = self
+                .ctx
+                .executor
+                .resources
+                .textures
+                .get_mut(attachment.texture)
+                .unwrap();
+            texture.ref_count -= 1;
+            assert_ne!(texture.ref_count, 0);
+        }
+
+        if let Some(attachment) = &self.depth_stencil_attachment {
+            let texture = self
+                .ctx
+                .executor
+                .resources
+                .textures
+                .get_mut(attachment.texture)
+                .unwrap();
+            texture.ref_count -= 1;
+            assert_ne!(texture.ref_count, 0);
+        }
+
+        if let Some((buffer, _)) = &self.index_buffer {
+            let buffer = self
+                .ctx
+                .executor
+                .resources
+                .buffers
+                .get_mut(*buffer)
+                .unwrap();
+            buffer.ref_count -= 1;
+            assert_ne!(buffer.ref_count, 0);
+        }
+    }
 }
 
 impl<'a, 'b> Drop for RenderPass<'a, 'b> {
     fn drop(&mut self) {
-        if let Some(pipeline) = &self.pipeline {
-            self.ctx
-                .executor
-                .cmds
-                .push(Command::RenderPass(RenderPassCmd {
-                    pipeline: pipeline.clone(),
-                    descriptor_sets: self.descriptor_sets.clone(),
-                    draw_calls: self.draw_calls.clone(),
-                    color_attachments: self.color_attachments.clone(),
-                    push_constants: self.push_constants.clone(),
-                    index_buffer: self.index_buffer.clone(),
-                    depth_stencil_attachment: self.depth_stencil_attachment.clone(),
-                }));
-        }
+        let Some(pipeline) = &self.pipeline else {
+            self.abort();
+            return;
+        };
+
+        self.ctx
+            .executor
+            .cmds
+            .push(Command::RenderPass(RenderPassCmd {
+                pipeline: pipeline.clone(),
+                descriptor_sets: self.descriptor_sets.clone(),
+                draw_calls: self.draw_calls.clone(),
+                color_attachments: self.color_attachments.clone(),
+                push_constants: self.push_constants.clone(),
+                index_buffer: self.index_buffer.clone(),
+                depth_stencil_attachment: self.depth_stencil_attachment.clone(),
+            }));
     }
 }
 

@@ -44,7 +44,7 @@ where
 
         match step {
             Step::Node(Command::WriteBuffer(id, data)) => {
-                write_buffer(resources, *id, data);
+                write_buffer(resources, &mut tmp, *id, data);
             }
             Step::Node(Command::CopyBufferToBuffer(cmd)) => {
                 copy_buffer_to_buffer(resources, &mut tmp, cmd, encoder);
@@ -69,12 +69,19 @@ where
     tmp
 }
 
-fn write_buffer(resources: &mut Resources, id: BufferId, data: &[u8]) {
+fn write_buffer(
+    resources: &mut Resources,
+    tmp: &mut TemporaryResources,
+    id: BufferId,
+    data: &[u8],
+) {
     let buffer = resources.buffers.get_mut(id).unwrap();
 
     unsafe {
         buffer.buffer.map().copy_from_slice(&data);
     }
+
+    tmp.buffers.insert(id);
 }
 
 fn copy_buffer_to_buffer(
