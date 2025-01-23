@@ -25,10 +25,14 @@ where
                 }
             }
 
-            resource_accesses
-                .entry(resource.id)
-                .or_default()
-                .push(index);
+            // Node::resources should return every resource only once.
+            // This means that every if is unique and only inserted
+            // once into `accesses`.
+            // The implementation of `Node::resources` must guarantee this
+            // in order for this function to operate correctly.
+            let accesses = resource_accesses.entry(resource.id).or_default();
+            accesses.push(index);
+            debug_assert_eq!(accesses.iter().filter(|v| **v == index).count(), 1);
         }
 
         predecessors.insert(index, node_preds);
@@ -129,6 +133,10 @@ pub trait ResourceMap {
 pub(super) trait Node<M> {
     type ResourceId;
 
+    /// Returns every resource that is accessed by this node.
+    ///
+    /// **Note: This function should only return every resource once in order for [`schedule`] to
+    /// operate correctly.**
     fn resources(&self, resources: &M) -> Vec<Resource<Self::ResourceId>>;
 }
 

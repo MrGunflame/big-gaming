@@ -993,39 +993,31 @@ impl Node<Resources> for Command {
                 ]
             }
             Self::RenderPass(cmd) => {
-                let mut accesses = Vec::new();
+                let mut accesses = HashMap::new();
 
                 for cmd in &cmd.cmds {
                     match cmd {
                         DrawCmd::SetPipeline(_) => {}
                         DrawCmd::SetIndexBuffer(buffer, _) => {
-                            accesses.push(Resource {
-                                id: ResourceId::Buffer(*buffer),
-                                access: AccessFlags::INDEX,
-                            });
+                            *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
+                                AccessFlags::INDEX;
                         }
                         DrawCmd::SetDescriptorSet(_, id) => {
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
                             for (_, buffer) in &descriptor_set.buffers {
-                                accesses.push(Resource {
-                                    id: ResourceId::Buffer(*buffer),
-                                    access: AccessFlags::SHADER_READ,
-                                });
+                                *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
+                                    AccessFlags::SHADER_READ;
                             }
 
                             for (_, texture) in &descriptor_set.textures {
-                                accesses.push(Resource {
-                                    id: ResourceId::Texture(*texture),
-                                    access: AccessFlags::SHADER_READ,
-                                });
+                                *accesses.entry(ResourceId::Texture(*texture)).or_default() |=
+                                    AccessFlags::SHADER_READ;
                             }
 
                             for (_, textures) in &descriptor_set.texture_arrays {
                                 for texture in textures {
-                                    accesses.push(Resource {
-                                        id: ResourceId::Texture(*texture),
-                                        access: AccessFlags::SHADER_READ,
-                                    });
+                                    *accesses.entry(ResourceId::Texture(*texture)).or_default() |=
+                                        AccessFlags::SHADER_READ;
                                 }
                             }
                         }
@@ -1035,21 +1027,22 @@ impl Node<Resources> for Command {
                 }
 
                 for attachment in &cmd.color_attachments {
-                    accesses.push(Resource {
-                        id: ResourceId::Texture(attachment.texture),
-                        access: AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    });
+                    *accesses
+                        .entry(ResourceId::Texture(attachment.texture))
+                        .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
                 }
 
                 if let Some(attachment) = &cmd.depth_stencil_attachment {
-                    accesses.push(Resource {
-                        id: ResourceId::Texture(attachment.texture),
-                        access: AccessFlags::DEPTH_ATTACHMENT_READ
-                            | AccessFlags::DEPTH_ATTACHMENT_WRITE,
-                    });
+                    *accesses
+                        .entry(ResourceId::Texture(attachment.texture))
+                        .or_default() |=
+                        AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
                 }
 
                 accesses
+                    .into_iter()
+                    .map(|(id, access)| Resource { id, access })
+                    .collect()
             }
         }
     }
