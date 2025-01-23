@@ -83,15 +83,6 @@ impl CommandExecutor {
     pub fn destroy(&mut self, tmp: TemporaryResources) {
         tmp.destroy(&mut self.resources);
         self.cleanup();
-        dbg!(self.resources.buffers.len());
-        dbg!(self.resources.textures.len());
-        dbg!(self.resources.samplers.len());
-        dbg!(self.resources.descriptor_sets.len());
-        dbg!(self.resources.descriptor_set_layouts.len());
-        if self.resources.textures.len() > 20 {
-            dbg!(&self.resources.textures);
-            panic!();
-        }
     }
 
     fn cleanup(&mut self) {
@@ -99,7 +90,6 @@ impl CommandExecutor {
 
         let rx = self.resources.lifecycle_events_rx.lock();
         while let Ok(cmd) = rx.try_recv() {
-            dbg!(&cmd);
             match cmd {
                 LifecycleEvent::DestroyBufferHandle(id) => {
                     let buffer = self.resources.buffers.get_mut(id).unwrap();
@@ -284,6 +274,13 @@ impl<'a> CommandQueue<'a> {
             "Buffer cannot be written to: TRANSFER_DST not set",
         );
 
+        assert!(
+            buffer.size as usize >= data.len(),
+            "Buffer size of {} too small to copy {} bytes",
+            buffer.size,
+            data.len(),
+        );
+
         // If the buffer is host visible we can map and write
         // to it directly.
         if buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
@@ -307,6 +304,8 @@ impl<'a> CommandQueue<'a> {
                 usage: BufferUsage::TRANSFER_SRC,
                 flags: UsageFlags::HOST_VISIBLE,
             });
+
+            debug_assert!(buffer.size >= staging_buffer.size);
 
             // The staging buffer must be kept alive until
             // the memcpy is complete.
@@ -722,13 +721,11 @@ impl<'a> CommandQueue<'a> {
 
         RenderPass {
             ctx: self,
-            descriptor_sets: HashMap::new(),
-            draw_calls: Vec::new(),
-            pipeline: None,
             color_attachments,
-            push_constants: Vec::new(),
-            index_buffer: None,
             depth_stencil_attachment,
+            cmds: Vec::new(),
+            last_pipeline: None,
+            last_index_buffer: None,
         }
     }
 
@@ -998,36 +995,42 @@ impl Node<Resources> for Command {
             Self::RenderPass(cmd) => {
                 let mut accesses = Vec::new();
 
-                if let Some((buffer, _)) = &cmd.index_buffer {
-                    accesses.push(Resource {
-                        id: ResourceId::Buffer(*buffer),
-                        access: AccessFlags::INDEX,
-                    });
-                }
-
-                for descriptor_set in cmd.descriptor_sets.values() {
-                    let descriptor_set = resources.descriptor_sets.get(*descriptor_set).unwrap();
-                    for (_, buffer) in &descriptor_set.buffers {
-                        accesses.push(Resource {
-                            id: ResourceId::Buffer(*buffer),
-                            access: AccessFlags::SHADER_READ,
-                        });
-                    }
-
-                    for (_, texture) in &descriptor_set.textures {
-                        accesses.push(Resource {
-                            id: ResourceId::Texture(*texture),
-                            access: AccessFlags::SHADER_READ,
-                        });
-                    }
-
-                    for (_, textures) in &descriptor_set.texture_arrays {
-                        for texture in textures {
+                for cmd in &cmd.cmds {
+                    match cmd {
+                        DrawCmd::SetPipeline(_) => {}
+                        DrawCmd::SetIndexBuffer(buffer, _) => {
                             accesses.push(Resource {
-                                id: ResourceId::Texture(*texture),
-                                access: AccessFlags::SHADER_READ,
+                                id: ResourceId::Buffer(*buffer),
+                                access: AccessFlags::INDEX,
                             });
                         }
+                        DrawCmd::SetDescriptorSet(_, id) => {
+                            let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
+                            for (_, buffer) in &descriptor_set.buffers {
+                                accesses.push(Resource {
+                                    id: ResourceId::Buffer(*buffer),
+                                    access: AccessFlags::SHADER_READ,
+                                });
+                            }
+
+                            for (_, texture) in &descriptor_set.textures {
+                                accesses.push(Resource {
+                                    id: ResourceId::Texture(*texture),
+                                    access: AccessFlags::SHADER_READ,
+                                });
+                            }
+
+                            for (_, textures) in &descriptor_set.texture_arrays {
+                                for texture in textures {
+                                    accesses.push(Resource {
+                                        id: ResourceId::Texture(*texture),
+                                        access: AccessFlags::SHADER_READ,
+                                    });
+                                }
+                            }
+                        }
+                        DrawCmd::SetPushConstants(_, _, _) => (),
+                        DrawCmd::Draw(_) => (),
                     }
                 }
 
@@ -1084,13 +1087,9 @@ struct DescriptorSetInner {
 
 #[derive(Clone, Debug)]
 struct RenderPassCmd {
-    pipeline: PipelineId,
-    descriptor_sets: HashMap<u32, DescriptorSetId>,
-    draw_calls: Vec<DrawCall>,
     color_attachments: Vec<ColorAttachmentOwned>,
-    push_constants: Vec<(Vec<u8>, ShaderStages, u32)>,
-    index_buffer: Option<(BufferId, IndexFormat)>,
     depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
+    cmds: Vec<DrawCmd>,
 }
 
 #[derive(Debug)]
@@ -1166,19 +1165,17 @@ impl TextureData {
 
 pub struct RenderPass<'a, 'b> {
     ctx: &'b mut CommandQueue<'a>,
-    pipeline: Option<PipelineId>,
-    descriptor_sets: HashMap<u32, DescriptorSetId>,
-    draw_calls: Vec<DrawCall>,
     color_attachments: Vec<ColorAttachmentOwned>,
-    push_constants: Vec<(Vec<u8>, ShaderStages, u32)>,
-    index_buffer: Option<(BufferId, IndexFormat)>,
     depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
+    cmds: Vec<DrawCmd>,
+    // Exists purely for validation.
+    last_pipeline: Option<PipelineId>,
+    // Exists purely for validation.
+    last_index_buffer: Option<(BufferId, IndexFormat)>,
 }
 
 impl<'a, 'b> RenderPass<'a, 'b> {
     pub fn set_pipeline(&mut self, pipeline: &Pipeline) {
-        assert!(self.pipeline.is_none(), "Pipeline cannot be changed");
-
         self.ctx
             .executor
             .resources
@@ -1187,11 +1184,12 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .unwrap()
             .ref_count += 1;
 
-        self.pipeline = Some(pipeline.id);
+        self.cmds.push(DrawCmd::SetPipeline(pipeline.id));
+        self.last_pipeline = Some(pipeline.id);
     }
 
     pub fn set_descriptor_set(&mut self, index: u32, descriptor_set: &'b DescriptorSet) {
-        assert!(self.pipeline.is_some(), "Pipeline is not set");
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
 
         let set = self
             .ctx
@@ -1202,15 +1200,17 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .unwrap();
         set.ref_count += 1;
 
-        self.descriptor_sets.insert(index, descriptor_set.id);
+        self.cmds
+            .push(DrawCmd::SetDescriptorSet(index, descriptor_set.id));
     }
 
     pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
-        self.push_constants.push((data.to_vec(), stages, offset));
+        self.cmds
+            .push(DrawCmd::SetPushConstants(data.to_vec(), stages, offset));
     }
 
     pub fn set_index_buffer(&mut self, buffer: &Buffer, format: IndexFormat) {
-        assert!(self.pipeline.is_some(), "Pipeline is not set");
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
         assert!(
             buffer.usage.contains(BufferUsage::INDEX),
             "Buffer cannot be used as index buffer: INDEX not set",
@@ -1224,97 +1224,63 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .unwrap()
             .ref_count += 1;
 
-        self.index_buffer = Some((buffer.id, format));
+        self.cmds.push(DrawCmd::SetIndexBuffer(buffer.id, format));
+        self.last_index_buffer = Some((buffer.id, format));
     }
 
     pub fn draw(&mut self, vertices: Range<u32>, instances: Range<u32>) {
-        assert!(self.pipeline.is_some(), "Pipeline is not set");
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
 
-        self.draw_calls.push(DrawCall::Draw(Draw {
+        self.cmds.push(DrawCmd::Draw(DrawCall::Draw(Draw {
             vertices,
             instances,
-        }));
+        })));
     }
 
     pub fn draw_indexed(&mut self, indices: Range<u32>, vertex_offset: i32, instances: Range<u32>) {
-        self.draw_calls.push(DrawCall::DrawIndexed(DrawIndexed {
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
+        let Some((buffer, format)) = self.last_index_buffer else {
+            panic!("cannot call draw_indexed before binding a index buffer");
+        };
+
+        // The minimun index buffer size is:
+        // (first_index + index_count) * index_size =
+        // (indices.start + indices.end - indices.start) * index_size =
+        // indices.end * index_size
+        let Some(min_size) = indices.end.checked_mul(format.size().into()) else {
+            panic!(
+                "overflow computing index buffer size: indices={:?} format={:?}",
+                indices, format
+            );
+        };
+
+        let buffer = self.ctx.executor.resources.buffers.get(buffer).unwrap();
+        assert!(
+            buffer.buffer.size() >= min_size.into(),
+            "index buffer of size {} is too small for indices={:?} format={:?}",
+            buffer.buffer.size(),
             indices,
-            vertex_offset,
-            instances,
-        }));
-    }
+            format,
+        );
 
-    fn abort(&mut self) {
-        debug_assert!(self.pipeline.is_none());
-
-        for set in self.descriptor_sets.values() {
-            let set = self
-                .ctx
-                .executor
-                .resources
-                .descriptor_sets
-                .get_mut(*set)
-                .unwrap();
-            set.ref_count -= 1;
-            assert_ne!(set.ref_count, 0);
-        }
-
-        for attachment in &self.color_attachments {
-            let texture = self
-                .ctx
-                .executor
-                .resources
-                .textures
-                .get_mut(attachment.texture)
-                .unwrap();
-            texture.ref_count -= 1;
-            assert_ne!(texture.ref_count, 0);
-        }
-
-        if let Some(attachment) = &self.depth_stencil_attachment {
-            let texture = self
-                .ctx
-                .executor
-                .resources
-                .textures
-                .get_mut(attachment.texture)
-                .unwrap();
-            texture.ref_count -= 1;
-            assert_ne!(texture.ref_count, 0);
-        }
-
-        if let Some((buffer, _)) = &self.index_buffer {
-            let buffer = self
-                .ctx
-                .executor
-                .resources
-                .buffers
-                .get_mut(*buffer)
-                .unwrap();
-            buffer.ref_count -= 1;
-            assert_ne!(buffer.ref_count, 0);
-        }
+        self.cmds
+            .push(DrawCmd::Draw(DrawCall::DrawIndexed(DrawIndexed {
+                indices,
+                vertex_offset,
+                instances,
+            })));
     }
 }
 
 impl<'a, 'b> Drop for RenderPass<'a, 'b> {
     fn drop(&mut self) {
-        let Some(pipeline) = &self.pipeline else {
-            self.abort();
-            return;
-        };
-
         self.ctx
             .executor
             .cmds
             .push(Command::RenderPass(RenderPassCmd {
-                pipeline: pipeline.clone(),
-                descriptor_sets: self.descriptor_sets.clone(),
-                draw_calls: self.draw_calls.clone(),
                 color_attachments: self.color_attachments.clone(),
-                push_constants: self.push_constants.clone(),
-                index_buffer: self.index_buffer.clone(),
                 depth_stencil_attachment: self.depth_stencil_attachment.clone(),
+                cmds: core::mem::take(&mut self.cmds),
             }));
     }
 }
@@ -1349,6 +1315,15 @@ struct DepthStencilAttachmentOwned {
     texture: TextureId,
     load_op: LoadOp<f32>,
     store_op: StoreOp,
+}
+
+#[derive(Clone, Debug)]
+enum DrawCmd {
+    SetPipeline(PipelineId),
+    SetDescriptorSet(u32, DescriptorSetId),
+    SetIndexBuffer(BufferId, IndexFormat),
+    SetPushConstants(Vec<u8>, ShaderStages, u32),
+    Draw(DrawCall),
 }
 
 #[derive(Clone, Debug)]

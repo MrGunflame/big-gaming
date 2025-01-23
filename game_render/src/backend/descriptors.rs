@@ -29,6 +29,7 @@ impl AllocatedDescriptorSet {
     }
 }
 
+#[derive(Debug)]
 pub struct DescriptorSetAllocator {
     device: Device,
     buckets: HashMap<DescriptorSetResourceCount, DescriptorPoolBucket>,
@@ -101,6 +102,7 @@ impl DescriptorSetAllocator {
     }
 }
 
+#[derive(Debug)]
 struct DescriptorPoolBucket {
     pools: Slab<Pool>,
     next_pool_size: NonZeroU32,
@@ -197,6 +199,7 @@ struct DescriptorSetResourceCount {
     textures: u32,
 }
 
+#[derive(Debug)]
 struct Pool {
     pool: DescriptorPool<'static>,
     free: u32,

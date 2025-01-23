@@ -511,6 +511,16 @@ pub enum IndexFormat {
     U32,
 }
 
+impl IndexFormat {
+    /// Returns the number of bytes needed to represent an index.
+    pub const fn size(&self) -> u8 {
+        match self {
+            Self::U16 => 2,
+            Self::U32 => 4,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ShaderModule {
     shader: Shader,

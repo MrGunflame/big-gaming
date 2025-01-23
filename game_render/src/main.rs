@@ -58,59 +58,59 @@ fn render_main(window: WindowState) {
 
     renderer.create(window.id(), window.clone());
 
-    let scene_id = renderer.resources().scenes().insert();
-    renderer.resources().cameras().insert(Camera {
-        transform: Transform {
-            translation: Vec3::new(10.0, 0.0, 0.0),
-            ..Default::default()
-        }
-        .looking_at(Vec3::ZERO, Vec3::Y),
-        projection: Projection::default(),
-        target: RenderTarget::Window(window.id()),
-        scene: scene_id,
-    });
-    let box_shape = renderer.resources().meshes().insert(
-        shape::Box {
-            max_x: 1.0,
-            min_x: -1.0,
-            max_y: 1.0,
-            min_y: -1.0,
-            min_z: -1.0,
-            max_z: 1.0,
-        }
-        .into(),
-    );
-    let material = renderer
-        .resources()
-        .materials()
-        .insert(PbrMaterial::default());
-    renderer.resources().objects().insert(Object {
-        transform: Transform::default(),
-        scene: scene_id,
-        mesh: box_shape,
-        material,
-    });
+    // let scene_id = renderer.resources().scenes().insert();
+    // renderer.resources().cameras().insert(Camera {
+    //     transform: Transform {
+    //         translation: Vec3::new(10.0, 0.0, 0.0),
+    //         ..Default::default()
+    //     }
+    //     .looking_at(Vec3::ZERO, Vec3::Y),
+    //     projection: Projection::default(),
+    //     target: RenderTarget::Window(window.id()),
+    //     scene: scene_id,
+    // });
+    // let box_shape = renderer.resources().meshes().insert(
+    //     shape::Box {
+    //         max_x: 1.0,
+    //         min_x: -1.0,
+    //         max_y: 1.0,
+    //         min_y: -1.0,
+    //         min_z: -1.0,
+    //         max_z: 1.0,
+    //     }
+    //     .into(),
+    // );
+    // let material = renderer
+    //     .resources()
+    //     .materials()
+    //     .insert(PbrMaterial::default());
+    // renderer.resources().objects().insert(Object {
+    //     transform: Transform::default(),
+    //     scene: scene_id,
+    //     mesh: box_shape,
+    //     material,
+    // });
 
-    renderer.resources().point_lights().insert(PointLight {
-        transform: Transform {
-            translation: Vec3::new(0.0, 1.0, 0.0),
-            ..Default::default()
-        },
-        color: Color::WHITE,
-        intensity: 70.0,
-        radius: 100.0,
-        scene: scene_id,
-    });
-    renderer
-        .resources()
-        .directional_lights()
-        .insert(DirectionalLight {
-            transform: Transform::from_translation(Vec3::splat(1.0))
-                .looking_at(Vec3::ZERO, Vec3::Y),
-            scene: scene_id,
-            color: Color::WHITE,
-            illuminance: 100_000.0,
-        });
+    // renderer.resources().point_lights().insert(PointLight {
+    //     transform: Transform {
+    //         translation: Vec3::new(0.0, 1.0, 0.0),
+    //         ..Default::default()
+    //     },
+    //     color: Color::WHITE,
+    //     intensity: 70.0,
+    //     radius: 100.0,
+    //     scene: scene_id,
+    // });
+    // renderer
+    //     .resources()
+    //     .directional_lights()
+    //     .insert(DirectionalLight {
+    //         transform: Transform::from_translation(Vec3::splat(1.0))
+    //             .looking_at(Vec3::ZERO, Vec3::Y),
+    //         scene: scene_id,
+    //         color: Color::WHITE,
+    //         illuminance: 100_000.0,
+    //     });
 
     loop {
         renderer.render(&pool);

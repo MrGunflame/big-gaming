@@ -68,7 +68,8 @@ impl Region {
 }
 
 const MIN_SIZE: NonZeroU64 = NonZeroU64::new(8192).unwrap();
-const MAX_SIZE: NonZeroU64 = NonZeroU64::new(u32::MAX as u64 + 1).unwrap();
+// const MAX_SIZE: NonZeroU64 = NonZeroU64::new(u32::MAX as u64 + 1).unwrap();
+const MAX_SIZE: NonZeroU64 = NonZeroU64::new(1 << 28).unwrap();
 const GROWTH_FACTOR: NonZeroU64 = NonZeroU64::new(2).unwrap();
 
 #[derive(Clone, Debug)]
@@ -139,6 +140,10 @@ impl GeneralPurposeAllocator {
 
     pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
         let _span = trace_span!("GeneralPurposeAllocator::alloc").entered();
+
+        if req.size >= MAX_SIZE {
+            panic!("{:?}", req.size);
+        }
 
         let inner = &mut *self.inner.lock();
 

@@ -18,8 +18,8 @@ use crate::backend::{
 use super::scheduler::{Barrier, Step};
 use super::{
     Buffer, BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, DescriptorSet,
-    DescriptorSetId, DrawCall, LifecycleEvent, PipelineId, RenderPassCmd, ResourceId, Resources,
-    SamplerId, Texture, TextureData, TextureId,
+    DescriptorSetId, Draw, DrawCall, DrawCmd, LifecycleEvent, PipelineId, RenderPassCmd,
+    ResourceId, Resources, SamplerId, Texture, TextureData, TextureId,
 };
 
 pub fn execute<'a, I>(
@@ -93,6 +93,8 @@ fn copy_buffer_to_buffer(
     let src = resources.buffers.get(cmd.src).unwrap();
     let dst = resources.buffers.get(cmd.dst).unwrap();
 
+    println!("CopyBufferToBuffer{:?}", cmd);
+
     encoder.copy_buffer_to_buffer(
         src.buffer.buffer(),
         cmd.src_offset,
@@ -137,18 +139,19 @@ fn run_render_pass(
     cmd: &RenderPassCmd,
     encoder: &mut CommandEncoder<'_>,
 ) {
-    for (_, id) in &cmd.descriptor_sets {
-        let set = resources.descriptor_sets.get_mut(*id).unwrap();
-        if set.descriptor_set.is_none() {
-            build_descriptor_set(resources, *id);
+    // Ensure all physical descriptor sets are created before
+    // the render pass begins.
+    for cmd in &cmd.cmds {
+        match cmd {
+            DrawCmd::SetDescriptorSet(_, id) => {
+                let set = resources.descriptor_sets.get_mut(*id).unwrap();
+                if set.descriptor_set.is_none() {
+                    build_descriptor_set(resources, *id);
+                }
+            }
+            _ => (),
         }
     }
-
-    let sets: Vec<_> = cmd
-        .descriptor_sets
-        .iter()
-        .map(|(group, id)| (*group, resources.descriptor_sets.get(*id).unwrap()))
-        .collect();
 
     let attachment_views = ScratchBuffer::new(
         cmd.color_attachments.len() + usize::from(cmd.depth_stencil_attachment.is_some()),
@@ -161,6 +164,9 @@ fn run_render_pass(
             TextureData::Physical(data) => data,
             TextureData::Virtual(data) => data.texture(),
         };
+
+        // Attachment must be kept alive until the render pass completes.
+        tmp.textures.insert(attachment.texture);
 
         let view = attachment_views.insert(physical_texture.create_view());
 
@@ -179,6 +185,9 @@ fn run_render_pass(
             TextureData::Virtual(data) => data.texture(),
         };
 
+        // Attachment must be kept alive until the render pass completes.
+        tmp.textures.insert(attachment.texture);
+
         let view = attachment_views.insert(physical_texture.create_view());
 
         RenderPassDepthStencilAttachment {
@@ -194,56 +203,58 @@ fn run_render_pass(
         depth_stencil_attachment: depth_attachment.as_ref(),
     });
 
-    let pipeline = resources.pipelines.get(cmd.pipeline).unwrap();
-    render_pass.bind_pipeline(&pipeline.inner);
+    for cmd in &cmd.cmds {
+        match cmd {
+            DrawCmd::SetPipeline(id) => {
+                let pipeline = resources.pipelines.get(*id).unwrap();
+                render_pass.bind_pipeline(&pipeline.inner);
 
-    for (group, set) in sets {
-        let set = set.descriptor_set.as_ref().unwrap().raw();
-        render_pass.bind_descriptor_set(group, set);
-    }
-
-    for (data, stages, offset) in &cmd.push_constants {
-        render_pass.set_push_constants(*stages, *offset, &data);
-    }
-
-    if let Some((buffer, format)) = &cmd.index_buffer {
-        let buffer = resources.buffers.get(*buffer).unwrap();
-        render_pass.bind_index_buffer(buffer.buffer.buffer_view(), *format);
-    }
-
-    for call in cmd.draw_calls.iter().cloned() {
-        match call {
-            DrawCall::Draw(call) => {
-                render_pass.draw(call.vertices, call.instances);
+                // Pipeline must be kept alive until the render pass
+                // completes.
+                tmp.pipelines.insert(*id);
             }
-            DrawCall::DrawIndexed(call) => {
-                render_pass.draw_indexed(call.indices, call.vertex_offset, call.instances);
+            DrawCmd::SetDescriptorSet(index, id) => {
+                let set = resources
+                    .descriptor_sets
+                    .get(*id)
+                    .unwrap()
+                    .descriptor_set
+                    .as_ref()
+                    .unwrap()
+                    .raw();
+                render_pass.bind_descriptor_set(*index, set);
+
+                // Descriptor set must be kept alive until the render pass
+                // completes.
+                tmp.descriptor_sets.insert(*id);
+            }
+            DrawCmd::SetIndexBuffer(id, format) => {
+                let buffer = resources.buffers.get(*id).unwrap();
+                render_pass.bind_index_buffer(buffer.buffer.buffer_view(), *format);
+
+                // Index buffer must be kept alive until the render pass
+                // completes.
+                tmp.buffers.insert(*id);
+            }
+            DrawCmd::SetPushConstants(data, stages, offset) => {
+                render_pass.set_push_constants(*stages, *offset, data);
+            }
+            DrawCmd::Draw(DrawCall::Draw(call)) => {
+                render_pass.draw(call.vertices.clone(), call.instances.clone());
+            }
+            DrawCmd::Draw(DrawCall::DrawIndexed(call)) => {
+                render_pass.draw_indexed(
+                    call.indices.clone(),
+                    call.vertex_offset,
+                    call.instances.clone(),
+                );
             }
         }
     }
 
     drop(render_pass);
 
-    // // All bound descriptor sets must be kept alive until the render
-    // // pass is complete.
-    // for (_, id) in &cmd.descriptor_sets {
-    //     let set = resources.descriptor_sets.get_mut(*id).unwrap();
-    //     set.ref_count += 1;
-    //     tmp.descriptor_sets.insert(*id);
-    // }
-
-    // for (_, id) in &cmd.color_attachments {
-
-    // }
-
     tmp.texture_views.extend(attachment_views);
-    tmp.descriptor_sets
-        .extend(cmd.descriptor_sets.values().cloned());
-    tmp.pipelines.insert(cmd.pipeline);
-    tmp.textures
-        .extend(cmd.color_attachments.iter().map(|a| a.texture));
-    tmp.textures
-        .extend(cmd.depth_stencil_attachment.iter().map(|a| a.texture));
 }
 
 fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
