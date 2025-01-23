@@ -30,6 +30,8 @@ pub fn execute<'a, I>(
 where
     I: IntoIterator<Item = Step<&'a Command, ResourceId>>,
 {
+    let _span = trace_span!("execute").entered();
+
     let mut tmp = TemporaryResources::default();
 
     let mut barriers = Vec::new();

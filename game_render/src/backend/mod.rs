@@ -411,8 +411,7 @@ bitflags! {
     pub struct AccessFlags: u32 {
         /// Resource can be used as a destination for transfer operations.
         const TRANSFER_WRITE = 1 << 0;
-        /// Resource can be bound as readable in a shader module.
-        const SHADER_READ = 1 << 1;
+        const COLOR_ATTACHMENT_READ = 1 << 3;
         /// Resource can be bound as a writable color attachment.
         const COLOR_ATTACHMENT_WRITE = 1 << 2;
         /// Resource can be used to present to the swapchain.
@@ -423,8 +422,28 @@ bitflags! {
         const INDIRECT = 1 << 5;
         const DEPTH_ATTACHMENT_WRITE = 1 << 6;
         const DEPTH_ATTACHMENT_READ = 1 << 7;
+        /// Resource can be used as a source for transfer operations.
         const TRANSFER_READ = 1 << 8;
+        /// Resource can be bound and accessed readable in a vertex shader.
+        const VERTEX_SHADER_READ = 1 << 9;
+        /// Resource can be bound and accessed writable in a vertex shader.
+        const VERTEX_SHADER_WRITE = 1 << 10;
+        /// Resource can be bound and accessed readable in a fragment shader.
+        const FRAGMENT_SHADER_READ = 1 << 11;
+        /// Resource can be bound and accessed writable in a fragment shader.
+        const FRAGMENT_SAHDER_WRITE = 1 << 12;
     }
+}
+
+impl AccessFlags {
+    /// Resource can be bound and accessed reable in any shader.
+    pub const SHADER_READ: Self =
+        Self::from_bits(Self::VERTEX_SHADER_READ.bits() | Self::FRAGMENT_SHADER_READ.bits())
+            .unwrap();
+
+    pub const SHADER_WRITE: Self =
+        Self::from_bits(Self::VERTEX_SHADER_WRITE.bits() | Self::FRAGMENT_SAHDER_WRITE.bits())
+            .unwrap();
 }
 
 impl AccessFlags {

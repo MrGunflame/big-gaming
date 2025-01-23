@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use game_tracing::trace_span;
+
 use crate::backend::{AccessFlags, BarrierPipelineStage};
 
 pub(super) fn schedule<'a, T, M>(
@@ -12,6 +14,8 @@ where
     T::ResourceId: Copy + Hash + Eq,
     M: ResourceMap<Id = T::ResourceId>,
 {
+    let _span = trace_span!("schedule").entered();
+
     let mut resource_accesses = HashMap::<_, Vec<_>>::new();
     let mut predecessors = HashMap::<_, Vec<_>>::new();
 

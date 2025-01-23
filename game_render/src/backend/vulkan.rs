@@ -53,9 +53,9 @@ use crate::backend::TextureLayout;
 
 use super::shader::{self, BindingInfo, BindingLocation, Shader};
 use super::{
-    AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage, BufferView,
-    CompareOp, CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode,
-    IndexFormat, LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags,
+    AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage,
+    BufferView, CompareOp, CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face,
+    FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags,
     PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
     QueueFamily, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor,
     ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
@@ -2160,6 +2160,8 @@ impl<'a> CommandEncoder<'a> {
         for barrier in barriers.buffer {
             let (_, src_access_flags) = convert_access_flags(barrier.src_access);
             let (_, dst_access_flags) = convert_access_flags(barrier.dst_access);
+            let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
+            let dst_stage_mask = access_flags_to_stage_mask(barrier.dst_access);
 
             // - `offset` must be less than the size of `buffer`.
             // - `size` must not be 0.
@@ -2174,9 +2176,8 @@ impl<'a> CommandEncoder<'a> {
                 .size(barrier.size)
                 .src_access_mask(src_access_flags)
                 .dst_access_mask(dst_access_flags)
-                // FIXME: More control over these flags.
-                .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
-                .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+                .src_stage_mask(src_stage_mask)
+                .dst_stage_mask(dst_stage_mask)
                 // Do not transfer between queues.
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
@@ -2187,6 +2188,8 @@ impl<'a> CommandEncoder<'a> {
         for barrier in barriers.texture {
             let (old_layout, src_access_flags) = convert_access_flags(barrier.src_access);
             let (new_layout, dst_access_flags) = convert_access_flags(barrier.dst_access);
+            let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
+            let dst_stage_mask = access_flags_to_stage_mask(barrier.dst_access);
 
             let aspect_mask = if barrier.texture.format.is_depth() {
                 ImageAspectFlags::DEPTH
@@ -2197,18 +2200,6 @@ impl<'a> CommandEncoder<'a> {
             // Images cannot be transitioned into `UNDEFINED`.
             assert_ne!(new_layout, ImageLayout::UNDEFINED);
 
-            // if old_layout == ImageLayout::UNDEFINED
-            //     && new_layout == ImageLayout::SHADER_READ_ONLY_OPTIMAL
-            // {
-            //     dbg!(
-            //         &old_layout,
-            //         &new_layout,
-            //         &barrier.src_access,
-            //         &barrier.dst_access
-            //     );
-            //     panic!();
-            // }
-
             let subresource_range = ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
                 .base_mip_level(0)
@@ -2217,9 +2208,8 @@ impl<'a> CommandEncoder<'a> {
                 .layer_count(1);
 
             let barrier = vk::ImageMemoryBarrier2::default()
-                // FIXME: More control over these flags.
-                .src_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
-                .dst_stage_mask(vk::PipelineStageFlags2::ALL_COMMANDS)
+                .src_stage_mask(src_stage_mask)
+                .dst_stage_mask(dst_stage_mask)
                 .src_access_mask(src_access_flags)
                 .dst_access_mask(dst_access_flags)
                 .old_layout(old_layout.into())
@@ -3190,6 +3180,99 @@ fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFl
     }
 
     (ImageLayout::GENERAL, vk_flags)
+}
+
+fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
+    // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#synchronization-pipeline-stages-order
+    // for ordered list of pipeline stages.
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    enum GraphicsStage {
+        DrawIndirect,
+        VertexInput,
+        VertexShader,
+        EarlyFragmentTests,
+        FragmentShader,
+        LateFragmentTests,
+        ColorAttachmentOutput,
+    }
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    enum TransferStage {
+        Transfer,
+    }
+
+    let mut transfer = None;
+    if flags.contains(AccessFlags::TRANSFER_READ) | flags.contains(AccessFlags::TRANSFER_WRITE) {
+        transfer = Some(TransferStage::Transfer);
+    }
+
+    // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccessFlagBits2.html
+    // for which accesses map to which pipeline stages.
+    let mut graphics = None;
+    for (flag, stage) in [
+        (AccessFlags::INDIRECT, GraphicsStage::DrawIndirect),
+        (AccessFlags::INDEX, GraphicsStage::VertexInput),
+        (AccessFlags::VERTEX_SHADER_READ, GraphicsStage::VertexShader),
+        (
+            AccessFlags::VERTEX_SHADER_WRITE,
+            GraphicsStage::VertexShader,
+        ),
+        (
+            AccessFlags::FRAGMENT_SHADER_READ,
+            GraphicsStage::FragmentShader,
+        ),
+        (
+            AccessFlags::FRAGMENT_SAHDER_WRITE,
+            GraphicsStage::FragmentShader,
+        ),
+        (
+            AccessFlags::DEPTH_ATTACHMENT_READ,
+            GraphicsStage::EarlyFragmentTests,
+        ),
+        (
+            AccessFlags::DEPTH_ATTACHMENT_WRITE,
+            GraphicsStage::EarlyFragmentTests,
+        ),
+        (
+            AccessFlags::COLOR_ATTACHMENT_READ,
+            GraphicsStage::FragmentShader,
+        ),
+        (
+            AccessFlags::COLOR_ATTACHMENT_WRITE,
+            GraphicsStage::ColorAttachmentOutput,
+        ),
+    ] {
+        if !flags.contains(flag) {
+            continue;
+        }
+
+        match &mut graphics {
+            Some(earliest_stage) => {
+                *earliest_stage = core::cmp::min(*earliest_stage, stage);
+            }
+            None => graphics = Some(stage),
+        }
+    }
+
+    let transfer = match transfer {
+        Some(TransferStage::Transfer) => vk::PipelineStageFlags2::TRANSFER,
+        None => vk::PipelineStageFlags2::empty(),
+    };
+
+    let graphics = match graphics {
+        Some(GraphicsStage::DrawIndirect) => vk::PipelineStageFlags2::DRAW_INDIRECT,
+        Some(GraphicsStage::VertexInput) => vk::PipelineStageFlags2::VERTEX_INPUT,
+        Some(GraphicsStage::VertexShader) => vk::PipelineStageFlags2::VERTEX_SHADER,
+        Some(GraphicsStage::EarlyFragmentTests) => vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
+        Some(GraphicsStage::FragmentShader) => vk::PipelineStageFlags2::FRAGMENT_SHADER,
+        Some(GraphicsStage::LateFragmentTests) => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        Some(GraphicsStage::ColorAttachmentOutput) => {
+            vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
+        }
+        None => vk::PipelineStageFlags2::empty(),
+    };
+
+    transfer | graphics
 }
 
 fn validate_shader_bindings(shader: &super::ShaderModule, descriptors: &[&DescriptorSetLayout]) {

@@ -5,7 +5,7 @@ use glam::UVec2;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crate::backend::vulkan::{Adapter, Device, Instance, Semaphore, Surface, Swapchain};
-use crate::backend::{PresentMode, SwapchainConfig, TextureFormat};
+use crate::backend::{PresentMode, SwapchainCapabilities, SwapchainConfig, TextureFormat};
 
 #[derive(Debug, Default)]
 pub struct RenderSurfaces {
@@ -107,24 +107,7 @@ fn create_surface(
     };
 
     let caps = surface.get_capabilities(device);
-
-    let Some(format) = get_surface_format(&caps.formats) else {
-        tracing::error!("failed to select format for render suface");
-        return Err(());
-    };
-
-    let Some(present_mode) = get_surface_present_mode(&caps.present_modes) else {
-        tracing::error!("failed to select present mode for render surface");
-        return Err(());
-    };
-
-    let config = SwapchainConfig {
-        image_count: caps.min_images,
-        extent: size,
-        format,
-        present_mode,
-    };
-
+    let config = create_swapchain_config(&caps, size);
     let swapchain = surface.create_swapchain(device, config, &caps);
 
     Ok(SurfaceData {
@@ -143,8 +126,22 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
     }
 
     let caps = surface.surface.get_capabilities(device);
-    surface.config.extent = size;
+    surface.config = create_swapchain_config(&caps, size);
     surface.swapchain.recreate(surface.config, &caps);
+}
+
+fn create_swapchain_config(caps: &SwapchainCapabilities, surface_size: UVec2) -> SwapchainConfig {
+    let image_count = caps.min_images;
+    let extent = surface_size.clamp(caps.min_extent, caps.max_extent);
+    let format = get_surface_format(&caps.formats).unwrap();
+    let present_mode = get_surface_present_mode(&caps.present_modes).unwrap();
+
+    SwapchainConfig {
+        image_count,
+        extent,
+        format,
+        present_mode,
+    }
 }
 
 fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {
