@@ -1,5 +1,6 @@
 mod block;
 mod buddy;
+mod bump;
 
 use std::alloc::Layout;
 use std::collections::{HashMap, HashSet};
