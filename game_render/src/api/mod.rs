@@ -17,7 +17,9 @@ use glam::UVec2;
 use parking_lot::Mutex;
 use scheduler::{Node, Resource, ResourceMap};
 
-use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc, UsageFlags};
+use crate::backend::allocator::{
+    BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
+};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
 use crate::backend::vulkan::{self, CommandEncoder, Device, TextureView};
 use crate::backend::{
@@ -55,7 +57,10 @@ impl CommandExecutor {
                 textures: Arena::new(),
                 descriptor_sets: Arena::new(),
                 descriptor_set_layouts: Arena::new(),
-                allocator: GeneralPurposeAllocator::new(device.clone(), memory_props),
+                allocator: GeneralPurposeAllocator::new(
+                    device.clone(),
+                    MemoryManager::new(device.clone(), memory_props),
+                ),
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
                 samplers: Arena::new(),
                 lifecycle_events_tx,
@@ -336,7 +341,7 @@ impl<'a> CommandQueue<'a> {
             .executor
             .resources
             .allocator
-            .create_texture(&descriptor, UsageFlags::HOST_VISIBLE);
+            .create_texture(&descriptor, UsageFlags::empty());
 
         let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Virtual(texture),

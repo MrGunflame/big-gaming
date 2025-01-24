@@ -3,27 +3,148 @@ mod buddy;
 mod bump;
 
 use std::alloc::Layout;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
-use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use bitflags::bitflags;
 pub use block::BlockAllocator;
 pub use buddy::BuddyAllocator;
-use futures_lite::stream::Map;
 use game_tracing::trace_span;
 use parking_lot::Mutex;
 use slab::Slab;
+use thiserror::Error;
 
 use crate::backend::MemoryTypeFlags;
 
-use super::vulkan::{Buffer, Device, DeviceMemory, DeviceMemorySlice, Texture};
+use super::vulkan::{self, Buffer, Device, DeviceMemory, DeviceMemorySlice, Texture};
 use super::{
     AdapterMemoryProperties, BufferUsage, BufferView, MemoryRequirements, TextureDescriptor,
 };
+
+#[derive(Clone, Debug, Error)]
+pub enum AllocError {
+    #[error("heap is full")]
+    HeapFull,
+    #[error(transparent)]
+    Other(vulkan::Error),
+}
+
+#[derive(Debug)]
+struct Heap {
+    size: u64,
+    used: AtomicU64,
+}
+
+#[derive(Clone, Debug)]
+pub struct MemoryManager {
+    inner: Arc<MemoryManagerInner>,
+}
+
+impl MemoryManager {
+    pub fn new(device: Device, properties: AdapterMemoryProperties) -> Self {
+        let heaps = properties
+            .heaps
+            .iter()
+            .map(|heap| Heap {
+                size: heap.size,
+                used: AtomicU64::new(0),
+            })
+            .collect();
+
+        Self {
+            inner: Arc::new(MemoryManagerInner {
+                device,
+                heaps,
+                properties,
+            }),
+        }
+    }
+
+    pub fn allocate(
+        &self,
+        size: NonZeroU64,
+        memory_type: u32,
+    ) -> Result<MemoryAllocation, AllocError> {
+        let typ = &self.inner.properties.types[memory_type as usize];
+        let heap = &self.inner.heaps[typ.heap as usize];
+
+        if let Err(_) = heap
+            .used
+            .fetch_update(Ordering::Release, Ordering::Acquire, |used| {
+                used.checked_add(size.get())
+                    .filter(|used| *used <= heap.size)
+            })
+        {
+            return Err(AllocError::HeapFull);
+        }
+
+        let memory = match self.inner.device.allocate_memory(size, memory_type) {
+            Ok(memory) => memory,
+            Err(err) => {
+                // If the allocation fails it must not contribute to the
+                // heap usage.
+                heap.used.fetch_sub(size.get(), Ordering::Release);
+                return Err(AllocError::Other(err));
+            }
+        };
+
+        Ok(MemoryAllocation {
+            manager: self.clone(),
+            memory,
+            size,
+            memory_type,
+        })
+    }
+
+    fn deallocate(&self, size: NonZeroU64, memory_type: u32) {
+        let typ = &self.inner.properties.types[memory_type as usize];
+        let heap = &self.inner.heaps[typ.heap as usize];
+        heap.used.fetch_sub(size.get(), Ordering::Release);
+    }
+
+    pub fn properties(&self) -> &AdapterMemoryProperties {
+        &self.inner.properties
+    }
+}
+
+#[derive(Debug)]
+struct MemoryManagerInner {
+    device: Device,
+    heaps: Box<[Heap]>,
+    properties: AdapterMemoryProperties,
+}
+
+#[derive(Debug)]
+pub struct MemoryAllocation {
+    manager: MemoryManager,
+    memory: DeviceMemory,
+    size: NonZeroU64,
+    memory_type: u32,
+}
+
+impl Deref for MemoryAllocation {
+    type Target = DeviceMemory;
+
+    fn deref(&self) -> &Self::Target {
+        &self.memory
+    }
+}
+
+impl DerefMut for MemoryAllocation {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.memory
+    }
+}
+
+impl Drop for MemoryAllocation {
+    fn drop(&mut self) {
+        self.manager.deallocate(self.size, self.memory_type);
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AllocationError {
@@ -76,15 +197,15 @@ const GROWTH_FACTOR: NonZeroU64 = NonZeroU64::new(2).unwrap();
 #[derive(Clone, Debug)]
 pub struct GeneralPurposeAllocator {
     device: Device,
-    memory_props: AdapterMemoryProperties,
+    manager: MemoryManager,
     inner: Arc<Mutex<GpAllocatorInner>>,
 }
 
 impl GeneralPurposeAllocator {
-    pub fn new(device: Device, memory_props: AdapterMemoryProperties) -> Self {
+    pub fn new(device: Device, manager: MemoryManager) -> Self {
         Self {
             device,
-            memory_props,
+            manager,
             inner: Arc::new(Mutex::new(GpAllocatorInner {
                 pools: HashMap::new(),
             })),
@@ -152,7 +273,7 @@ impl GeneralPurposeAllocator {
         if host_visible {
             // Only `HOST_VISIBLE` memory is usable for the allocation.
             req.memory_types.retain(|id| {
-                let mem_typ = self.memory_props.types[*id as usize];
+                let mem_typ = self.manager.properties().types[*id as usize];
                 mem_typ.flags.contains(MemoryTypeFlags::HOST_VISIBLE)
             });
         } else {
@@ -160,8 +281,8 @@ impl GeneralPurposeAllocator {
             // host access is not requested we prefer memory types that are
             // "closer" to the GPU.
             req.memory_types.sort_by(|a, b| {
-                let a = self.memory_props.types[*a as usize];
-                let b = self.memory_props.types[*b as usize];
+                let a = self.manager.properties().types[*a as usize];
+                let b = self.manager.properties().types[*b as usize];
 
                 // Preference as follows:
                 // 1. Memory that is exactly `DEVICE_LOCAL` and nothing else.
@@ -195,7 +316,9 @@ impl GeneralPurposeAllocator {
             // multiple times, so we use contains_key and get instead.
             if !inner.pools.contains_key(&mem_typ) {
                 let size = core::cmp::max(MIN_SIZE, req.size.checked_next_power_of_two().unwrap());
-                let mut memory = self.device.allocate_memory(size, mem_typ).unwrap();
+                let Ok(mut memory) = self.manager.allocate(size, mem_typ) else {
+                    continue;
+                };
                 let memory_host_ptr = if host_visible {
                     unsafe { memory.map(..).as_mut_ptr() }
                 } else {
@@ -239,7 +362,9 @@ impl GeneralPurposeAllocator {
                 req.size.checked_next_power_of_two().unwrap(),
             )
             .min(MAX_SIZE);
-            let mut memory = self.device.allocate_memory(new_size, mem_typ).unwrap();
+            let Ok(mut memory) = self.manager.allocate(new_size, mem_typ) else {
+                continue;
+            };
 
             let memory_host_ptr = if host_visible {
                 unsafe { memory.map(..).as_mut_ptr() }
@@ -296,7 +421,13 @@ impl GeneralPurposeAllocator {
 
         pool.blocks.remove(block_index);
         if block_index == pool.last {
-            pool.last = pool.blocks.iter().map(|(index, _)| index).last().unwrap();
+            pool.last = match pool.blocks.iter().map(|(index, _)| index).last() {
+                Some(v) => v,
+                None => {
+                    inner.pools.remove(&mem_typ);
+                    return;
+                }
+            };
         }
     }
 }
@@ -314,7 +445,7 @@ struct Pool {
 
 #[derive(Debug)]
 struct Block {
-    memory: Arc<DeviceMemory>,
+    memory: Arc<MemoryAllocation>,
     allocator: BuddyAllocator,
     num_allocs: usize,
     size: NonZeroU64,
@@ -340,7 +471,7 @@ impl Block {
 
 pub struct DeviceMemoryRegion {
     allocator: GeneralPurposeAllocator,
-    memory: Arc<DeviceMemory>,
+    memory: Arc<MemoryAllocation>,
     region: Region,
     memory_type: u32,
     block_index: usize,

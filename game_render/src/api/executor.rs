@@ -95,8 +95,6 @@ fn copy_buffer_to_buffer(
     let src = resources.buffers.get(cmd.src).unwrap();
     let dst = resources.buffers.get(cmd.dst).unwrap();
 
-    println!("CopyBufferToBuffer{:?}", cmd);
-
     encoder.copy_buffer_to_buffer(
         src.buffer.buffer(),
         cmd.src_offset,
