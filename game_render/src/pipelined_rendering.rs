@@ -214,6 +214,7 @@ impl RenderThread {
                 output.texture().size(),
                 output.texture().format(),
                 TextureUsage::RENDER_ATTACHMENT,
+                1,
             );
 
             let mut resources = HashMap::new();

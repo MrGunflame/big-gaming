@@ -12,7 +12,8 @@ use crate::backend::vulkan::{CommandEncoder, TextureView};
 use crate::backend::{
     BufferBarrier, CopyBuffer, DescriptorType, ImageDataLayout, PipelineBarriers,
     RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    TextureBarrier, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
+    TextureBarrier, TextureViewDescriptor, WriteDescriptorBinding, WriteDescriptorResource,
+    WriteDescriptorResources,
 };
 
 use super::scheduler::{Barrier, Step};
@@ -121,10 +122,11 @@ fn copy_buffer_to_texture(
     encoder.copy_buffer_to_texture(
         CopyBuffer {
             buffer: buffer.buffer.buffer(),
-            offset: cmd.offset,
+            offset: cmd.src_offset,
             layout: cmd.layout,
         },
         texture.data.texture(),
+        cmd.dst_mip_level,
     );
 
     // Both buffer and texture must be kept alive until the
@@ -159,16 +161,19 @@ fn run_render_pass(
 
     let mut color_attachments = Vec::new();
     for attachment in &cmd.color_attachments {
-        let texture = resources.textures.get(attachment.texture).unwrap();
+        let texture = resources.textures.get(attachment.target.texture).unwrap();
         let physical_texture = match &texture.data {
             TextureData::Physical(data) => data,
             TextureData::Virtual(data) => data.texture(),
         };
 
         // Attachment must be kept alive until the render pass completes.
-        tmp.textures.insert(attachment.texture);
+        tmp.textures.insert(attachment.target.texture);
 
-        let view = attachment_views.insert(physical_texture.create_view());
+        let view = attachment_views.insert(physical_texture.create_view(&TextureViewDescriptor {
+            base_mip_level: attachment.target.base_mip_level,
+            mip_levels: attachment.target.mip_levels,
+        }));
 
         color_attachments.push(RenderPassColorAttachment {
             view,
@@ -188,7 +193,11 @@ fn run_render_pass(
         // Attachment must be kept alive until the render pass completes.
         tmp.textures.insert(attachment.texture);
 
-        let view = attachment_views.insert(physical_texture.create_view());
+        // Depth stencil attachment can only be a single mip.
+        let view = attachment_views.insert(physical_texture.create_view(&TextureViewDescriptor {
+            base_mip_level: 0,
+            mip_levels: 1,
+        }));
 
         RenderPassDepthStencilAttachment {
             depth_load_op: attachment.load_op,
@@ -295,15 +304,18 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         }
     }
 
-    for (binding, id) in &descriptor_set.textures {
-        let texture = resources.textures.get(*id).unwrap();
+    for (binding, view) in &descriptor_set.textures {
+        let texture = resources.textures.get(view.texture).unwrap();
 
         let physical_texture = match &texture.data {
             TextureData::Physical(data) => data,
             TextureData::Virtual(data) => data.texture(),
         };
 
-        let view = texture_views.insert(physical_texture.create_view());
+        let view = texture_views.insert(physical_texture.create_view(&TextureViewDescriptor {
+            base_mip_level: view.base_mip_level,
+            mip_levels: view.mip_levels,
+        }));
 
         bindings.push(WriteDescriptorBinding {
             binding: *binding,
@@ -322,14 +334,17 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
     for (binding, textures) in &descriptor_set.texture_arrays {
         let views = texture_array_views.insert(ScratchBuffer::new(textures.len()));
 
-        for id in textures {
-            let texture = resources.textures.get(*id).unwrap();
+        for view in textures {
+            let texture = resources.textures.get(view.texture).unwrap();
             let physical_texture = match &texture.data {
                 TextureData::Physical(data) => data,
                 TextureData::Virtual(data) => data.texture(),
             };
 
-            views.insert(physical_texture.create_view());
+            views.insert(physical_texture.create_view(&TextureViewDescriptor {
+                base_mip_level: view.base_mip_level,
+                mip_levels: view.mip_levels,
+            }));
         }
 
         let view_refs = views.iter_mut().map(|v| &*v).collect::<Vec<_>>();
@@ -363,6 +378,8 @@ fn insert_barriers(
     let mut texture_barriers = Vec::new();
 
     for barrier in barriers {
+        dbg!(&barrier);
+
         match barrier.resource {
             ResourceId::Buffer(id) => {
                 let buffer = resources.buffers.get(id).unwrap();
@@ -376,10 +393,6 @@ fn insert_barriers(
             }
             ResourceId::Texture(id) => {
                 let texture = resources.textures.get(id).unwrap();
-                if barrier.src_access.is_empty()
-                    && barrier.dst_access.is_readable()
-                    && !barrier.dst_access.is_writable()
-                {}
                 texture_barriers.push(TextureBarrier {
                     texture: texture.data.texture(),
                     src_access: barrier.src_access,

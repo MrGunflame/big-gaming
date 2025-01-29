@@ -432,7 +432,7 @@ bitflags! {
         /// Resource can be bound and accessed readable in a fragment shader.
         const FRAGMENT_SHADER_READ = 1 << 11;
         /// Resource can be bound and accessed writable in a fragment shader.
-        const FRAGMENT_SAHDER_WRITE = 1 << 12;
+        const FRAGMENT_SHADER_WRITE = 1 << 12;
     }
 }
 
@@ -443,7 +443,7 @@ impl AccessFlags {
             .unwrap();
 
     pub const SHADER_WRITE: Self =
-        Self::from_bits(Self::VERTEX_SHADER_WRITE.bits() | Self::FRAGMENT_SAHDER_WRITE.bits())
+        Self::from_bits(Self::VERTEX_SHADER_WRITE.bits() | Self::FRAGMENT_SHADER_WRITE.bits())
             .unwrap();
 }
 
@@ -509,6 +509,7 @@ pub struct SamplerDescriptor {
     pub address_mode_u: AddressMode,
     pub address_mode_v: AddressMode,
     pub address_mode_w: AddressMode,
+    pub mipmap_filter: FilterMode,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -614,4 +615,10 @@ pub enum BarrierPipelineStage {
 pub fn max_mips_2d(size: UVec2) -> u32 {
     let max_dim = size.x.max(size.y);
     32 - max_dim.leading_zeros()
+}
+
+#[derive(Clone, Debug)]
+pub struct TextureViewDescriptor {
+    pub base_mip_level: u32,
+    pub mip_levels: u32,
 }

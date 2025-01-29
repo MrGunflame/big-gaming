@@ -9,12 +9,13 @@ use parking_lot::Mutex;
 use crate::api::{
     BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
     DescriptorSet, DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
-    RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
+    RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureRegion,
+    TextureViewDescriptor,
 };
 use crate::backend::allocator::UsageFlags;
 use crate::backend::{
-    BufferUsage, ImageDataLayout, IndexFormat, LoadOp, ShaderStages, StoreOp, TextureDescriptor,
-    TextureFormat, TextureUsage,
+    max_mips_2d, BufferUsage, ImageDataLayout, IndexFormat, LoadOp, ShaderStages, StoreOp,
+    TextureDescriptor, TextureFormat, TextureUsage,
 };
 use crate::buffer::{DynamicBuffer, IndexBuffer};
 use crate::camera::{Camera, CameraUniform, RenderTarget};
@@ -27,6 +28,7 @@ use crate::forward::ForwardPipeline;
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::light::pipeline::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
 use crate::mesh::{Indices, Mesh};
+use crate::mipmap::MipMapGenerator;
 use crate::options::{MainPassOptions, MainPassOptionsEncoded};
 use crate::pbr::material::MaterialConstants;
 use crate::pbr::mesh::TransformUniform;
@@ -38,6 +40,7 @@ pub(super) struct ForwardPass {
     pub forward: Arc<ForwardPipeline>,
     pub depth_stencils: Mutex<HashMap<RenderTarget, Texture>>,
     pub dst: SlotLabel,
+    mipmap_generator: MipMapGenerator,
 }
 
 impl ForwardPass {
@@ -51,6 +54,7 @@ impl ForwardPass {
             forward,
             depth_stencils: Mutex::default(),
             dst,
+            mipmap_generator: MipMapGenerator::new(queue),
         }
     }
 }
@@ -68,6 +72,7 @@ impl Node for ForwardPass {
                 &self.forward.material_bind_group_layout,
                 &self.forward.vs_bind_group_layout,
                 &self.forward.sampler,
+                &self.mipmap_generator,
             );
         }
 
@@ -155,7 +160,7 @@ impl ForwardPass {
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
-                texture: &render_target,
+                target: &render_target.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Clear(Color::BLACK),
                 store_op: StoreOp::Store,
             }],
@@ -234,7 +239,7 @@ fn clear_pass(ctx: &mut RenderContext<'_, '_>, dst: SlotLabel) {
 
     ctx.queue.run_render_pass(&RenderPassDescriptor {
         color_attachments: &[RenderPassColorAttachment {
-            texture: &texture,
+            target: &texture.create_view(&TextureViewDescriptor::default()),
             load_op: LoadOp::Clear(Color::BLACK),
             store_op: StoreOp::Store,
         }],
@@ -271,7 +276,10 @@ impl DefaultTextures {
             });
 
             queue.write_texture(
-                &texture,
+                TextureRegion {
+                    texture: &texture,
+                    mip_level: 0,
+                },
                 &data,
                 ImageDataLayout {
                     bytes_per_row: 4,
@@ -382,6 +390,7 @@ impl ForwardState {
         material_bind_group_layout: &DescriptorSetLayout,
         object_bind_group_layout: &DescriptorSetLayout,
         material_sampler: &Sampler,
+        mipmap_generator: &MipMapGenerator,
     ) {
         let meshes = unsafe { resources.meshes.viewer() };
         let images = unsafe { resources.images.viewer() };
@@ -433,6 +442,7 @@ impl ForwardState {
                             &images,
                             material,
                             material_sampler,
+                            mipmap_generator,
                         )
                     });
 
@@ -743,6 +753,7 @@ fn create_material(
     images: &Viewer<'_, Image>,
     material: &PbrMaterial,
     sampler: &Sampler,
+    mipmap_generator: &MipMapGenerator,
 ) -> DescriptorSet {
     let _span = trace_span!("create_material").entered();
 
@@ -768,7 +779,7 @@ fn create_material(
             Some(id) => {
                 if !bound_textures.contains_key(&id) {
                     let image = images.get(id.0).unwrap();
-                    let image = upload_material_texture(queue, image);
+                    let image = upload_material_texture(queue, mipmap_generator, image);
                     bound_textures.insert(id, image);
                 }
             }
@@ -800,15 +811,21 @@ fn create_material(
             },
             DescriptorSetEntry {
                 binding: 1,
-                resource: BindingResource::Texture(base_color_texture),
+                resource: BindingResource::Texture(
+                    &base_color_texture.create_view(&TextureViewDescriptor::default()),
+                ),
             },
             DescriptorSetEntry {
                 binding: 2,
-                resource: BindingResource::Texture(normal_texture),
+                resource: BindingResource::Texture(
+                    &normal_texture.create_view(&TextureViewDescriptor::default()),
+                ),
             },
             DescriptorSetEntry {
                 binding: 3,
-                resource: BindingResource::Texture(metallic_roughness_texture),
+                resource: BindingResource::Texture(
+                    &metallic_roughness_texture.create_view(&TextureViewDescriptor::default()),
+                ),
             },
             DescriptorSetEntry {
                 binding: 4,
@@ -818,32 +835,27 @@ fn create_material(
     })
 }
 
-fn upload_material_texture(queue: &mut CommandQueue<'_>, image: &Image) -> Texture {
+fn upload_material_texture(
+    queue: &mut CommandQueue<'_>,
+    mipmap_generator: &MipMapGenerator,
+    image: &Image,
+) -> Texture {
     let _span = trace_span!("upload_material_texture").entered();
-
-    // TODO: Reimplement mip generation using blitting.
-
-    // let texture = queue.create_texture(&TextureDescriptor {
-    //     size,
-    //     mip_level_count: size.max_mips(TextureDimension::D2),
-    //     sample_count: 1,
-    //     dimension: TextureDimension::D2,
-    //     format: image.format(),
-    //     usage: TextureUsages::TEXTURE_BINDING
-    //         | TextureUsages::COPY_DST
-    //         | TextureUsages::RENDER_ATTACHMENT,
-    //     view_formats: &[],
-    // });
 
     let texture = queue.create_texture(&TextureDescriptor {
         size: UVec2::new(image.width(), image.height()),
-        mip_levels: 1,
+        mip_levels: max_mips_2d(UVec2::new(image.width(), image.height())),
         format: image.format(),
-        usage: TextureUsage::TRANSFER_DST | TextureUsage::TEXTURE_BINDING,
+        usage: TextureUsage::TRANSFER_DST
+            | TextureUsage::TEXTURE_BINDING
+            | TextureUsage::RENDER_ATTACHMENT,
     });
 
     queue.write_texture(
-        &texture,
+        TextureRegion {
+            texture: &texture,
+            mip_level: 0,
+        },
         image.as_bytes(),
         ImageDataLayout {
             bytes_per_row: 4 * image.width(),
@@ -851,8 +863,7 @@ fn upload_material_texture(queue: &mut CommandQueue<'_>, image: &Image) -> Textu
         },
     );
 
-    // mipmap_generator.generate_mipmaps(device, &mut encoder, &texture);
-    // queue.submit(std::iter::once(encoder.finish()));
+    mipmap_generator.generate_mipmaps(queue, &texture);
 
     texture
 }

@@ -7,16 +7,17 @@ use game_render::backend::allocator::{GeneralPurposeAllocator, UsageFlags};
 use game_render::backend::descriptors::DescriptorSetAllocator;
 use game_render::backend::vulkan::{Config, DescriptorSetLayout, Pipeline, Sampler};
 use game_render::backend::{
-    AccessFlags, AddressMode, BufferUsage, CopyBuffer, DescriptorBinding, DescriptorSetDescriptor,
-    FilterMode, FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags, PipelineBarriers,
-    PipelineDescriptor, PipelineStage, QueueCapabilities, QueueSubmit, RenderPassColorAttachment,
-    RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp, SwapchainConfig,
-    TextureBarrier, TextureDescriptor, TextureFormat, TextureLayout, VertexStage,
-    WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
+    max_mips_2d, AccessFlags, AddressMode, BufferUsage, CopyBuffer, DescriptorBinding,
+    DescriptorSetDescriptor, FilterMode, FragmentStage, ImageDataLayout, LoadOp, MemoryTypeFlags,
+    PipelineBarriers, PipelineDescriptor, PipelineStage, QueueCapabilities, QueueSubmit,
+    RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStages, StoreOp,
+    SwapchainConfig, TextureBarrier, TextureDescriptor, TextureFormat, TextureLayout, TextureUsage,
+    VertexStage, WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 use game_render::camera::{Camera, Projection, RenderTarget};
 use game_render::entities::Object;
 use game_render::light::{DirectionalLight, PointLight, SpotLight};
+use game_render::mipmap::MipMapGenerator;
 use game_render::pbr::PbrMaterial;
 use game_render::{shape, Renderer};
 use game_tasks::TaskPool;
@@ -57,6 +58,22 @@ fn render_main(window: WindowState) {
     let mut pool = TaskPool::new(1);
 
     renderer.create(window.id(), window.clone());
+
+    renderer.with_command_queue_and_graph(|graph, queue| {
+        let texture = queue.create_texture(&TextureDescriptor {
+            size: UVec2::splat(1024),
+            format: TextureFormat::Rgba8Unorm,
+            mip_levels: max_mips_2d(UVec2::splat(1024)),
+            usage: TextureUsage::RENDER_ATTACHMENT
+                | TextureUsage::TEXTURE_BINDING
+                | TextureUsage::TRANSFER_DST,
+        });
+
+        let gen = MipMapGenerator::new(queue);
+        gen.generate_mipmaps(queue, &texture);
+    });
+
+    renderer.render(&pool);
 
     // let scene_id = renderer.resources().scenes().insert();
     // renderer.resources().cameras().insert(Camera {

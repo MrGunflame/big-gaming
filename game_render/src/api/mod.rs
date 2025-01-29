@@ -9,6 +9,7 @@ use std::num::NonZeroU64;
 use std::ops::Range;
 use std::sync::{mpsc, Arc};
 
+use ash::vk::version_minor;
 use executor::TemporaryResources;
 use game_common::collections::arena::{Arena, Key};
 use game_common::components::Color;
@@ -21,7 +22,7 @@ use crate::backend::allocator::{
     BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
 };
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::vulkan::{self, CommandEncoder, Device, TextureView};
+use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, BufferBarrier, BufferUsage, CopyBuffer,
     DepthStencilState, DescriptorType, Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp,
@@ -131,18 +132,18 @@ impl CommandExecutor {
                             .unwrap();
                     }
 
-                    for (_, id) in &set.textures {
+                    for (_, view) in &set.textures {
                         self.resources
                             .lifecycle_events_tx
-                            .send(LifecycleEvent::DestroyTextureHandle(*id))
+                            .send(LifecycleEvent::DestroyTextureHandle(view.texture))
                             .unwrap();
                     }
 
-                    for (_, textures) in &set.texture_arrays {
-                        for id in textures {
+                    for (_, views) in &set.texture_arrays {
+                        for view in views {
                             self.resources
                                 .lifecycle_events_tx
-                                .send(LifecycleEvent::DestroyTextureHandle(*id))
+                                .send(LifecycleEvent::DestroyTextureHandle(view.texture))
                                 .unwrap();
                         }
                     }
@@ -356,6 +357,7 @@ impl<'a> CommandQueue<'a> {
             usage: descriptor.usage,
             events: self.executor.resources.lifecycle_events_tx.clone(),
             auto_destroy: true,
+            mip_levels: descriptor.mip_levels,
         }
     }
 
@@ -367,6 +369,7 @@ impl<'a> CommandQueue<'a> {
         size: UVec2,
         format: TextureFormat,
         usage: TextureUsage,
+        mip_levels: u32,
     ) -> Texture {
         let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
@@ -381,6 +384,7 @@ impl<'a> CommandQueue<'a> {
             usage,
             events: self.executor.resources.lifecycle_events_tx.clone(),
             auto_destroy: false,
+            mip_levels,
         }
     }
 
@@ -390,7 +394,7 @@ impl<'a> CommandQueue<'a> {
                 !descriptor_set
                     .textures
                     .iter()
-                    .any(|(_, id)| *id == texture.id),
+                    .any(|(_, view)| view.texture == texture.id),
                 "Texture cannot be removed: it is used in a descriptor set",
             );
         }
@@ -411,9 +415,14 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    pub fn write_texture(&mut self, texture: &Texture, data: &[u8], layout: ImageDataLayout) {
+    pub fn write_texture(
+        &mut self,
+        texture: TextureRegion<'_>,
+        data: &[u8],
+        layout: ImageDataLayout,
+    ) {
         assert!(
-            texture.usage.contains(TextureUsage::TRANSFER_DST),
+            texture.texture.usage.contains(TextureUsage::TRANSFER_DST),
             "Texture cannot be written to: TRANSFER_DST usage not set",
         );
 
@@ -475,13 +484,18 @@ impl<'a> CommandQueue<'a> {
             }));
     }
 
-    pub fn copy_buffer_to_texture(&mut self, src: &Buffer, dst: &Texture, layout: ImageDataLayout) {
+    pub fn copy_buffer_to_texture(
+        &mut self,
+        src: &Buffer,
+        dst: TextureRegion<'_>,
+        layout: ImageDataLayout,
+    ) {
         assert!(
             src.usage.contains(BufferUsage::TRANSFER_SRC),
             "Buffer cannot be read from: TRANSFER_SRC usage not set",
         );
         assert!(
-            dst.usage.contains(TextureUsage::TRANSFER_DST),
+            dst.texture.usage.contains(TextureUsage::TRANSFER_DST),
             "Texture cannot be written to: TRANSFER_DST not set",
         );
 
@@ -496,7 +510,7 @@ impl<'a> CommandQueue<'a> {
         self.executor
             .resources
             .textures
-            .get_mut(dst.id)
+            .get_mut(dst.texture.id)
             .unwrap()
             .ref_count += 1;
 
@@ -504,9 +518,10 @@ impl<'a> CommandQueue<'a> {
             .cmds
             .push(Command::CopyBufferToTexture(CopyBufferToTexture {
                 src: src.id,
-                dst: dst.id,
-                offset: 0,
+                src_offset: 0,
                 layout,
+                dst: dst.texture.id,
+                dst_mip_level: dst.mip_level,
             }));
     }
 
@@ -547,40 +562,56 @@ impl<'a> CommandQueue<'a> {
 
                     samplers.push((entry.binding, sampler.id));
                 }
-                BindingResource::Texture(texture) => {
+                BindingResource::Texture(view) => {
                     assert!(
-                        texture.usage.contains(TextureUsage::TEXTURE_BINDING),
+                        view.texture.usage.contains(TextureUsage::TEXTURE_BINDING),
                         "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
                     );
 
                     self.executor
                         .resources
                         .textures
-                        .get_mut(texture.id)
+                        .get_mut(view.texture.id)
                         .unwrap()
                         .ref_count += 1;
 
-                    textures.push((entry.binding, texture.id));
+                    textures.push((
+                        entry.binding,
+                        RawTextureView {
+                            texture: view.texture.id,
+                            base_mip_level: view.base_mip_level,
+                            mip_levels: view.mip_levels,
+                        },
+                    ));
                 }
-                BindingResource::TextureArray(textures) => {
-                    for texture in textures {
+                BindingResource::TextureArray(views) => {
+                    for view in views {
                         assert!(
-                            texture.usage.contains(TextureUsage::TEXTURE_BINDING),
+                            view.texture.usage.contains(TextureUsage::TEXTURE_BINDING),
                             "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
                         );
                     }
 
-                    for texture in textures {
+                    for view in views {
                         self.executor
                             .resources
                             .textures
-                            .get_mut(texture.id)
+                            .get_mut(view.texture.id)
                             .unwrap()
                             .ref_count += 1;
                     }
 
-                    texture_arrays
-                        .push((entry.binding, textures.into_iter().map(|t| t.id).collect()));
+                    texture_arrays.push((
+                        entry.binding,
+                        views
+                            .into_iter()
+                            .map(|view| RawTextureView {
+                                texture: view.texture.id,
+                                base_mip_level: view.base_mip_level,
+                                mip_levels: view.mip_levels,
+                            })
+                            .collect(),
+                    ));
                 }
             }
         }
@@ -690,19 +721,26 @@ impl<'a> CommandQueue<'a> {
             .iter()
             .map(|a| {
                 assert!(
-                    a.texture.usage.contains(TextureUsage::RENDER_ATTACHMENT),
+                    a.target
+                        .texture
+                        .usage
+                        .contains(TextureUsage::RENDER_ATTACHMENT),
                     "Texture cannot be used as color attachment: RENDER_ATTACHMENT not set",
                 );
 
                 self.executor
                     .resources
                     .textures
-                    .get_mut(a.texture.id)
+                    .get_mut(a.target.texture.id)
                     .unwrap()
                     .ref_count += 1;
 
                 ColorAttachmentOwned {
-                    texture: a.texture.id,
+                    target: RawTextureView {
+                        texture: a.target.texture.id,
+                        base_mip_level: a.target.base_mip_level,
+                        mip_levels: a.target.mip_levels,
+                    },
                     load_op: a.load_op,
                     store_op: a.store_op,
                 }
@@ -737,6 +775,12 @@ impl<'a> CommandQueue<'a> {
     pub fn create_shader_module(&mut self, src: ShaderSource<'_>) -> ShaderModule {
         ShaderModule::new(&src, &self.executor.device)
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct TextureRegion<'a> {
+    pub texture: &'a Texture,
+    pub mip_level: u32,
 }
 
 #[derive(Debug)]
@@ -934,8 +978,8 @@ pub struct DescriptorSetEntry<'a> {
 pub enum BindingResource<'a> {
     Buffer(&'a Buffer),
     Sampler(&'a Sampler),
-    Texture(&'a Texture),
-    TextureArray(&'a [&'a Texture]),
+    Texture(&'a TextureView),
+    TextureArray(&'a [&'a TextureView]),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1014,15 +1058,17 @@ impl Node<Resources> for Command {
                                     AccessFlags::SHADER_READ;
                             }
 
-                            for (_, texture) in &descriptor_set.textures {
-                                *accesses.entry(ResourceId::Texture(*texture)).or_default() |=
-                                    AccessFlags::SHADER_READ;
+                            for (_, view) in &descriptor_set.textures {
+                                *accesses
+                                    .entry(ResourceId::Texture(view.texture))
+                                    .or_default() |= AccessFlags::SHADER_READ;
                             }
 
-                            for (_, textures) in &descriptor_set.texture_arrays {
-                                for texture in textures {
-                                    *accesses.entry(ResourceId::Texture(*texture)).or_default() |=
-                                        AccessFlags::SHADER_READ;
+                            for (_, views) in &descriptor_set.texture_arrays {
+                                for view in views {
+                                    *accesses
+                                        .entry(ResourceId::Texture(view.texture))
+                                        .or_default() |= AccessFlags::SHADER_READ;
                                 }
                             }
                         }
@@ -1033,7 +1079,7 @@ impl Node<Resources> for Command {
 
                 for attachment in &cmd.color_attachments {
                     *accesses
-                        .entry(ResourceId::Texture(attachment.texture))
+                        .entry(ResourceId::Texture(attachment.target.texture))
                         .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
                 }
 
@@ -1064,10 +1110,15 @@ struct CopyBufferToBuffer {
 
 #[derive(Clone, Debug)]
 struct CopyBufferToTexture {
+    /// The buffer from which to copy bytes from.
     src: BufferId,
-    offset: u64,
+    /// The offset at which to start the copy from.
+    src_offset: u64,
     layout: ImageDataLayout,
+    /// The texture to copy the bytes to.
     dst: TextureId,
+    /// The mip level of the texture that should be written.
+    dst_mip_level: u32,
 }
 
 #[derive(Debug)]
@@ -1075,11 +1126,11 @@ struct DescriptorSetInner {
     // (Binding, Resource)
     buffers: Vec<(u32, BufferId)>,
     samplers: Vec<(u32, SamplerId)>,
-    textures: Vec<(u32, TextureId)>,
-    texture_arrays: Vec<(u32, Vec<TextureId>)>,
+    textures: Vec<(u32, RawTextureView)>,
+    texture_arrays: Vec<(u32, Vec<RawTextureView>)>,
     descriptor_set: Option<AllocatedDescriptorSet>,
     layout: DescriptorSetLayoutId,
-    physical_texture_views: Vec<TextureView<'static>>,
+    physical_texture_views: Vec<vulkan::TextureView<'static>>,
     ref_count: usize,
 }
 
@@ -1090,6 +1141,13 @@ struct RenderPassCmd {
     cmds: Vec<DrawCmd>,
 }
 
+#[derive(Copy, Clone, Debug)]
+struct RawTextureView {
+    texture: TextureId,
+    base_mip_level: u32,
+    mip_levels: u32,
+}
+
 #[derive(Debug)]
 pub struct Texture {
     id: TextureId,
@@ -1098,6 +1156,7 @@ pub struct Texture {
     usage: TextureUsage,
     events: mpsc::Sender<LifecycleEvent>,
     auto_destroy: bool,
+    mip_levels: u32,
 }
 
 impl Texture {
@@ -1107,6 +1166,26 @@ impl Texture {
 
     pub fn format(&self) -> TextureFormat {
         self.format
+    }
+
+    pub fn mip_levels(&self) -> u32 {
+        self.mip_levels
+    }
+
+    pub fn create_view(&self, descriptor: &TextureViewDescriptor) -> TextureView {
+        let base_mip_level = descriptor.base_mip_level;
+        let mip_levels = descriptor
+            .mip_levels
+            .unwrap_or(self.mip_levels - base_mip_level);
+
+        assert_ne!(mip_levels, 0);
+        assert!(base_mip_level + mip_levels <= self.mip_levels);
+
+        TextureView {
+            texture: self.clone(),
+            base_mip_level,
+            mip_levels,
+        }
     }
 }
 
@@ -1125,6 +1204,7 @@ impl Clone for Texture {
             usage: self.usage,
             events: self.events.clone(),
             auto_destroy: self.auto_destroy,
+            mip_levels: self.mip_levels,
         }
     }
 }
@@ -1137,6 +1217,19 @@ impl Drop for Texture {
                 .ok();
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct TextureView {
+    texture: Texture,
+    base_mip_level: u32,
+    mip_levels: u32,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct TextureViewDescriptor {
+    pub base_mip_level: u32,
+    pub mip_levels: Option<u32>,
 }
 
 #[derive(Debug)]
@@ -1289,8 +1382,7 @@ pub struct RenderPassDescriptor<'a> {
 }
 
 pub struct RenderPassColorAttachment<'a> {
-    // TODO: Should be texture view
-    pub texture: &'a Texture,
+    pub target: &'a TextureView,
     pub load_op: LoadOp<Color>,
     pub store_op: StoreOp,
 }
@@ -1303,7 +1395,7 @@ pub struct DepthStencilAttachment<'a> {
 
 #[derive(Clone, Debug)]
 struct ColorAttachmentOwned {
-    texture: TextureId,
+    target: RawTextureView,
     load_op: LoadOp<Color>,
     store_op: StoreOp,
 }

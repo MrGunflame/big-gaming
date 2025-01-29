@@ -6,6 +6,7 @@ use game_tracing::trace_span;
 use crate::api::{
     BindingResource, CommandQueue, DescriptorSetEntry, DescriptorSetLayout, Pipeline,
     PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
+    TextureViewDescriptor,
 };
 use crate::backend::{
     AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, FilterMode,
@@ -52,6 +53,7 @@ impl PostProcessPass {
             address_mode_w: AddressMode::ClampToEdge,
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Linear,
         });
 
         let pipelines = PipelineCache::new(PostProcessPipelineBuilder {
@@ -85,7 +87,9 @@ impl Node for PostProcessPass {
                 entries: &[
                     DescriptorSetEntry {
                         binding: 0,
-                        resource: BindingResource::Texture(&input),
+                        resource: BindingResource::Texture(
+                            &input.create_view(&TextureViewDescriptor::default()),
+                        ),
                     },
                     DescriptorSetEntry {
                         binding: 1,
@@ -96,7 +100,7 @@ impl Node for PostProcessPass {
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
-                texture: &output,
+                target: &output.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Clear(Color::BLACK),
                 store_op: StoreOp::Store,
             }],

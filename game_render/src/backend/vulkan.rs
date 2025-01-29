@@ -59,7 +59,8 @@ use super::{
     PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
     QueueFamily, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor,
     ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
-    TextureFormat, TextureUsage, WriteDescriptorResource, WriteDescriptorResources,
+    TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
+    WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -901,7 +902,7 @@ impl Device {
         let info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(extent)
-            .mip_levels(1)
+            .mip_levels(descriptor.mip_levels)
             .array_layers(1)
             .format(descriptor.format.into())
             .tiling(vk::ImageTiling::OPTIMAL)
@@ -920,6 +921,7 @@ impl Device {
             size: descriptor.size,
             destroy_on_drop: true,
             usage: usages,
+            mip_levels: descriptor.mip_levels,
         }
     }
 
@@ -1284,6 +1286,9 @@ impl Device {
             .address_mode_u(descriptor.address_mode_u.into())
             .address_mode_v(descriptor.address_mode_v.into())
             .address_mode_w(descriptor.address_mode_w.into())
+            .mipmap_mode(descriptor.mipmap_filter.into())
+            .min_lod(0.0)
+            .max_lod(u32::MAX as f32)
             // TODO: Add API for this
             .anisotropy_enable(false)
             .max_anisotropy(1.0);
@@ -1615,6 +1620,7 @@ impl Swapchain {
                 size: self.extent,
                 destroy_on_drop: false,
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                mip_levels: 1,
             },
             suboptimal,
             index: image_index,
@@ -1794,6 +1800,15 @@ impl From<FilterMode> for vk::Filter {
         match value {
             FilterMode::Nearest => vk::Filter::NEAREST,
             FilterMode::Linear => vk::Filter::LINEAR,
+        }
+    }
+}
+
+impl From<FilterMode> for vk::SamplerMipmapMode {
+    fn from(value: FilterMode) -> Self {
+        match value {
+            FilterMode::Nearest => vk::SamplerMipmapMode::NEAREST,
+            FilterMode::Linear => vk::SamplerMipmapMode::LINEAR,
         }
     }
 }
@@ -2021,7 +2036,7 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
-    pub fn copy_buffer_to_texture(&mut self, src: CopyBuffer<'_>, dst: &Texture) {
+    pub fn copy_buffer_to_texture(&mut self, src: CopyBuffer<'_>, dst: &Texture, mip_level: u32) {
         assert_ne!(dst.size.x, 0);
         assert_ne!(dst.size.y, 0);
 
@@ -2029,9 +2044,11 @@ impl<'a> CommandEncoder<'a> {
         assert!(src.buffer.size > src.offset);
         assert!(src.buffer.size - src.offset >= bytes_to_copy);
 
+        assert!(mip_level < dst.mip_levels);
+
         let subresource = vk::ImageSubresourceLayers::default()
             .aspect_mask(ImageAspectFlags::COLOR)
-            .mip_level(0)
+            .mip_level(mip_level)
             .base_array_layer(0)
             .layer_count(1);
 
@@ -2241,7 +2258,7 @@ impl<'a> CommandEncoder<'a> {
             let subresource_range = ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
                 .base_mip_level(0)
-                .level_count(1)
+                .level_count(barrier.texture.mip_levels)
                 .base_array_layer(0)
                 .layer_count(1);
 
@@ -2463,6 +2480,7 @@ pub struct Texture {
     image: vk::Image,
     format: TextureFormat,
     size: UVec2,
+    mip_levels: u32,
     usage: vk::ImageUsageFlags,
     /// Whether to destroy the texture on drop.
     /// This is only used for swapchain textures.
@@ -2478,7 +2496,9 @@ impl Texture {
         self.format
     }
 
-    pub fn create_view(&self) -> TextureView<'_> {
+    pub fn create_view(&self, descriptor: &TextureViewDescriptor) -> TextureView<'_> {
+        assert!(descriptor.base_mip_level + descriptor.mip_levels <= self.mip_levels);
+
         let components = ComponentMapping::default()
             .r(ComponentSwizzle::IDENTITY)
             .g(ComponentSwizzle::IDENTITY)
@@ -2493,8 +2513,8 @@ impl Texture {
 
         let subresource_range = ImageSubresourceRange::default()
             .aspect_mask(aspect_mask)
-            .base_mip_level(0)
-            .level_count(1)
+            .base_mip_level(descriptor.base_mip_level)
+            .level_count(descriptor.mip_levels)
             .base_array_layer(0)
             .layer_count(1);
 
@@ -3260,7 +3280,7 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
             GraphicsStage::FragmentShader,
         ),
         (
-            AccessFlags::FRAGMENT_SAHDER_WRITE,
+            AccessFlags::FRAGMENT_SHADER_WRITE,
             GraphicsStage::FragmentShader,
         ),
         (
