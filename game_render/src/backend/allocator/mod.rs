@@ -250,14 +250,7 @@ impl GeneralPurposeAllocator {
                 .bind_texture_memory(&mut texture, memory.memory());
         }
 
-        let size = descriptor.compute_size();
-        debug_assert!(memory.region.size >= size as usize);
-
-        TextureAlloc {
-            texture,
-            memory,
-            size: size as usize,
-        }
+        TextureAlloc { texture, memory }
     }
 
     pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
@@ -552,7 +545,6 @@ impl BufferAlloc {
 pub struct TextureAlloc {
     texture: Texture,
     memory: DeviceMemoryRegion,
-    size: usize,
 }
 
 impl TextureAlloc {

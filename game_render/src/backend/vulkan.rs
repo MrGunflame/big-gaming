@@ -845,10 +845,18 @@ impl Device {
     }
 
     pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
-        let extent = vk::Extent3D::default()
-            .width(descriptor.size.x)
-            .height(descriptor.size.y)
-            .depth(1);
+        assert_ne!(descriptor.size.x, 0);
+        assert_ne!(descriptor.size.y, 0);
+
+        let extent = vk::Extent3D {
+            // - `width` must be greater than 0.
+            width: descriptor.size.x,
+            // - `height` must be greater than 0.
+            height: descriptor.size.y,
+            // - `depth` must be greater than 0.
+            // - `depth` must be 1, since `imageType` is always `VK_IMAGE_TYPE_2D`.
+            depth: 1,
+        };
 
         let mut usages: vk::ImageUsageFlags = descriptor.usage.into();
         if descriptor.usage.contains(TextureUsage::RENDER_ATTACHMENT) {
@@ -861,6 +869,35 @@ impl Device {
 
         assert!(!usages.is_empty());
 
+        let format_info = vk::PhysicalDeviceImageFormatInfo2::default()
+            .format(descriptor.format.into())
+            .ty(vk::ImageType::TYPE_2D)
+            .tiling(vk::ImageTiling::OPTIMAL)
+            .usage(usages)
+            .flags(vk::ImageCreateFlags::empty());
+        let mut format_out = vk::ImageFormatProperties2::default();
+        unsafe {
+            self.device
+                .instance
+                .get_physical_device_image_format_properties2(
+                    self.physical_device,
+                    &format_info,
+                    &mut format_out,
+                )
+                .unwrap();
+        }
+
+        // - `extent.width` must be less than or equal to `imageCreateMaxExtent.width`.
+        // - `extent.height` must be less than or equal to `imageCreateMaxExtent.height`.
+        // - `extent.depth` must be less than or equal to `imageCreateMaxExtent.depth`.
+        assert!(extent.width <= format_out.image_format_properties.max_extent.width);
+        assert!(extent.height <= format_out.image_format_properties.max_extent.height);
+        assert!(extent.depth <= format_out.image_format_properties.max_extent.depth);
+        // - `mipLevels` must be less than or equal to `imageCreateMaxMipLevels`.
+        assert!(descriptor.mip_levels <= format_out.image_format_properties.max_mip_levels);
+        // - `arrayLayers` must be less than or equal to `imageCreateMaxArrayLayers`.
+        assert!(1 <= format_out.image_format_properties.max_array_layers);
+
         let info = vk::ImageCreateInfo::default()
             .image_type(vk::ImageType::TYPE_2D)
             .extent(extent)
@@ -868,6 +905,7 @@ impl Device {
             .array_layers(1)
             .format(descriptor.format.into())
             .tiling(vk::ImageTiling::OPTIMAL)
+            // - `initialLayout` must be `VK_IMAGE_LAYOUT_UNDEFINED`.
             .initial_layout(vk::ImageLayout::UNDEFINED)
             .usage(usages)
             .sharing_mode(vk::SharingMode::EXCLUSIVE)

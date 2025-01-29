@@ -365,6 +365,7 @@ pub struct TextureDescriptor {
 }
 
 impl TextureDescriptor {
+    #[deprecated]
     pub fn compute_size(&self) -> u64 {
         // TODO: Implement mips > 1
         assert_eq!(
@@ -608,4 +609,9 @@ pub enum BarrierPipelineStage {
     ColorAttachmentOutput,
     /// ALL
     Bottom,
+}
+
+pub fn max_mips_2d(size: UVec2) -> u32 {
+    let max_dim = size.x.max(size.y);
+    32 - max_dim.leading_zeros()
 }

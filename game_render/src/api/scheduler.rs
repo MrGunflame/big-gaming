@@ -3,7 +3,7 @@ use std::hash::Hash;
 
 use game_tracing::trace_span;
 
-use crate::backend::{AccessFlags, BarrierPipelineStage};
+use crate::backend::AccessFlags;
 
 pub(super) fn schedule<'a, T, M>(
     resources: &mut M,
@@ -109,12 +109,7 @@ pub(super) enum Step<N, R> {
 
 impl<N, R> Step<N, R> {
     #[inline]
-    pub const fn is_node(&self) -> bool {
-        matches!(self, Self::Node(_))
-    }
-
-    #[inline]
-    pub const fn is_barrier(&self) -> bool {
+    pub(super) const fn is_barrier(&self) -> bool {
         matches!(self, Self::Barrier(_))
     }
 }
@@ -126,7 +121,7 @@ pub(super) struct Barrier<T> {
     pub(super) dst_access: AccessFlags,
 }
 
-pub trait ResourceMap {
+pub(super) trait ResourceMap {
     type Id;
 
     fn access(&self, id: Self::Id) -> AccessFlags;
@@ -148,14 +143,6 @@ pub(super) trait Node<M> {
 pub(super) struct Resource<T> {
     pub(super) id: T,
     pub(super) access: AccessFlags,
-}
-
-#[derive(Copy, Clone, Debug)]
-struct Edge {
-    /// The access that the sucessors needs from its predecessor.
-    access: AccessFlags,
-    /// The stage in which the access occurs.
-    stage: BarrierPipelineStage,
 }
 
 #[cfg(test)]
