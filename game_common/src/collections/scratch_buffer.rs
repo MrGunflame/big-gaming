@@ -21,6 +21,10 @@ pub struct ScratchBuffer<T> {
     // Explicit !Send/!Sync marker. This is already given because of previous fields
     // but is here just in case the implementation changes and the auto-impls change.
     _marker: PhantomData<*const ()>,
+    // We must be invariant over T.
+    // If we are covariant, it would be possible for ScratchBuffer<&mut T> to get
+    // coerced into ScratchBuffer<&'static mut T>.
+    _invariant: PhantomData<*mut T>,
 }
 
 impl<T> ScratchBuffer<T>
@@ -44,6 +48,7 @@ where
             len: Cell::new(0),
             cap,
             _marker: PhantomData,
+            _invariant: PhantomData,
         }
     }
 
@@ -57,7 +62,7 @@ where
 
     pub fn insert(&self, value: T) -> &mut T {
         self.try_insert(value)
-            .unwrap_or_else(|_| panic!("ScratchArena is full"))
+            .unwrap_or_else(|_| panic!("ScratchBuffer is full"))
     }
 
     pub fn try_insert(&self, value: T) -> Result<&mut T, T> {
@@ -150,7 +155,10 @@ impl<T> Drop for ScratchBuffer<T> {
     }
 }
 
-impl<T> FromIterator<T> for ScratchBuffer<T> {
+impl<T> FromIterator<T> for ScratchBuffer<T>
+where
+    T: 'static,
+{
     fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = T>,
