@@ -215,7 +215,7 @@ struct Resources {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum ResourceId {
     Buffer(BufferId),
-    Texture(TextureId),
+    Texture(TextureMip),
 }
 
 impl ResourceMap for Resources {
@@ -224,14 +224,20 @@ impl ResourceMap for Resources {
     fn access(&self, id: Self::Id) -> AccessFlags {
         match id {
             ResourceId::Buffer(id) => self.buffers.get(id).unwrap().access,
-            ResourceId::Texture(id) => self.textures.get(id).unwrap().access,
+            ResourceId::Texture(tex) => {
+                let texture = self.textures.get(tex.id).unwrap();
+                texture.mips[tex.mip_level as usize]
+            }
         }
     }
 
     fn set_access(&mut self, id: Self::Id, access: AccessFlags) {
         match id {
             ResourceId::Buffer(id) => self.buffers.get_mut(id).unwrap().access = access,
-            ResourceId::Texture(id) => self.textures.get_mut(id).unwrap().access = access,
+            ResourceId::Texture(tex) => {
+                let texture = self.textures.get_mut(tex.id).unwrap();
+                texture.mips[tex.mip_level as usize] = access;
+            }
         }
     }
 }
@@ -346,8 +352,8 @@ impl<'a> CommandQueue<'a> {
 
         let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Virtual(texture),
-            access: AccessFlags::empty(),
             ref_count: 1,
+            mips: vec![AccessFlags::empty(); descriptor.mip_levels as usize],
         });
 
         Texture {
@@ -373,8 +379,8 @@ impl<'a> CommandQueue<'a> {
     ) -> Texture {
         let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
-            access,
             ref_count: 1,
+            mips: vec![access; mip_levels as usize],
         });
 
         Texture {
@@ -424,6 +430,11 @@ impl<'a> CommandQueue<'a> {
         assert!(
             texture.texture.usage.contains(TextureUsage::TRANSFER_DST),
             "Texture cannot be written to: TRANSFER_DST usage not set",
+        );
+
+        assert_eq!(
+            data.len(),
+            layout.bytes_per_row as usize * layout.rows_per_image as usize
         );
 
         let staging_buffer = self.create_buffer_init(&BufferInitDescriptor {
@@ -1036,7 +1047,10 @@ impl Node<Resources> for Command {
                         access: AccessFlags::TRANSFER_READ,
                     },
                     Resource {
-                        id: ResourceId::Texture(cmd.dst),
+                        id: ResourceId::Texture(TextureMip {
+                            id: cmd.dst,
+                            mip_level: cmd.dst_mip_level,
+                        }),
                         access: AccessFlags::TRANSFER_WRITE,
                     },
                 ]
@@ -1059,16 +1073,26 @@ impl Node<Resources> for Command {
                             }
 
                             for (_, view) in &descriptor_set.textures {
-                                *accesses
-                                    .entry(ResourceId::Texture(view.texture))
-                                    .or_default() |= AccessFlags::SHADER_READ;
+                                for mip in view.mips() {
+                                    *accesses
+                                        .entry(ResourceId::Texture(TextureMip {
+                                            id: view.texture,
+                                            mip_level: mip,
+                                        }))
+                                        .or_default() |= AccessFlags::SHADER_READ;
+                                }
                             }
 
                             for (_, views) in &descriptor_set.texture_arrays {
                                 for view in views {
-                                    *accesses
-                                        .entry(ResourceId::Texture(view.texture))
-                                        .or_default() |= AccessFlags::SHADER_READ;
+                                    for mip in view.mips() {
+                                        *accesses
+                                            .entry(ResourceId::Texture(TextureMip {
+                                                id: view.texture,
+                                                mip_level: mip,
+                                            }))
+                                            .or_default() |= AccessFlags::SHADER_READ;
+                                    }
                                 }
                             }
                         }
@@ -1078,14 +1102,22 @@ impl Node<Resources> for Command {
                 }
 
                 for attachment in &cmd.color_attachments {
-                    *accesses
-                        .entry(ResourceId::Texture(attachment.target.texture))
-                        .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
+                    for mip in attachment.target.mips() {
+                        *accesses
+                            .entry(ResourceId::Texture(TextureMip {
+                                id: attachment.target.texture,
+                                mip_level: mip,
+                            }))
+                            .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
+                    }
                 }
 
                 if let Some(attachment) = &cmd.depth_stencil_attachment {
                     *accesses
-                        .entry(ResourceId::Texture(attachment.texture))
+                        .entry(ResourceId::Texture(TextureMip {
+                            id: attachment.texture,
+                            mip_level: 0,
+                        }))
                         .or_default() |=
                         AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
                 }
@@ -1146,6 +1178,18 @@ struct RawTextureView {
     texture: TextureId,
     base_mip_level: u32,
     mip_levels: u32,
+}
+
+impl RawTextureView {
+    fn mips(&self) -> Range<u32> {
+        self.base_mip_level..self.base_mip_level + self.mip_levels
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+struct TextureMip {
+    id: TextureId,
+    mip_level: u32,
 }
 
 #[derive(Debug)]
@@ -1235,8 +1279,9 @@ pub struct TextureViewDescriptor {
 #[derive(Debug)]
 pub struct TextureInner {
     data: TextureData,
-    access: AccessFlags,
     ref_count: usize,
+    /// Access flags of each mip level.
+    mips: Vec<AccessFlags>,
 }
 
 #[derive(Debug)]

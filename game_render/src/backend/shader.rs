@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 
 use bitflags::bitflags;
-use naga::back::spv;
 use naga::back::spv::PipelineOptions;
+use naga::back::spv::{self, WriterFlags};
 use naga::front::wgsl;
 use naga::valid::{Capabilities, GlobalUse, ModuleInfo, ValidationFlags, Validator};
 use naga::{AddressSpace, ArraySize, Module, TypeInner};

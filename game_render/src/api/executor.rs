@@ -378,8 +378,6 @@ fn insert_barriers(
     let mut texture_barriers = Vec::new();
 
     for barrier in barriers {
-        dbg!(&barrier);
-
         match barrier.resource {
             ResourceId::Buffer(id) => {
                 let buffer = resources.buffers.get(id).unwrap();
@@ -391,12 +389,14 @@ fn insert_barriers(
                     dst_access: barrier.dst_access,
                 });
             }
-            ResourceId::Texture(id) => {
-                let texture = resources.textures.get(id).unwrap();
+            ResourceId::Texture(tex) => {
+                let texture = resources.textures.get(tex.id).unwrap();
                 texture_barriers.push(TextureBarrier {
                     texture: texture.data.texture(),
                     src_access: barrier.src_access,
                     dst_access: barrier.dst_access,
+                    base_mip_level: tex.mip_level,
+                    mip_levels: 1,
                 });
             }
         }

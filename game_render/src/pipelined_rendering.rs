@@ -252,6 +252,8 @@ impl RenderThread {
                     src_access: AccessFlags::empty(),
                     dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
                     texture: output.texture(),
+                    base_mip_level: 0,
+                    mip_levels: 1,
                 }],
             });
         }
@@ -265,6 +267,8 @@ impl RenderThread {
                     src_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
                     dst_access: AccessFlags::PRESENT,
                     texture: output.texture(),
+                    base_mip_level: 0,
+                    mip_levels: 1,
                 }],
             });
         }

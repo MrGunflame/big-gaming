@@ -405,6 +405,8 @@ pub struct TextureBarrier<'a> {
     pub texture: &'a vulkan::Texture,
     pub src_access: AccessFlags,
     pub dst_access: AccessFlags,
+    pub base_mip_level: u32,
+    pub mip_levels: u32,
 }
 
 bitflags! {
@@ -615,6 +617,10 @@ pub enum BarrierPipelineStage {
 pub fn max_mips_2d(size: UVec2) -> u32 {
     let max_dim = size.x.max(size.y);
     32 - max_dim.leading_zeros()
+}
+
+pub fn mip_level_size_2d(texture_size: UVec2, level: u32) -> UVec2 {
+    (texture_size >> level).max(UVec2::ONE)
 }
 
 #[derive(Clone, Debug)]

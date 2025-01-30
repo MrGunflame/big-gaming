@@ -49,7 +49,7 @@ use thiserror::Error;
 use tracing::instrument::WithSubscriber;
 use wgpu::hal::auxil::db;
 
-use crate::backend::TextureLayout;
+use crate::backend::{mip_level_size_2d, TextureLayout};
 
 use super::shader::{self, BindingInfo, BindingLocation, Shader};
 use super::{
@@ -1288,7 +1288,8 @@ impl Device {
             .address_mode_w(descriptor.address_mode_w.into())
             .mipmap_mode(descriptor.mipmap_filter.into())
             .min_lod(0.0)
-            .max_lod(u32::MAX as f32)
+            .max_lod(100.0)
+            .mip_lod_bias(0.0)
             // TODO: Add API for this
             .anisotropy_enable(false)
             .max_anisotropy(1.0);
@@ -2255,10 +2256,13 @@ impl<'a> CommandEncoder<'a> {
             // Images cannot be transitioned into `UNDEFINED`.
             assert_ne!(new_layout, ImageLayout::UNDEFINED);
 
+            assert!(barrier.base_mip_level < barrier.texture.mip_levels);
+            assert!(barrier.base_mip_level + barrier.mip_levels <= barrier.texture.mip_levels);
+
             let subresource_range = ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
-                .base_mip_level(0)
-                .level_count(barrier.texture.mip_levels)
+                .base_mip_level(barrier.base_mip_level)
+                .level_count(barrier.mip_levels)
                 .base_array_layer(0)
                 .layer_count(1);
 
@@ -2529,7 +2533,7 @@ impl Texture {
         TextureView {
             device: &self.device,
             view,
-            size: self.size,
+            size: mip_level_size_2d(self.size, descriptor.base_mip_level),
         }
     }
 }
