@@ -786,6 +786,24 @@ impl<'a> CommandQueue<'a> {
     pub fn create_shader_module(&mut self, src: ShaderSource<'_>) -> ShaderModule {
         ShaderModule::new(&src, &self.executor.device)
     }
+
+    /// Manually force a transition of the [`TextureRegion`] to the specified [`AccessFlags`].
+    pub(crate) fn transition_texture(&mut self, texture: &TextureRegion<'_>, to: AccessFlags) {
+        self.executor
+            .resources
+            .textures
+            .get_mut(texture.texture.id)
+            .unwrap()
+            .ref_count += 1;
+
+        self.executor.cmds.push(Command::TextureTransition(
+            TextureMip {
+                id: texture.texture.id,
+                mip_level: texture.mip_level,
+            },
+            to,
+        ));
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1015,6 +1033,7 @@ enum Command {
     CopyBufferToBuffer(CopyBufferToBuffer),
     CopyBufferToTexture(CopyBufferToTexture),
     RenderPass(RenderPassCmd),
+    TextureTransition(TextureMip, AccessFlags),
 }
 
 impl Node<Resources> for Command {
@@ -1126,6 +1145,12 @@ impl Node<Resources> for Command {
                     .into_iter()
                     .map(|(id, access)| Resource { id, access })
                     .collect()
+            }
+            Self::TextureTransition(texture, access) => {
+                vec![Resource {
+                    id: ResourceId::Texture(*texture),
+                    access: *access,
+                }]
             }
         }
     }

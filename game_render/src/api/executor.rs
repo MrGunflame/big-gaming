@@ -58,6 +58,12 @@ where
             Step::Node(Command::RenderPass(cmd)) => {
                 run_render_pass(resources, &mut tmp, &cmd, encoder);
             }
+            Step::Node(Command::TextureTransition(texture, _)) => {
+                // The texture is not explicitly used anywhere else, but
+                // it still must be kept alive for this frame since it
+                // is used in a barrier.
+                tmp.textures.insert(texture.id);
+            }
             Step::Barrier(barrier) => {
                 barriers.push(barrier);
             }

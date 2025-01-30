@@ -10,7 +10,7 @@ use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 
-use crate::api::CommandExecutor;
+use crate::api::{CommandExecutor, TextureRegion};
 use crate::backend::vulkan::{Adapter, CommandPool, Device, Instance, Queue};
 use crate::backend::{AccessFlags, PipelineBarriers, QueueSubmit, TextureBarrier, TextureUsage};
 use crate::camera::RenderTarget;
@@ -243,35 +243,20 @@ impl RenderThread {
             surfaces_to_present.push((surface_window, output));
         }
 
+        // After all render passes have run transition all swapchain textures
+        // into the PRESENT mode.
+        for texture in &swapchain_textures {
+            scheduler.queue().transition_texture(
+                &TextureRegion {
+                    texture,
+                    mip_level: 0,
+                },
+                AccessFlags::PRESENT,
+            );
+        }
+
         let mut encoder = self.command_pool.create_encoder().unwrap();
-
-        for (_, output) in &mut surfaces_to_present {
-            encoder.insert_pipeline_barriers(&PipelineBarriers {
-                buffer: &[],
-                texture: &[TextureBarrier {
-                    src_access: AccessFlags::empty(),
-                    dst_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    texture: output.texture(),
-                    base_mip_level: 0,
-                    mip_levels: 1,
-                }],
-            });
-        }
-
         let res = scheduler.execute(&mut encoder);
-
-        for (_, output) in &mut surfaces_to_present {
-            encoder.insert_pipeline_barriers(&PipelineBarriers {
-                buffer: &[],
-                texture: &[TextureBarrier {
-                    src_access: AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    dst_access: AccessFlags::PRESENT,
-                    texture: output.texture(),
-                    base_mip_level: 0,
-                    mip_levels: 1,
-                }],
-            });
-        }
 
         self.queue
             .submit(
