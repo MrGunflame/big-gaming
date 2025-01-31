@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
+use game_common::collections::vec_map::VecMap;
 use game_tracing::trace_span;
 
 use crate::backend::AccessFlags;
@@ -17,12 +18,15 @@ where
     let _span = trace_span!("schedule").entered();
 
     let mut resource_accesses = HashMap::<_, Vec<_>>::new();
-    let mut predecessors = HashMap::<_, Vec<_>>::new();
+    let mut predecessors = VecMap::<_, Vec<_>>::new();
 
     for (index, node) in nodes.iter().enumerate() {
         let mut node_preds = Vec::new();
 
         for resource in node.resources(&resources) {
+            // If another node accesses the same resource it must
+            // run before this node, i.e. become its predecessor.
+            // This can be true for many nodes.
             if let Some(preds) = resource_accesses.get(&resource.id) {
                 for pred in preds {
                     node_preds.push(*pred);
@@ -46,9 +50,9 @@ where
     loop {
         // Gather all nodes that have no more predecessors,
         // i.e. all nodes that can be executed now.
-        let mut indices: Vec<_> = predecessors
+        let indices: Vec<_> = predecessors
             .iter_mut()
-            .filter_map(|(index, preds)| preds.is_empty().then_some(*index))
+            .filter_map(|(index, preds)| preds.is_empty().then_some(index))
             .collect();
 
         // Since we have no cycles in predecessors, this loop will always
@@ -59,14 +63,16 @@ where
         }
 
         // We should keep the order of nodes if possible.
-        indices.sort();
+        // The `VecMap` iterator already guarantees that elements are in order
+        // of their index.
+        debug_assert!(indices.is_sorted());
 
         // We batch all barriers required to run all nodes.
         // This allows the caller to insert all barriers
         // using a single call.
 
         for &index in &indices {
-            predecessors.remove(&index);
+            predecessors.remove(index);
             for preds in predecessors.values_mut() {
                 preds.retain(|pred| *pred != index);
             }
