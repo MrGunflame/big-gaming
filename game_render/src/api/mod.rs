@@ -22,14 +22,15 @@ use crate::backend::allocator::{
     BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
 };
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
+use crate::backend::shader::{BindingLocation, ShaderAccess, ShaderBinding};
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, BufferBarrier, BufferUsage, CopyBuffer,
     DepthStencilState, DescriptorType, Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp,
     PipelineBarriers, PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor,
-    ShaderModule, ShaderSource, ShaderStages, StoreOp, TextureBarrier, TextureDescriptor,
-    TextureFormat, TextureUsage, WriteDescriptorBinding, WriteDescriptorResource,
-    WriteDescriptorResources,
+    ShaderModule, ShaderSource, ShaderStage, ShaderStages, StoreOp, TextureBarrier,
+    TextureDescriptor, TextureFormat, TextureUsage, WriteDescriptorBinding,
+    WriteDescriptorResource, WriteDescriptorResources,
 };
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
@@ -691,6 +692,58 @@ impl<'a> CommandQueue<'a> {
             })
             .collect::<Vec<_>>();
 
+        let mut bindings = HashMap::new();
+        for stage in descriptor.stages {
+            match stage {
+                PipelineStage::Vertex(stage) => {
+                    let instance =
+                        stage
+                            .shader
+                            .shader
+                            .instantiate(&crate::backend::shader::Options {
+                                bindings: HashMap::new(),
+                                stage: ShaderStage::Vertex,
+                                entry_point: &stage.entry,
+                            });
+
+                    for binding in instance.bindings() {
+                        let mut access = AccessFlags::empty();
+                        if binding.access.contains(ShaderAccess::READ) {
+                            access |= AccessFlags::VERTEX_SHADER_READ;
+                        }
+                        if binding.access.contains(ShaderAccess::WRITE) {
+                            access |= AccessFlags::VERTEX_SHADER_WRITE;
+                        }
+
+                        *bindings.entry(binding.location()).or_default() |= access;
+                    }
+                }
+                PipelineStage::Fragment(stage) => {
+                    let instance =
+                        stage
+                            .shader
+                            .shader
+                            .instantiate(&crate::backend::shader::Options {
+                                bindings: HashMap::new(),
+                                stage: ShaderStage::Fragment,
+                                entry_point: &stage.entry,
+                            });
+
+                    for binding in instance.bindings() {
+                        let mut access = AccessFlags::empty();
+                        if binding.access.contains(ShaderAccess::READ) {
+                            access |= AccessFlags::FRAGMENT_SHADER_READ;
+                        }
+                        if binding.access.contains(ShaderAccess::WRITE) {
+                            access |= AccessFlags::FRAGMENT_SHADER_WRITE;
+                        }
+
+                        *bindings.entry(binding.location()).or_default() |= access;
+                    }
+                }
+            }
+        }
+
         let inner = self
             .executor
             .device
@@ -706,6 +759,7 @@ impl<'a> CommandQueue<'a> {
         let id = self.executor.resources.pipelines.insert(PipelineInner {
             inner,
             ref_count: 1,
+            bindings,
         });
 
         Pipeline {
@@ -939,6 +993,7 @@ impl Drop for Pipeline {
 struct PipelineInner {
     inner: vulkan::Pipeline,
     ref_count: usize,
+    bindings: HashMap<BindingLocation, AccessFlags>,
 }
 
 #[derive(Debug)]
@@ -1078,32 +1133,63 @@ impl Node<Resources> for Command {
             Self::RenderPass(cmd) => {
                 let mut accesses = HashMap::new();
 
+                let mut pipeline = None;
+
                 for cmd in &cmd.cmds {
                     match cmd {
-                        DrawCmd::SetPipeline(_) => {}
+                        DrawCmd::SetPipeline(id) => {
+                            pipeline = Some(resources.pipelines.get(*id).unwrap());
+                        }
                         DrawCmd::SetIndexBuffer(buffer, _) => {
                             *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
                                 AccessFlags::INDEX;
                         }
-                        DrawCmd::SetDescriptorSet(_, id) => {
+                        DrawCmd::SetDescriptorSet(group, id) => {
+                            let Some(pipeline) = pipeline else {
+                                continue;
+                            };
+
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
-                            for (_, buffer) in &descriptor_set.buffers {
-                                *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
-                                    AccessFlags::SHADER_READ;
+                            for (binding, buffer) in &descriptor_set.buffers {
+                                let access = *pipeline
+                                    .bindings
+                                    .get(&BindingLocation {
+                                        group: *group,
+                                        binding: *binding,
+                                    })
+                                    .unwrap();
+
+                                *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |= access;
                             }
 
-                            for (_, view) in &descriptor_set.textures {
+                            for (binding, view) in &descriptor_set.textures {
+                                let access = *pipeline
+                                    .bindings
+                                    .get(&BindingLocation {
+                                        group: *group,
+                                        binding: *binding,
+                                    })
+                                    .unwrap();
+
                                 for mip in view.mips() {
                                     *accesses
                                         .entry(ResourceId::Texture(TextureMip {
                                             id: view.texture,
                                             mip_level: mip,
                                         }))
-                                        .or_default() |= AccessFlags::SHADER_READ;
+                                        .or_default() |= access;
                                 }
                             }
 
-                            for (_, views) in &descriptor_set.texture_arrays {
+                            for (binding, views) in &descriptor_set.texture_arrays {
+                                let access = *pipeline
+                                    .bindings
+                                    .get(&BindingLocation {
+                                        group: *group,
+                                        binding: *binding,
+                                    })
+                                    .unwrap();
+
                                 for view in views {
                                     for mip in view.mips() {
                                         *accesses
@@ -1111,7 +1197,7 @@ impl Node<Resources> for Command {
                                                 id: view.texture,
                                                 mip_level: mip,
                                             }))
-                                            .or_default() |= AccessFlags::SHADER_READ;
+                                            .or_default() |= access;
                                     }
                                 }
                             }

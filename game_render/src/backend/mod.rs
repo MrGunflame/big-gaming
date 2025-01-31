@@ -418,7 +418,7 @@ bitflags! {
         /// Resource can be bound as a writable color attachment.
         const COLOR_ATTACHMENT_WRITE = 1 << 2;
         /// Resource can be used to present to the swapchain.
-        const PRESENT = 1 << 3;
+        const PRESENT = 1 << 13;
         /// Resources can be bound as a read-only index buffer.
         const INDEX = 1 << 4;
         /// Resource can be used as the source of an indirect command.
@@ -553,7 +553,7 @@ impl IndexFormat {
 
 #[derive(Debug)]
 pub struct ShaderModule {
-    shader: Shader,
+    pub shader: Shader,
 }
 
 impl ShaderModule {

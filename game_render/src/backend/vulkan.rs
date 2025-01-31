@@ -2218,8 +2218,8 @@ impl<'a> CommandEncoder<'a> {
     pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
         let mut buffer_barriers = Vec::new();
         for barrier in barriers.buffer {
-            let (_, src_access_flags) = convert_access_flags(barrier.src_access);
-            let (_, dst_access_flags) = convert_access_flags(barrier.dst_access);
+            let src_access_flags = convert_access_flags(barrier.src_access);
+            let dst_access_flags = convert_access_flags(barrier.dst_access);
             let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
             let dst_stage_mask = access_flags_to_stage_mask(barrier.dst_access);
 
@@ -2246,10 +2246,12 @@ impl<'a> CommandEncoder<'a> {
 
         let mut image_barriers = Vec::new();
         for barrier in barriers.texture {
-            let (old_layout, src_access_flags) = convert_access_flags(barrier.src_access);
-            let (new_layout, dst_access_flags) = convert_access_flags(barrier.dst_access);
+            let src_access_flags = convert_access_flags(barrier.src_access);
+            let dst_access_flags = convert_access_flags(barrier.dst_access);
             let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
             let dst_stage_mask = access_flags_to_stage_mask(barrier.dst_access);
+            let old_layout = access_flags_to_image_layout(barrier.src_access);
+            let new_layout = access_flags_to_image_layout(barrier.dst_access);
 
             let aspect_mask = if barrier.texture.format.is_depth() {
                 ImageAspectFlags::DEPTH
@@ -3208,113 +3210,111 @@ where
     }
 }
 
-fn convert_access_flags(flags: super::AccessFlags) -> (ImageLayout, vk::AccessFlags2) {
-    match flags {
-        flags if flags.is_empty() => {
-            return (ImageLayout::UNDEFINED, vk::AccessFlags2::empty());
-        }
-        super::AccessFlags::TRANSFER_READ => {
-            return (
-                ImageLayout::TRANSFER_SRC_OPTIMAL,
-                vk::AccessFlags2::TRANSFER_READ,
-            );
-        }
-        super::AccessFlags::TRANSFER_WRITE => {
-            return (
-                ImageLayout::TRANSFER_DST_OPTIMAL,
-                vk::AccessFlags2::TRANSFER_WRITE,
-            );
-        }
-        super::AccessFlags::SHADER_READ => {
-            return (
-                ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                vk::AccessFlags2::SHADER_READ,
-            );
-        }
-        super::AccessFlags::COLOR_ATTACHMENT_WRITE => {
-            return (
-                ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            );
-        }
-        super::AccessFlags::PRESENT => {
-            return (ImageLayout::PRESENT_SRC_KHR, vk::AccessFlags2::empty());
-        }
-        super::AccessFlags::DEPTH_ATTACHMENT_WRITE => {
-            return (
-                ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
-                vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            );
-        }
-        _ => (),
+fn convert_access_flags(flags: AccessFlags) -> vk::AccessFlags2 {
+    let mut access = vk::AccessFlags2::empty();
+
+    for flag in flags.iter() {
+        let vk_flag = match flag {
+            AccessFlags::TRANSFER_READ => vk::AccessFlags2::TRANSFER_READ,
+            AccessFlags::TRANSFER_WRITE => vk::AccessFlags2::TRANSFER_WRITE,
+            AccessFlags::COLOR_ATTACHMENT_READ => vk::AccessFlags2::COLOR_ATTACHMENT_READ,
+            AccessFlags::COLOR_ATTACHMENT_WRITE => vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+            AccessFlags::INDEX => vk::AccessFlags2::INDEX_READ,
+            AccessFlags::INDIRECT => vk::AccessFlags2::INDIRECT_COMMAND_READ,
+            AccessFlags::DEPTH_ATTACHMENT_READ => vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
+            AccessFlags::DEPTH_ATTACHMENT_WRITE => vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            AccessFlags::VERTEX_SHADER_READ => vk::AccessFlags2::SHADER_READ,
+            AccessFlags::VERTEX_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
+            AccessFlags::FRAGMENT_SHADER_READ => vk::AccessFlags2::SHADER_READ,
+            AccessFlags::FRAGMENT_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
+            AccessFlags::PRESENT => continue,
+            _ => unreachable!(),
+        };
+
+        access |= vk_flag;
     }
 
-    // If DEPTH_READ or DEPTH_WRITE are set and no other flags are set.
-    if (flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_READ)
-        || flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_WRITE))
-        && flags
-            .symmetric_difference(
-                super::AccessFlags::DEPTH_ATTACHMENT_READ
-                    | super::AccessFlags::DEPTH_ATTACHMENT_WRITE,
-            )
-            .is_empty()
-    {
-        let read = flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_READ);
-        let write = flags.contains(super::AccessFlags::DEPTH_ATTACHMENT_WRITE);
+    access
+}
 
-        let mut vk_flags = vk::AccessFlags2::empty();
-        if read {
-            vk_flags |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ;
-        }
-        if write {
-            vk_flags |= vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE;
-        }
+fn access_flags_to_image_layout(flags: AccessFlags) -> vk::ImageLayout {
+    let mut transfer_read = false;
+    let mut transfer_write = false;
+    let mut color_attachment_read = false;
+    let mut color_attachment_write = false;
+    let mut depth_attachment_read = false;
+    let mut depth_attachment_write = false;
+    let mut shader_read = false;
+    let mut shader_write = false;
+    let mut present = false;
 
-        return (ImageLayout::DEPTH_ATTACHMENT_OPTIMAL, vk_flags);
-    }
-
-    if flags.contains(super::AccessFlags::PRESENT) {
-        panic!("AccessFlags::PRESENT is mutually exclusive with all other flags");
-    }
-
-    let mut vk_flags = vk::AccessFlags2::empty();
-    for (flag, vk_flag) in [
-        (
-            super::AccessFlags::TRANSFER_READ,
-            vk::AccessFlags2::TRANSFER_READ,
-        ),
-        (
-            super::AccessFlags::TRANSFER_WRITE,
-            vk::AccessFlags2::TRANSFER_WRITE,
-        ),
-        (
-            super::AccessFlags::SHADER_READ,
-            vk::AccessFlags2::SHADER_READ,
-        ),
-        (
-            super::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-        ),
-        (super::AccessFlags::INDEX, vk::AccessFlags2::INDEX_READ),
-        (
-            super::AccessFlags::INDIRECT,
-            vk::AccessFlags2::INDIRECT_COMMAND_READ,
-        ),
-        (
-            super::AccessFlags::DEPTH_ATTACHMENT_READ,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ_KHR,
-        ),
-        (
-            super::AccessFlags::DEPTH_ATTACHMENT_WRITE,
-            vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        ),
-    ] {
-        if flags.contains(flag) {
-            vk_flags |= vk_flag;
+    for flag in flags.iter() {
+        match flag {
+            AccessFlags::TRANSFER_READ => transfer_read = true,
+            AccessFlags::TRANSFER_WRITE => transfer_write = true,
+            AccessFlags::COLOR_ATTACHMENT_READ => color_attachment_read = true,
+            AccessFlags::COLOR_ATTACHMENT_WRITE => color_attachment_write = true,
+            AccessFlags::DEPTH_ATTACHMENT_READ => depth_attachment_read = true,
+            AccessFlags::DEPTH_ATTACHMENT_WRITE => depth_attachment_write = true,
+            AccessFlags::VERTEX_SHADER_READ => shader_read = true,
+            AccessFlags::VERTEX_SHADER_WRITE => shader_write = true,
+            AccessFlags::FRAGMENT_SHADER_READ => shader_read = true,
+            AccessFlags::FRAGMENT_SHADER_WRITE => shader_write = true,
+            AccessFlags::PRESENT => present = true,
+            AccessFlags::INDEX => {
+                unreachable!("{:?} has no image layout", AccessFlags::INDEX)
+            }
+            AccessFlags::INDIRECT => {
+                unreachable!("{:?} has no image layout", AccessFlags::INDIRECT)
+            }
+            _ => unreachable!("unhandled access flag: {:?}", flag),
         }
     }
 
-    (ImageLayout::GENERAL, vk_flags)
+    match (
+        transfer_read,
+        transfer_write,
+        color_attachment_read,
+        color_attachment_write,
+        depth_attachment_read,
+        depth_attachment_write,
+        shader_read,
+        shader_write,
+        present,
+    ) {
+        (false, false, false, false, false, false, false, false, false) => {
+            vk::ImageLayout::UNDEFINED
+        }
+        (true, false, false, false, false, false, false, false, false) => {
+            vk::ImageLayout::TRANSFER_SRC_OPTIMAL
+        }
+        (false, true, false, false, false, false, false, false, false) => {
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL
+        }
+        (false, false, true, _, false, false, false, false, false)
+        | (false, false, _, true, false, false, false, false, false) => {
+            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+        }
+        (false, false, false, false, true, false, false, false, false) => {
+            vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+        }
+        (false, false, false, _, true, true, false, false, false) => {
+            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+        }
+        (false, false, false, false, false, false, true, false, false) => {
+            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        }
+        (false, false, false, false, false, false, false, false, true) => {
+            vk::ImageLayout::PRESENT_SRC_KHR
+        }
+        (_, _, _, _, _, _, _, _, true) => {
+            panic!(
+                "{:?} is mutually exclusive with all other flags",
+                AccessFlags::PRESENT
+            );
+        }
+        _ => vk::ImageLayout::GENERAL,
+    }
 }
 
 fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
