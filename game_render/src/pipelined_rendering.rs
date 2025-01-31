@@ -195,9 +195,15 @@ impl RenderThread {
 
             let mut queue = scheduler.queue();
 
+            let access = if *ready_used {
+                AccessFlags::PRESENT
+            } else {
+                AccessFlags::empty()
+            };
+
             let swapchain_texture = queue.import_texture(
                 unsafe { output.take_texture() },
-                AccessFlags::empty(),
+                access,
                 TextureUsage::RENDER_ATTACHMENT,
             );
 
@@ -239,6 +245,10 @@ impl RenderThread {
                     core::iter::once(encoder.finish()),
                     QueueSubmit {
                         wait: core::slice::from_mut(image_avail),
+                        // To relaxed this to COLOR_ATTACHMENT_OUTPUT stage we need
+                        // to insert a barrier from COLOR_ATTACHMENT_OUTPUT->COLOR_ATTACHMENT_OUTPUT
+                        // when doing the UNDEFINED->COLOR_ATTACHMENT_OPTIMAL transition.
+                        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7193#issuecomment-1875960974
                         wait_stage: PipelineStageFlags::TOP_OF_PIPE,
                         signal: core::slice::from_mut(render_done),
                         signal_fence: ready,
