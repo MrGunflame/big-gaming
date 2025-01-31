@@ -53,11 +53,11 @@ use super::shader::{self, BindingInfo, BindingLocation, Shader};
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage,
     BufferView, CompareOp, CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face,
-    FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryRequirements, MemoryType, MemoryTypeFlags,
-    PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, QueueCapabilities,
-    QueueFamily, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor,
-    ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
-    TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
+    FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryHeapFlags, MemoryRequirements, MemoryType,
+    MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode,
+    QueueCapabilities, QueueFamily, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor,
+    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig,
+    TextureDescriptor, TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
     WriteDescriptorResources,
 };
 
@@ -425,6 +425,7 @@ impl Instance {
     }
 }
 
+#[derive(Debug)]
 pub struct Adapter {
     instance: Arc<InstanceShared>,
     physical_device: PhysicalDevice,
@@ -448,6 +449,7 @@ impl Adapter {
         let kind = match properties.device_type {
             PhysicalDeviceType::DISCRETE_GPU => AdapterKind::DiscreteGpu,
             PhysicalDeviceType::INTEGRATED_GPU => AdapterKind::IntegratedGpu,
+            PhysicalDeviceType::CPU => AdapterKind::Cpu,
             _ => AdapterKind::Other,
         };
 
@@ -466,9 +468,17 @@ impl Adapter {
             .iter()
             .take(props.memory_heap_count as usize)
             .enumerate()
-            .map(|(id, heap)| MemoryHeap {
-                id: id as u32,
-                size: heap.size,
+            .map(|(id, heap)| {
+                let mut flags = MemoryHeapFlags::empty();
+                if heap.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL) {
+                    flags |= MemoryHeapFlags::DEVICE_LOCAL;
+                }
+
+                MemoryHeap {
+                    id: id as u32,
+                    size: heap.size,
+                    flags,
+                }
             })
             .collect();
         let types = props

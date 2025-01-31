@@ -24,6 +24,8 @@ pub struct AdapterProperties {
 pub enum AdapterKind {
     DiscreteGpu,
     IntegratedGpu,
+    /// Software rasterizer
+    Cpu,
     Other,
 }
 
@@ -37,6 +39,15 @@ pub struct AdapterMemoryProperties {
 pub struct MemoryHeap {
     pub id: u32,
     pub size: u64,
+    pub flags: MemoryHeapFlags,
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+    pub struct MemoryHeapFlags: u8 {
+        const DEVICE_LOCAL = 1 << 0;
+    }
+
 }
 
 #[derive(Copy, Clone, Debug)]

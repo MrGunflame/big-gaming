@@ -24,7 +24,7 @@ mod pipelined_rendering;
 
 use api::CommandQueue;
 use backend::vulkan::{Config, Instance};
-use backend::QueueCapabilities;
+use backend::{AdapterKind, MemoryHeapFlags, QueueCapabilities};
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
 use game_tasks::park::Parker;
@@ -84,11 +84,66 @@ impl Renderer {
 
         let instance = Instance::new(config).unwrap();
 
-        let adapter = instance
-            .adapters()
-            .into_iter()
-            .nth(0)
-            .ok_or(Error::NoAdapter)?;
+        let mut adapter = None;
+        for a in instance.adapters() {
+            let Some(current_adapter) = &adapter else {
+                adapter = Some(a);
+                continue;
+            };
+
+            let new_kind = match a.properties().kind {
+                AdapterKind::DiscreteGpu => 0,
+                AdapterKind::IntegratedGpu => 1,
+                AdapterKind::Cpu => 2,
+                AdapterKind::Other => 3,
+            };
+            let cur_kind = match current_adapter.properties().kind {
+                AdapterKind::DiscreteGpu => 0,
+                AdapterKind::IntegratedGpu => 1,
+                AdapterKind::Cpu => 2,
+                AdapterKind::Other => 3,
+            };
+
+            // New adapter is a less powerful class than the current one.
+            // Alaways ignore the new adapter.
+            if new_kind > cur_kind {
+                continue;
+            }
+
+            // New adapter is a more powerful class than the current one.
+            // Always prefer the new adapter.
+            if new_kind < cur_kind {
+                adapter = Some(a);
+                continue;
+            }
+
+            // Both adapters have the same class.
+            // Choose the adapter with more device local memory, which
+            // is usually the more powerful one.
+            let mut new_device_local = 0;
+            for heap in a.memory_properties().heaps {
+                if heap.flags.contains(MemoryHeapFlags::DEVICE_LOCAL) {
+                    new_device_local += heap.size;
+                }
+            }
+
+            let mut cur_device_local = 0;
+            for heap in current_adapter.memory_properties().heaps {
+                if heap.flags.contains(MemoryHeapFlags::DEVICE_LOCAL) {
+                    cur_device_local += heap.size;
+                }
+            }
+
+            if new_device_local > cur_device_local {
+                adapter = Some(a);
+            }
+        }
+
+        let Some(adapter) = adapter else {
+            return Err(Error::NoAdapter);
+        };
+
+        tracing::info!("Using graphics adapter {}", adapter.properties().name);
 
         let queue_family = *adapter
             .queue_families()
