@@ -12,7 +12,7 @@ use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
 use glam::UVec2;
 use shader::Shader;
-use vulkan::{Buffer, DescriptorSetLayout, Sampler, Semaphore, TextureView};
+use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, TextureView};
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -500,9 +500,16 @@ pub struct ImageDataLayout {
 
 #[derive(Debug)]
 pub struct QueueSubmit<'a> {
+    /// Semaphores which will all be waited upon before the submit happens.
     pub wait: &'a mut [Semaphore],
     pub wait_stage: PipelineStageFlags,
+    /// Semaphores which will be signaled once all commands in this submission have completed.
+    ///
+    /// All resources that have been used by commands in the submit command will no longer be
+    /// accessed after any of the semaphores are signaled.
     pub signal: &'a mut [Semaphore],
+    /// Fence to signal once all commands in this submission have completed.
+    pub signal_fence: &'a mut Fence,
 }
 
 pub struct SamplerDescriptor {

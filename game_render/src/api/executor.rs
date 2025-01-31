@@ -176,10 +176,14 @@ fn run_render_pass(
         // Attachment must be kept alive until the render pass completes.
         tmp.textures.insert(attachment.target.texture);
 
-        let view = attachment_views.insert(physical_texture.create_view(&TextureViewDescriptor {
-            base_mip_level: attachment.target.base_mip_level,
-            mip_levels: attachment.target.mip_levels,
-        }));
+        let view = attachment_views.insert(unsafe {
+            physical_texture
+                .create_view(&TextureViewDescriptor {
+                    base_mip_level: attachment.target.base_mip_level,
+                    mip_levels: attachment.target.mip_levels,
+                })
+                .make_static()
+        });
 
         color_attachments.push(RenderPassColorAttachment {
             view,
@@ -200,10 +204,14 @@ fn run_render_pass(
         tmp.textures.insert(attachment.texture);
 
         // Depth stencil attachment can only be a single mip.
-        let view = attachment_views.insert(physical_texture.create_view(&TextureViewDescriptor {
-            base_mip_level: 0,
-            mip_levels: 1,
-        }));
+        let view = attachment_views.insert(unsafe {
+            physical_texture
+                .create_view(&TextureViewDescriptor {
+                    base_mip_level: 0,
+                    mip_levels: 1,
+                })
+                .make_static()
+        });
 
         RenderPassDepthStencilAttachment {
             depth_load_op: attachment.load_op,
@@ -318,10 +326,14 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
             TextureData::Virtual(data) => data.texture(),
         };
 
-        let view = texture_views.insert(physical_texture.create_view(&TextureViewDescriptor {
-            base_mip_level: view.base_mip_level,
-            mip_levels: view.mip_levels,
-        }));
+        let view = texture_views.insert(unsafe {
+            physical_texture
+                .create_view(&TextureViewDescriptor {
+                    base_mip_level: view.base_mip_level,
+                    mip_levels: view.mip_levels,
+                })
+                .make_static()
+        });
 
         bindings.push(WriteDescriptorBinding {
             binding: *binding,
@@ -347,10 +359,14 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
                 TextureData::Virtual(data) => data.texture(),
             };
 
-            views.insert(physical_texture.create_view(&TextureViewDescriptor {
-                base_mip_level: view.base_mip_level,
-                mip_levels: view.mip_levels,
-            }));
+            views.insert(unsafe {
+                physical_texture
+                    .create_view(&TextureViewDescriptor {
+                        base_mip_level: view.base_mip_level,
+                        mip_levels: view.mip_levels,
+                    })
+                    .make_static()
+            });
         }
 
         let view_refs = views.iter_mut().map(|v| &*v).collect::<Vec<_>>();
@@ -367,6 +383,7 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         bindings: &bindings,
     });
 
+    drop(texture_array_view_refs);
     descriptor_set.physical_texture_views.extend(texture_views);
     for texture_views in texture_array_views {
         descriptor_set.physical_texture_views.extend(texture_views);
@@ -428,6 +445,8 @@ pub struct TemporaryResources {
 
 impl TemporaryResources {
     pub(super) fn destroy(mut self, resources: &mut Resources) {
+        drop(self.texture_views.drain(..));
+
         for (id, count) in self.buffers.drain() {
             for _ in 0..count {
                 resources

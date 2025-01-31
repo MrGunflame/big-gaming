@@ -1,50 +1,42 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::Arc;
-use std::time::Instant;
+use std::sync::{mpsc, Arc};
 
 use ash::vk::PipelineStageFlags;
 use game_common::cell::UnsafeRefCell;
-use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
+use game_window::windows::{WindowId, WindowState};
 
 use crate::api::{CommandExecutor, TextureRegion};
-use crate::backend::vulkan::{Adapter, CommandPool, Device, Instance, Queue};
-use crate::backend::{AccessFlags, PipelineBarriers, QueueSubmit, TextureBarrier, TextureUsage};
+use crate::backend::vulkan::{Adapter, Device, Instance, Queue};
+use crate::backend::{AccessFlags, QueueSubmit, TextureUsage};
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::scheduler::RenderGraphScheduler;
 use crate::graph::{NodeLabel, RenderContext, RenderGraph, SlotLabel, SlotValueInner};
-use crate::surface::RenderSurfaces;
-use crate::Job;
+use crate::surface::{RenderSurfaces, SurfaceConfig};
 
-const PIPELINE_STATE_RENDERING: u8 = 1;
-const PIPELINE_STATE_IDLE: u8 = 2;
-const PIPELINE_STATE_EXIT: u8 = 3;
+#[derive(Clone, Debug)]
+pub enum Command {
+    CreateSurface(WindowState),
+    UpdateSurface(WindowId, SurfaceConfig),
+    DestroySurface(WindowId),
+    UpdateSurfaceFpsLimit(WindowId, FpsLimit),
+    Render(Arc<Parker>),
+}
 
 pub struct SharedState {
     pub instance: Instance,
     pub adapter: Adapter,
     pub device: Device,
-    pub surfaces: UnsafeRefCell<RenderSurfaces>,
-    // render_textures: UnsafeRefCell<HashMap<RenderImageId, RenderImageGpu>>,
     pub graph: UnsafeRefCell<RenderGraph>,
-    state: AtomicU8,
-    /// Unparker for the calling thread.
-    main_unparker: Arc<Parker>,
-    pub jobs: UnsafeRefCell<VecDeque<Job>>,
-    fps_limiter: UnsafeRefCell<FpsLimiter>,
-    shutdown: AtomicBool,
     pub scheduler: UnsafeRefCell<CommandExecutor>,
 }
 
 pub struct RenderThreadHandle {
     pub shared: Arc<SharedState>,
-    main_parker: Arc<Parker>,
-    /// Unparker for the render thread.
-    render_unparker: Arc<Parker>,
+    tx: mpsc::Sender<Command>,
     // While `Pipeline` is not directly thread-unsafe, we make no guarantees
     // whether atomic operations hold up when dispatching renders from multiple
     // threads.
@@ -53,134 +45,118 @@ pub struct RenderThreadHandle {
 
 impl RenderThreadHandle {
     pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
-        let main_parker = Arc::new(Parker::new());
-        let main_unparker = main_parker.clone();
-
         let executor = CommandExecutor::new(device.clone(), adapter.memory_properties());
 
         let shared = Arc::new(SharedState {
             instance,
             adapter,
             device,
-            surfaces: UnsafeRefCell::new(RenderSurfaces::new()),
-            state: AtomicU8::new(PIPELINE_STATE_IDLE),
             graph: UnsafeRefCell::new(RenderGraph::default()),
-            main_unparker,
-            // render_textures: UnsafeRefCell::new(HashMap::new()),
-            jobs: UnsafeRefCell::new(VecDeque::new()),
-            fps_limiter: UnsafeRefCell::new(FpsLimiter::new(FpsLimit::UNLIMITED)),
-            shutdown: AtomicBool::new(false),
             scheduler: UnsafeRefCell::new(executor),
         });
 
-        let render_unparker = start_render_thread(shared.clone(), queue);
+        let (tx, rx) = mpsc::channel();
+
+        let renderer = RenderThread::new(shared.clone(), rx, queue);
+        std::thread::spawn(move || {
+            renderer.run();
+        });
 
         Self {
             shared,
-            render_unparker,
-            main_parker,
             _marker: PhantomData,
+            tx,
         }
     }
 
-    pub fn is_idle(&self) -> bool {
-        self.shared.state.load(Ordering::Acquire) == PIPELINE_STATE_IDLE
+    pub fn send(&mut self, cmd: Command) {
+        self.tx.send(cmd).ok();
     }
-
-    pub fn wait_idle(&self) {
-        let _span = trace_span!("Pipeline::wait_idle").entered();
-
-        while !self.is_idle() {
-            self.main_parker.park();
-        }
-    }
-
-    /// # Safety
-    ///
-    /// renderer must be idle.
-    pub unsafe fn render_unchecked(&mut self) {
-        debug_assert!(self.is_idle());
-
-        self.shared
-            .state
-            .store(PIPELINE_STATE_RENDERING, Ordering::Release);
-
-        self.render_unparker.unpark();
-    }
-
-    pub fn shutdown(&mut self) {
-        self.shared.shutdown.store(true, Ordering::Release);
-        self.render_unparker.unpark();
-    }
-}
-
-fn start_render_thread(shared: Arc<SharedState>, queue: Queue) -> Arc<Parker> {
-    let parker = Arc::new(Parker::new());
-    let unparker = parker.clone();
-
-    let renderer = RenderThread::new(shared, queue);
-    std::thread::spawn(move || {
-        renderer.run(parker);
-    });
-
-    unparker
 }
 
 struct RenderThread {
     shared: Arc<SharedState>,
     queue: Queue,
     schedule: Vec<NodeLabel>,
-    command_pool: CommandPool,
+    rx: mpsc::Receiver<Command>,
+    surfaces: RenderSurfaces,
 }
 
 impl RenderThread {
-    fn new(shared: Arc<SharedState>, queue: Queue) -> Self {
-        let command_pool = shared.device.create_command_pool();
-
+    fn new(shared: Arc<SharedState>, rx: mpsc::Receiver<Command>, queue: Queue) -> Self {
         Self {
             shared,
             queue,
             schedule: Vec::new(),
-            command_pool,
+            rx,
+            surfaces: RenderSurfaces::new(),
         }
     }
 
-    fn run(mut self, parker: Arc<Parker>) {
+    fn run(mut self) {
         let _span = trace_span!("RenderThread::run").entered();
 
-        loop {
-            if self.shared.shutdown.load(Ordering::Acquire) {
-                return;
+        while let Ok(cmd) = self.rx.recv() {
+            match cmd {
+                Command::CreateSurface(window) => {
+                    let id = window.id();
+                    self.surfaces.create(
+                        &self.shared.instance,
+                        &self.shared.adapter,
+                        &self.shared.device,
+                        window,
+                        id,
+                    );
+                }
+                Command::UpdateSurface(id, config) => {
+                    // Wait until all commands for this surface have completed.
+                    self.wait_idle(id);
+
+                    // SAFETY: We have waited for all commands on this surface
+                    // to be completed.
+                    unsafe {
+                        self.surfaces.resize(id, &self.shared.device, config.size);
+                    }
+                }
+                Command::DestroySurface(id) => {
+                    // Wait until all commands for this surface have completed.
+                    self.wait_idle(id);
+
+                    // SAFETY: We have waited for all commands on this surface
+                    // to be completed.
+                    unsafe {
+                        self.surfaces.destroy(id);
+                    }
+                }
+                Command::UpdateSurfaceFpsLimit(id, limit) => {
+                    let surfaces = self.surfaces.get_mut(id).unwrap();
+                    surfaces.limiter = FpsLimiter::new(limit);
+                }
+                Command::Render(parker) => {
+                    unsafe {
+                        self.render();
+                    }
+
+                    parker.unpark();
+                }
             }
+        }
+    }
 
-            // Sleep until the main thread requests a render.
-            parker.park();
-            // The main thread must set the state to `RENDERING`
-            // before it unparks the parker above.
-            debug_assert_eq!(
-                self.shared.state.load(Ordering::Acquire),
-                PIPELINE_STATE_RENDERING
-            );
+    fn wait_idle(&mut self, id: WindowId) {
+        let surface = self.surfaces.get_mut(id).unwrap();
 
-            // SAFETY: The pipeline is in rendering state, the render thread
-            // has full access to the state.
-            unsafe {
-                self.render();
+        for (fence, used) in &mut surface.ready {
+            if *used {
+                fence.wait(None);
+                *used = false;
             }
-
-            // Signal to the main thread that the render thread is now
-            // idle.
-            self.shared
-                .state
-                .store(PIPELINE_STATE_IDLE, Ordering::Release);
-            self.shared.main_unparker.unpark();
         }
     }
 
     unsafe fn render(&mut self) {
         let _span = trace_span!("RenderThread::render").entered();
 
-        let mut surfaces = unsafe { self.shared.surfaces.borrow_mut() };
         let mut graph = unsafe { self.shared.graph.borrow_mut() };
         let mut scheduler = unsafe { self.shared.scheduler.borrow_mut() };
 
@@ -190,31 +166,39 @@ impl RenderThread {
             self.schedule = render_passes;
         }
 
-        let mut surfaces_to_present = Vec::new();
-        let mut image_avail_sems = Vec::new();
-        let mut render_done_sems = Vec::new();
+        for (window, surface) in self.surfaces.iter_mut() {
+            let res = &mut surface.resources[surface.next_frame];
+            let swapchain_texture_slot = &mut surface.swapchain_textures[surface.next_frame];
+            let (ready, ready_used) = &mut surface.ready[surface.next_frame];
+            let image_avail = &mut surface.image_avail[surface.next_frame];
+            let render_done = &mut surface.render_done[surface.next_frame];
+            let pool = &mut surface.command_pools[surface.next_frame];
+            surface.next_frame = (surface.next_frame + 1) % surface.config.image_count as usize;
 
-        let mut swapchain_textures = Vec::new();
-        let mut outputs = ScratchBuffer::new(surfaces.len());
-        for (window, surface) in surfaces.iter_mut() {
-            let mut image_avail = self.shared.device.create_semaphore();
-            let render_done = self.shared.device.create_semaphore();
+            surface.limiter.block_until_ready();
 
-            let surface_window = surface.window().clone();
-            let output = surface.swapchain.acquire_next_image(&mut image_avail);
-            let output = outputs.insert(output);
+            // Wait until all commands are done in this "frame slot".
+            if *ready_used {
+                ready.wait(None);
+            }
 
-            image_avail_sems.push(image_avail);
-            render_done_sems.push(render_done);
+            // Destroy all resources that were required for the commands.
+            scheduler.destroy(core::mem::take(res));
+            if let Some(texture) = swapchain_texture_slot.take() {
+                scheduler.queue().remove_imported_texture(texture);
+            }
+            unsafe {
+                pool.reset();
+            }
+
+            let mut output = surface.swapchain.acquire_next_image(image_avail);
 
             let mut queue = scheduler.queue();
+
             let swapchain_texture = queue.import_texture(
-                unsafe { core::mem::transmute::<&'_ _, &'static _>(output.texture()) },
+                unsafe { output.take_texture() },
                 AccessFlags::empty(),
-                output.texture().size(),
-                output.texture().format(),
                 TextureUsage::RENDER_ATTACHMENT,
-                1,
             );
 
             let mut resources = HashMap::new();
@@ -237,58 +221,80 @@ impl RenderThread {
                 node.node.render(&mut ctx);
             }
 
-            // surface.window().pre_present_notify();
-
-            swapchain_textures.push(swapchain_texture);
-            surfaces_to_present.push((surface_window, output));
-        }
-
-        // After all render passes have run transition all swapchain textures
-        // into the PRESENT mode.
-        for texture in &swapchain_textures {
             scheduler.queue().transition_texture(
                 &TextureRegion {
-                    texture,
+                    texture: &swapchain_texture,
                     mip_level: 0,
                 },
                 AccessFlags::PRESENT,
             );
+
+            let mut encoder = pool.create_encoder().unwrap();
+            *res = scheduler.execute(&mut encoder);
+            *swapchain_texture_slot = Some(swapchain_texture);
+            *ready_used = true;
+
+            self.queue
+                .submit(
+                    core::iter::once(encoder.finish()),
+                    QueueSubmit {
+                        wait: core::slice::from_mut(image_avail),
+                        wait_stage: PipelineStageFlags::TOP_OF_PIPE,
+                        signal: core::slice::from_mut(render_done),
+                        signal_fence: ready,
+                    },
+                )
+                .unwrap();
+
+            surface.window.pre_present_notify();
+            output.present(&mut self.queue, render_done);
+
+            drop(output);
         }
 
-        let mut encoder = self.command_pool.create_encoder().unwrap();
-        let res = scheduler.execute(&mut encoder);
+        // After all render passes have run transition all swapchain textures
+        // into the PRESENT mode.
+        // for texture in &swapchain_textures {
+        //     scheduler.queue().transition_texture(
+        //         &TextureRegion {
+        //             texture,
+        //             mip_level: 0,
+        //         },
+        //         AccessFlags::PRESENT,
+        //     );
+        // }
 
-        self.queue
-            .submit(
-                core::iter::once(encoder.finish()),
-                QueueSubmit {
-                    wait: &mut image_avail_sems,
-                    wait_stage: PipelineStageFlags::TOP_OF_PIPE,
-                    signal: &mut render_done_sems,
-                },
-            )
-            .unwrap();
+        // self.queue
+        //     .submit(
+        //         core::iter::once(encoder.finish()),
+        //         QueueSubmit {
+        //             wait: &mut image_avail_sems,
+        //             wait_stage: PipelineStageFlags::TOP_OF_PIPE,
+        //             signal: &mut render_done_sems,
+        //         },
+        //     )
+        //     .unwrap();
 
-        for ((window, output), mut render_done) in
-            surfaces_to_present.into_iter().zip(&mut render_done_sems)
-        {
-            window.pre_present_notify();
-            output.present(&mut self.queue, &mut render_done);
-        }
+        // for ((window, output), mut render_done) in
+        //     surfaces_to_present.into_iter().zip(&mut render_done_sems)
+        // {
+        //     window.pre_present_notify();
+        //     output.present(&mut self.queue, &mut render_done);
+        // }
 
-        self.queue.wait_idle();
-        unsafe {
-            self.command_pool.reset();
-        }
+        // self.queue.wait_idle();
+        // unsafe {
+        //     self.command_pool.reset();
+        // }
 
-        scheduler.destroy(res);
-        drop(render_done_sems);
-        drop(image_avail_sems);
+        // scheduler.destroy(res);
+        // drop(render_done_sems);
+        // drop(image_avail_sems);
 
-        for texture in swapchain_textures {
-            let mut queue = scheduler.queue();
-            queue.remove_imported_texture(texture);
-        }
+        // for texture in swapchain_textures {
+        //     let mut queue = scheduler.queue();
+        //     queue.remove_imported_texture(texture);
+        // }
     }
 }
 

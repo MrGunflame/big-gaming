@@ -1,6 +1,6 @@
 //! Rendering API
 
-mod executor;
+pub mod executor;
 mod scheduler;
 
 use std::collections::{HashMap, VecDeque};
@@ -370,13 +370,14 @@ impl<'a> CommandQueue<'a> {
     #[track_caller]
     pub(crate) fn import_texture(
         &mut self,
-        texture: &'static vulkan::Texture,
+        texture: vulkan::Texture,
         access: AccessFlags,
-        size: UVec2,
-        format: TextureFormat,
         usage: TextureUsage,
-        mip_levels: u32,
     ) -> Texture {
+        let size = texture.size();
+        let format = texture.format();
+        let mip_levels = texture.mip_levels();
+
         let id = self.executor.resources.textures.insert(TextureInner {
             data: TextureData::Physical(texture),
             ref_count: 1,
@@ -1311,7 +1312,7 @@ pub struct TextureInner {
 
 #[derive(Debug)]
 enum TextureData {
-    Physical(&'static vulkan::Texture),
+    Physical(vulkan::Texture),
     Virtual(TextureAlloc),
 }
 

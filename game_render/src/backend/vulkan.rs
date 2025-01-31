@@ -47,6 +47,7 @@ use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 use tracing::instrument::WithSubscriber;
+use tracing::Instrument;
 use wgpu::hal::auxil::db;
 
 use crate::backend::{mip_level_size_2d, TextureLayout};
@@ -1276,6 +1277,7 @@ impl Device {
         Fence {
             device: self.device.clone(),
             fence,
+            state: FenceState::Idle,
         }
     }
 
@@ -1332,10 +1334,15 @@ impl Queue {
             .command_buffers(&buffers)
             .signal_semaphores(&signal_semaphores);
 
+        // The fence should be unsignaled and not already in use by another
+        // object.
+        assert_eq!(cmd.signal_fence.state, FenceState::Idle);
+        cmd.signal_fence.state = FenceState::Waiting;
+
         unsafe {
             self.device
                 .device
-                .queue_submit(self.queue, &[info], vk::Fence::null())?;
+                .queue_submit(self.queue, &[info], cmd.signal_fence.fence)?;
         }
         Ok(())
     }
@@ -1575,7 +1582,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn recreate(&mut self, config: SwapchainConfig, caps: &SwapchainCapabilities) {
+    pub unsafe fn recreate(&mut self, config: SwapchainConfig, caps: &SwapchainCapabilities) {
         // SAFETY: `self.swapchain` is a valid swapchain created by `self.surface`.
         // Since this function accepts a mutable reference this swapchain is not used.
         let (swapchain, images) = unsafe {
@@ -1614,7 +1621,7 @@ impl Swapchain {
         };
 
         SwapchainTexture {
-            texture: Texture {
+            texture: Some(Texture {
                 device: self.device.clone(),
                 image: self.images[image_index as usize],
                 format: self.format,
@@ -1622,7 +1629,7 @@ impl Swapchain {
                 destroy_on_drop: false,
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
                 mip_levels: 1,
-            },
+            }),
             suboptimal,
             index: image_index,
             device: &self.device,
@@ -2443,7 +2450,7 @@ impl Drop for Semaphore {
 }
 
 pub struct SwapchainTexture<'a> {
-    pub texture: Texture,
+    pub texture: Option<Texture>,
     suboptimal: bool,
     index: u32,
     device: &'a Device,
@@ -2452,7 +2459,12 @@ pub struct SwapchainTexture<'a> {
 
 impl<'a> SwapchainTexture<'a> {
     pub fn texture(&self) -> &Texture {
-        &self.texture
+        self.texture.as_ref().unwrap()
+    }
+
+    pub unsafe fn take_texture(&mut self) -> Texture {
+        assert!(!self.texture().destroy_on_drop);
+        self.texture.take().unwrap()
     }
 
     pub fn is_suboptimal(&self) -> bool {
@@ -2500,7 +2512,11 @@ impl Texture {
         self.format
     }
 
-    pub fn create_view(&self, descriptor: &TextureViewDescriptor) -> TextureView<'_> {
+    pub fn mip_levels(&self) -> u32 {
+        self.mip_levels
+    }
+
+    pub fn create_view<'a>(&'a self, descriptor: &TextureViewDescriptor) -> TextureView<'a> {
         assert!(descriptor.base_mip_level + descriptor.mip_levels <= self.mip_levels);
 
         let components = ComponentMapping::default()
@@ -2531,9 +2547,10 @@ impl Texture {
 
         let view = unsafe { self.device.device.create_image_view(&info, None).unwrap() };
         TextureView {
-            device: &self.device,
+            device: self.device.clone(),
             view,
             size: mip_level_size_2d(self.size, descriptor.base_mip_level),
+            parent: PhantomData,
         }
     }
 }
@@ -2550,9 +2567,21 @@ impl Drop for Texture {
 
 #[derive(Debug)]
 pub struct TextureView<'a> {
-    device: &'a Device,
+    device: Device,
     view: vk::ImageView,
     size: UVec2,
+    parent: PhantomData<&'a ()>,
+}
+
+impl<'a> TextureView<'a> {
+    pub unsafe fn make_static(self) -> TextureView<'static> {
+        // Since this only changes PhantomData<&'a ()> to PhantomData<&'static ()>,
+        // this could be made safe if we could destructure self without calling drop
+        // first. (https://github.com/rust-lang/rfcs/pull/3466)
+        // SAFETY: We only transmute change the lifetime of a `PhantomData`, which
+        // is safe.
+        unsafe { core::mem::transmute(self) }
+    }
 }
 
 impl<'a> Drop for TextureView<'a> {
@@ -2938,14 +2967,27 @@ impl<'a> DescriptorSet<'a> {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+enum FenceState {
+    /// Fence is not used.
+    Idle,
+    /// Fence has been registered, but it has not been signaled yet.
+    Waiting,
+    /// Fence was signaled.
+    Signaled,
+}
+
 #[derive(Debug)]
 pub struct Fence {
     device: Arc<DeviceShared>,
     fence: vk::Fence,
+    state: FenceState,
 }
 
 impl Fence {
     pub fn wait(&mut self, timeout: Option<Duration>) {
+        assert_eq!(self.state, FenceState::Waiting);
+
         let timeout = match timeout {
             Some(timeout) => timeout.as_nanos().try_into().unwrap(),
             None => u64::MAX,
@@ -2953,9 +2995,18 @@ impl Fence {
 
         let res = unsafe { self.device.wait_for_fences(&[self.fence], true, timeout) };
         match res {
-            Ok(()) => (),
+            Ok(()) => {
+                self.reset();
+                self.state = FenceState::Idle;
+            }
             Err(vk::Result::TIMEOUT) => (),
             Err(err) => todo!(),
+        }
+    }
+
+    fn reset(&mut self) {
+        unsafe {
+            self.device.reset_fences(&[self.fence]).unwrap();
         }
     }
 }

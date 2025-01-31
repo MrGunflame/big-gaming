@@ -23,13 +23,14 @@ mod pipeline_cache;
 mod pipelined_rendering;
 
 use api::CommandQueue;
-use backend::vulkan::{Config, Device, Instance, Queue};
-use backend::{AdapterKind, QueueCapabilities};
+use backend::vulkan::{Config, Instance};
+use backend::QueueCapabilities;
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
-use game_common::cell::RefMut;
+use game_tasks::park::Parker;
+use surface::SurfaceConfig;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -44,8 +45,8 @@ use forward::ForwardPipeline;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
-use pipelined_rendering::RenderThreadHandle;
-use texture::{RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
+use pipelined_rendering::{Command, RenderThreadHandle};
+use texture::{RenderImageId, RenderTexture, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
 
@@ -62,14 +63,16 @@ pub enum Error {
 pub struct Renderer {
     render_thread: RenderThreadHandle,
 
-    backlog: VecDeque<SurfaceEvent>,
-
     forward: Arc<ForwardPipeline>,
     resources: Arc<Resources>,
     events: Vec<Event>,
 
     render_textures: RenderTextures,
     jobs: VecDeque<Job>,
+
+    parker: Option<Arc<Parker>>,
+
+    surface_sizes: HashMap<WindowId, UVec2>,
 }
 
 impl Renderer {
@@ -112,12 +115,13 @@ impl Renderer {
 
         Ok(Self {
             render_thread,
-            backlog: VecDeque::new(),
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
             forward,
             resources,
             events: Vec::new(),
+            surface_sizes: HashMap::new(),
+            parker: None,
         })
     }
 
@@ -135,7 +139,10 @@ impl Renderer {
     where
         F: FnOnce(&mut RenderGraph, &mut CommandQueue<'_>) -> R,
     {
-        self.render_thread.wait_idle();
+        if let Some(parker) = self.parker.take() {
+            parker.park();
+        }
+
         // SAFETY: We have waited until the render thread is idle.
         // This means we are allowed to access all shared resources.
         let mut scheduler = unsafe { self.render_thread.shared.scheduler.borrow_mut() };
@@ -153,42 +160,63 @@ impl Renderer {
 
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
-        self.backlog.push_back(SurfaceEvent::Create(id, window));
+        self.surface_sizes.insert(id, window.inner_size());
+        self.render_thread.send(Command::CreateSurface(window));
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        self.backlog.push_back(SurfaceEvent::Resize(id, size));
+        self.surface_sizes.insert(id, size);
+        self.render_thread
+            .send(Command::UpdateSurface(id, SurfaceConfig { size }));
+
+        // Resize all cameras that are linked to the surface handle.
+        // Technically this will happend before the actual surface is resized,
+        // but this should be considered a rare case anyway, so we can afford
+        // the aspect ratio to be slightly off during that time.
+        let mut cameras = unsafe { self.resources.cameras.viewer() };
+        for camera in cameras.iter_mut() {
+            if camera.target == RenderTarget::Window(id) {
+                camera.update_aspect_ratio(size);
+            }
+        }
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.backlog.push_back(SurfaceEvent::Destroy(id));
+        self.render_thread.send(Command::DestroySurface(id));
     }
 
     // TODO: Get rid of this shit.
     pub fn get_surface_size(&self, target: RenderTarget) -> Option<UVec2> {
         match target {
-            RenderTarget::Window(id) => {
-                let surfaces = unsafe { self.render_thread.shared.surfaces.borrow() };
-                surfaces.get(id).map(|s| s.config.extent)
+            RenderTarget::Window(id) => self.surface_sizes.get(&id).copied(),
+            RenderTarget::Image(id) => {
+                todo!();
             }
-            RenderTarget::Image(id) => self.render_textures.get(id).map(|v| v.size),
         }
     }
 
     /// Waits until a new frame can be queued.
     pub fn wait_until_ready(&mut self) {
         let _span = trace_span!("Renderer::wait_until_ready").entered();
-        self.render_thread.wait_idle();
+
+        if let Some(parker) = self.parker.take() {
+            parker.park();
+        }
     }
 
     pub fn render(&mut self, pool: &TaskPool) {
         let _span = trace_span!("Renderer::render").entered();
 
-        self.render_thread.wait_idle();
+        // Park until the previous rendering command has finished.
+        // Once the `park()` call completes the renderer will no longer
+        // access its shared resources.
+        // If the parker is `None`, no rendering command was submitted yet,
+        // so the renderer is also idle.
+        if let Some(parker) = &self.parker {
+            parker.park();
+        }
 
         unsafe {
-            self.update_surfaces();
-
             // Commit all new resources.
             // This is safe since the renderer is idle.
             self.resources.commit();
@@ -196,92 +224,22 @@ impl Renderer {
             self.events.clear();
         }
 
-        // {
-        //     let mut render_textures = unsafe { self.pipeline.shared.render_textures.borrow_mut() };
-
-        //     for event in self.render_textures.events.drain(..) {
-        //         match event {
-        //             RenderTextureEvent::Create(id, texture) => {
-        //                 render_textures.insert(
-        //                     id,
-        //                     RenderImageGpu {
-        //                         size: texture.size,
-        //                         texture: None,
-        //                     },
-        //                 );
-        //             }
-        //             RenderTextureEvent::Destroy(id) => {
-        //                 render_textures.remove(&id);
-        //             }
-        //         }
-        //     }
-        // }
-
-        // {
-        //     let mut jobs = unsafe { self.pipeline.shared.jobs.borrow_mut() };
-        //     std::mem::swap(&mut self.jobs, &mut jobs);
-        // }
-
-        // SAFETY: We just waited for the renderer to be idle.
-        unsafe {
-            self.render_thread.render_unchecked();
-        }
-    }
-
-    /// # Safety
-    ///
-    ///  Caller guarantees that the renderer is idle.
-    unsafe fn update_surfaces(&mut self) {
-        let mut surfaces = unsafe { self.render_thread.shared.surfaces.borrow_mut() };
-        let instance = &self.render_thread.shared.instance;
-        let adapter = &self.render_thread.shared.adapter;
-        let device = &self.render_thread.shared.device;
-
-        while let Some(event) = self.backlog.pop_front() {
-            match event {
-                SurfaceEvent::Create(id, state) => {
-                    surfaces.create(instance, adapter, device, state, id);
-                }
-                SurfaceEvent::Resize(id, size) => {
-                    surfaces.resize(id, device, size);
-
-                    // Resize all cameras that are linked to the surface handle.
-                    let mut cameras = unsafe { self.resources.cameras.viewer() };
-                    for camera in cameras.iter_mut() {
-                        if camera.target == RenderTarget::Window(id) {
-                            camera.update_aspect_ratio(size);
-                        }
-                    }
-                }
-                SurfaceEvent::Destroy(id) => {
-                    surfaces.destroy(id);
-                }
-            }
-        }
+        // Submit a new render command with the parker used in the next call.
+        let parker = self.parker.get_or_insert_with(|| Arc::new(Parker::new()));
+        self.render_thread.send(Command::Render(parker.clone()));
     }
 
     pub fn set_fps_limit(&mut self, limit: FpsLimit) {
-        self.jobs.push_back(Job::SetFpsLimit(limit));
+        for id in self.surface_sizes.keys() {
+            self.render_thread
+                .send(Command::UpdateSurfaceFpsLimit(*id, limit));
+        }
     }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        self.render_thread.shutdown();
-    }
-}
-
-#[derive(Debug)]
-enum SurfaceEvent {
-    Create(WindowId, WindowState),
-    Resize(WindowId, UVec2),
-    Destroy(WindowId),
 }
 
 #[derive(Debug)]
 enum Job {
     TextureToBuffer(RenderImageId, tokio::sync::oneshot::Sender<Vec<u8>>),
-    SetFpsLimit(FpsLimit),
 }
 
 pub struct ReadTexture {
