@@ -9,7 +9,7 @@ use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{self, Duration};
 
 use ash::ext::debug_utils;
 use ash::vk::{
@@ -2985,26 +2985,51 @@ pub struct Fence {
 }
 
 impl Fence {
-    pub fn wait(&mut self, timeout: Option<Duration>) {
+    /// Waits for this fence to become signaled once.
+    ///
+    /// Returns `true` if the fence is signaled within the given `timeout`. Returns `false` if it
+    /// is not signaled within the `timeout`.
+    ///
+    /// `None` represents an infinite timeout. In this case this function will never return `false`.
+    ///
+    /// Note that the timeout may be longer as requested.
+    pub fn wait(&mut self, timeout: Option<Duration>) -> Result<bool, Error> {
         assert_eq!(self.state, FenceState::Waiting);
 
-        let timeout = match timeout {
-            Some(timeout) => timeout.as_nanos().try_into().unwrap(),
-            None => u64::MAX,
-        };
+        let mut timeout = timeout.map(|timeout| timeout.as_nanos());
 
-        let res = unsafe { self.device.wait_for_fences(&[self.fence], true, timeout) };
-        match res {
-            Ok(()) => {
-                self.reset();
-                self.state = FenceState::Idle;
+        loop {
+            let step = match timeout {
+                Some(ns) => u64::try_from(ns).unwrap_or(u64::MAX),
+                None => u64::MAX,
+            };
+
+            // SAFETY:
+            // - Fence count must be greater than 0.
+            let res = unsafe { self.device.wait_for_fences(&[self.fence], true, step) };
+            match res {
+                Ok(()) => break,
+                Err(err) if err != vk::Result::TIMEOUT => return Err(err.into()),
+                Err(_) => (),
             }
-            Err(vk::Result::TIMEOUT) => (),
-            Err(err) => todo!(),
+
+            debug_assert_eq!(res.unwrap_err(), vk::Result::TIMEOUT);
+
+            if let Some(timeout) = &mut timeout {
+                *timeout -= u128::from(step);
+
+                if *timeout == 0 {
+                    return Ok(false);
+                }
+            }
         }
+
+        self.reset();
+        Ok(true)
     }
 
     fn reset(&mut self) {
+        self.state = FenceState::Idle;
         unsafe {
             self.device.reset_fences(&[self.fence]).unwrap();
         }
