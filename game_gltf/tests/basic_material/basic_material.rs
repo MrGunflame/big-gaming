@@ -1,8 +1,8 @@
 use game_common::components::Color;
 use game_gltf::AlphaMode;
 use game_gltf::GltfData;
+use game_render::backend::TextureFormat;
 use game_render::texture::Image;
-use game_render::texture::TextureFormat;
 use glam::UVec2;
 
 const ALPHA_MODE: AlphaMode = AlphaMode::Opaque;
