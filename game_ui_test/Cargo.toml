@@ -17,7 +17,6 @@ game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 game_core = { version = "0.1.0", path = "../game_core" }
 game_wasm = { version = "0.1.0", path = "../game_wasm" }
-game_gizmos = { version = "0.1.0", path = "../game_gizmos" }
 
 [lints]
 workspace = true

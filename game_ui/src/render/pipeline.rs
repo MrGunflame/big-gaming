@@ -7,8 +7,9 @@ use game_render::api::{
     BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
     DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
     DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
-    RenderPassDescriptor, Sampler, Texture,
+    RenderPassDescriptor, Sampler, Texture, TextureRegion, TextureView, TextureViewDescriptor,
 };
+use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     AddressMode, BufferUsage, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage,
     FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
@@ -79,6 +80,7 @@ impl UiPipeline {
             address_mode_w: AddressMode::ClampToEdge,
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Nearest,
+            mipmap_filter: FilterMode::Nearest,
         });
 
         Self {
@@ -142,6 +144,7 @@ impl UiPass {
         let index_buffer = queue.create_buffer_init(&BufferInitDescriptor {
             contents: bytemuck::cast_slice(INDICES),
             usage: BufferUsage::INDEX,
+            flags: UsageFlags::empty(),
         });
 
         Self {
@@ -245,9 +248,14 @@ impl Node for UiPass {
         let vertex_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
             contents: &vertex_buffer,
             usage: BufferUsage::STORAGE,
+            flags: UsageFlags::empty(),
         });
 
-        let texture_views: Vec<&Texture> = texture_buffer.iter().collect();
+        let texture_views: Vec<TextureView> = texture_buffer
+            .iter()
+            .map(|t| t.create_view(&TextureViewDescriptor::default()))
+            .collect();
+        let texture_views_ref: Vec<&TextureView> = texture_views.iter().collect();
 
         let bind_group = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
             layout: &pipeline.descriptor_set_layout,
@@ -262,7 +270,7 @@ impl Node for UiPass {
                 },
                 DescriptorSetEntry {
                     binding: 2,
-                    resource: BindingResource::TextureArray(&texture_views),
+                    resource: BindingResource::TextureArray(&texture_views_ref),
                 },
             ],
         });
@@ -291,7 +299,7 @@ impl Node for UiPass {
         let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
-                texture: &surface_texture,
+                target: &surface_texture.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Load,
                 store_op: StoreOp::Store,
             }],
@@ -331,7 +339,10 @@ fn create_element(
     });
 
     queue.write_texture(
-        &texture,
+        TextureRegion {
+            texture: &texture,
+            mip_level: 0,
+        },
         &cmd.image,
         ImageDataLayout {
             rows_per_image: 4 * cmd.image.width(),

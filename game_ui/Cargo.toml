@@ -22,7 +22,6 @@ game_tasks = { version = "0.1.0", path = "../game_tasks" }
 glam = "0.28.0"
 ab_glyph = "0.2.28"
 image = "0.25.1"
-wgpu = "0.19.1"
 bytemuck = "1.16.1"
 parking_lot = "0.12.3"
 tracing = "0.1.40"

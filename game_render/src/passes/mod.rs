@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use forward_pass::ForwardPass;
 use post_process::PostProcessPass;
-use wgpu::{Device, Queue};
 
 use crate::api::CommandQueue;
 use crate::forward::ForwardPipeline;

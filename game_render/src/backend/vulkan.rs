@@ -46,9 +46,6 @@ use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
-use tracing::instrument::WithSubscriber;
-use tracing::Instrument;
-use wgpu::hal::auxil::db;
 
 use crate::backend::{mip_level_size_2d, TextureLayout};
 

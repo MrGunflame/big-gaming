@@ -7,7 +7,9 @@ use game_render::api::{
     BindingResource, BufferInitDescriptor, CommandQueue, DescriptorSetDescriptor,
     DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
     PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Texture,
+    TextureViewDescriptor,
 };
+use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorType, Face, FragmentStage, FrontFace, LoadOp,
     PipelineStage, PrimitiveTopology, ShaderModule, ShaderSource, ShaderStages, StoreOp,
@@ -145,11 +147,13 @@ impl Node for GizmoPass {
                 camera.projection,
             )]),
             usage: BufferUsage::UNIFORM,
+            flags: UsageFlags::empty(),
         });
 
         let vertices = ctx.queue.create_buffer_init(&BufferInitDescriptor {
             contents: bytemuck::cast_slice(&vertex_buffer),
             usage: BufferUsage::STORAGE,
+            flags: UsageFlags::empty(),
         });
 
         let bg = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
@@ -190,7 +194,7 @@ impl Node for GizmoPass {
         let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
-                texture: &surface_texture,
+                target: &surface_texture.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Load,
                 store_op: StoreOp::Store,
             }],
