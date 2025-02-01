@@ -1,5 +1,4 @@
 use std::alloc::Layout;
-use std::collections::VecDeque;
 
 use game_tracing::trace_span;
 use slab::Slab;
@@ -126,14 +125,22 @@ impl Allocator for BuddyAllocator {
     unsafe fn dealloc(&mut self, region: Region) {
         let _span = trace_span!("BuddyAllocator::dealloc").entered();
 
-        let (mut index, _) = self
-            .blocks
-            .iter()
-            .find(|(_, block)| block.offset == region.offset && block.size == region.size)
-            .unwrap();
+        let mut index = self.root;
+        let mut block = &mut self.blocks[self.root];
+        while block.offset != region.offset || block.size != region.size {
+            let (left, right) = match block.state {
+                State::Split { left, right } => (left, right),
+                // Since the caller guarantees that the region was returned
+                // from `alloc` we can be sure that the block was always split.
+                _ => unreachable!(),
+            };
+
+            let mid = block.offset + block.size / 2;
+            index = if region.offset < mid { left } else { right };
+            block = &mut self.blocks[index];
+        }
 
         // Mark the deallocated block as free.
-        let block = &mut self.blocks[index];
         debug_assert!(matches!(block.state, State::Used));
         block.state = State::Free;
 
