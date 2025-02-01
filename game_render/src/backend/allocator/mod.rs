@@ -222,7 +222,9 @@ impl GeneralPurposeAllocator {
         let req = self.device.buffer_memory_requirements(&buffer);
         let memory = self.alloc(req, flags);
         unsafe {
-            self.device.bind_buffer_memory(&mut buffer, memory.memory());
+            self.device
+                .bind_buffer_memory(&mut buffer, memory.memory())
+                .unwrap();
         }
 
         // The allocator may return a region bigger than requested.
@@ -247,7 +249,8 @@ impl GeneralPurposeAllocator {
         let memory = self.alloc(req, flags);
         unsafe {
             self.device
-                .bind_texture_memory(&mut texture, memory.memory());
+                .bind_texture_memory(&mut texture, memory.memory())
+                .unwrap();
         }
 
         TextureAlloc { texture, memory }

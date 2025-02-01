@@ -92,15 +92,15 @@ impl Renderer {
             };
 
             let new_kind = match a.properties().kind {
-                AdapterKind::DiscreteGpu => 0,
+                AdapterKind::DiscreteGpu => 1,
                 AdapterKind::IntegratedGpu => 1,
-                AdapterKind::Cpu => 2,
+                AdapterKind::Cpu => 0,
                 AdapterKind::Other => 3,
             };
             let cur_kind = match current_adapter.properties().kind {
-                AdapterKind::DiscreteGpu => 0,
+                AdapterKind::DiscreteGpu => 1,
                 AdapterKind::IntegratedGpu => 1,
-                AdapterKind::Cpu => 2,
+                AdapterKind::Cpu => 0,
                 AdapterKind::Other => 3,
             };
 

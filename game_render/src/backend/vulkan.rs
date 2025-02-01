@@ -764,6 +764,7 @@ impl Device {
                 size,
                 flags: self.device.memory_properties.types[memory_type_index as usize].flags,
                 mapped_range: None,
+                memory_type: memory_type_index,
             }),
             Err(err) => {
                 // If the allocation does not succeed it does not count
@@ -831,26 +832,80 @@ impl Device {
     /// - The memory range bound to the [`Buffer`] must not be bound to any other resource for the
     /// entire lifetime of the [`Buffer`] object.
     /// - The same memory range must not be bound to any other resource.
-    pub unsafe fn bind_buffer_memory(&self, buffer: &mut Buffer, memory: DeviceMemorySlice<'_>) {
+    pub unsafe fn bind_buffer_memory(
+        &self,
+        buffer: &mut Buffer,
+        memory: DeviceMemorySlice<'_>,
+    ) -> Result<(), Error> {
+        // - `buffer` must have been created from the same device.
+        // - `memory` must have been created from the same device.
+        assert!(self.device.same(&buffer.device));
+        assert!(self.device.same(&memory.memory.device));
+
+        let reqs = self.buffer_memory_requirements(buffer);
+
+        // `memoryOffset` must be less than the size of `memory`.
+        assert!(memory.offset <= memory.memory.size.get());
+        // - `memoryOffset` must be an integer multiple of the `alignment`.
+        assert!(memory.offset % reqs.align.get() == 0);
+        // - `size` must be less than or equal to the size of `memory` minus `memoryOffset`.
+        assert!(memory.size <= memory.memory.size.get() - memory.offset);
+        // - `memory` must have been allocated using one of the memory types.
+        assert!(reqs.memory_types.contains(&memory.memory.memory_type));
+
+        // https://registry.khronos.org/vulkan/specs/latest/man/html/VkBindBufferMemoryInfo.html
         let info = BindBufferMemoryInfo::default()
+            // - `buffer` must not have been bound to a memory object.
+            // - `buffer` must not have been created with any sparse memory binding flags.
             .buffer(buffer.buffer)
             .memory(memory.memory.memory)
             .memory_offset(memory.offset);
 
         unsafe {
-            self.device.bind_buffer_memory2(&[info]).unwrap();
+            self.device.bind_buffer_memory2(&[info])?;
         }
+
+        Ok(())
     }
 
-    pub unsafe fn bind_texture_memory(&self, texture: &mut Texture, memory: DeviceMemorySlice<'_>) {
+    /// Binds memory to a [`Texture`] object.
+    ///
+    /// # Safety
+    ///
+    /// - The memory range described by [`DeviceMemorySlice`] must not have been bound to any other
+    /// live object yet.
+    /// - [`Texture`] must not have been bound yet.
+    pub unsafe fn bind_texture_memory(
+        &self,
+        texture: &mut Texture,
+        memory: DeviceMemorySlice<'_>,
+    ) -> Result<(), Error> {
+        // - `image` must have been created from the same device.
+        // - `memory` must have been created from the same device.
+        assert!(self.device.same(&texture.device));
+        assert!(self.device.same(&memory.memory.device));
+
+        let reqs = self.image_memory_requirements(&texture);
+
+        // `memoryOffset` must be less than the size of `memory`.
+        assert!(memory.offset <= memory.memory.size.get());
+        // `memory` must have been allocated using one of the memory types.
+        assert!(reqs.memory_types.contains(&memory.memory.memory_type));
+        // `memoryOffset` must be an integer multiple of `alignment`.
+        assert!(memory.offset % reqs.align.get() == 0);
+
         let info = vk::BindImageMemoryInfo::default()
+            // - `image` must not have been bound to a memory object.
+            // - `image` must not have been created with any sparse memory binding flags.
             .image(texture.image)
             .memory(memory.memory.memory)
             .memory_offset(memory.offset);
 
         unsafe {
-            self.device.bind_image_memory2(&[info]).unwrap();
+            self.device.bind_image_memory2(&[info])?;
         }
+
+        Ok(())
     }
 
     pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
@@ -923,7 +978,7 @@ impl Device {
 
         let image = unsafe { self.device.create_image(&info, None).unwrap() };
         Texture {
-            device: self.clone(),
+            device: self.device.clone(),
             image,
             format: descriptor.format,
             size: descriptor.size,
@@ -1629,7 +1684,7 @@ impl Swapchain {
 
         SwapchainTexture {
             texture: Some(Texture {
-                device: self.device.clone(),
+                device: self.device.device.clone(),
                 image: self.images[image_index as usize],
                 format: self.format,
                 size: self.extent,
@@ -2501,7 +2556,7 @@ impl<'a> SwapchainTexture<'a> {
 
 #[derive(Debug)]
 pub struct Texture {
-    device: Device,
+    device: Arc<DeviceShared>,
     image: vk::Image,
     format: TextureFormat,
     size: UVec2,
@@ -2576,7 +2631,7 @@ impl Drop for Texture {
 
 #[derive(Debug)]
 pub struct TextureView<'a> {
-    device: Device,
+    device: Arc<DeviceShared>,
     view: vk::ImageView,
     size: UVec2,
     parent: PhantomData<&'a ()>,
@@ -2647,6 +2702,7 @@ pub struct DeviceMemory {
     size: NonZeroU64,
     flags: MemoryTypeFlags,
     mapped_range: Option<(u64, u64)>,
+    memory_type: u32,
 }
 
 impl DeviceMemory {
@@ -3163,6 +3219,14 @@ struct DeviceShared {
     memory_properties: AdapterMemoryProperties,
     /// Number of currently active allocations.
     num_allocations: Arc<AtomicU32>,
+}
+
+impl DeviceShared {
+    /// Returns `true` if both `DeviceShared` instances refer to the same Vulkan device.
+    fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.instance, &other.instance)
+            && self.device.handle() == other.device.handle()
+    }
 }
 
 impl Debug for DeviceShared {
