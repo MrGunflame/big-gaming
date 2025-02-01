@@ -94,7 +94,7 @@ pub struct SwapchainCapabilities {
     pub min_images: u32,
     /// The maximum number of images that can be in a swapchain. `None` indicates no limit.
     pub max_images: Option<NonZeroU32>,
-    pub formats: Vec<TextureFormat>,
+    pub formats: Vec<SurfaceFormat>,
     pub present_modes: Vec<PresentMode>,
     current_transform: vk::SurfaceTransformFlagsKHR,
     supported_composite_alpha: vk::CompositeAlphaFlagsKHR,
@@ -132,7 +132,7 @@ impl TextureFormat {
 pub struct SwapchainConfig {
     pub image_count: u32,
     pub extent: UVec2,
-    pub format: TextureFormat,
+    pub format: SurfaceFormat,
     pub present_mode: PresentMode,
 }
 
@@ -645,4 +645,15 @@ pub fn mip_level_size_2d(texture_size: UVec2, level: u32) -> UVec2 {
 pub struct TextureViewDescriptor {
     pub base_mip_level: u32,
     pub mip_levels: u32,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SurfaceFormat {
+    pub format: TextureFormat,
+    pub color_space: ColorSpace,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ColorSpace {
+    SrgbNonLinear,
 }

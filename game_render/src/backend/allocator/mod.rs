@@ -218,7 +218,7 @@ impl GeneralPurposeAllocator {
         usage: BufferUsage,
         flags: UsageFlags,
     ) -> BufferAlloc {
-        let mut buffer = self.device.create_buffer(size, usage);
+        let mut buffer = self.device.create_buffer(size, usage).unwrap();
         let req = self.device.buffer_memory_requirements(&buffer);
         let memory = self.alloc(req, flags);
         unsafe {

@@ -8,7 +8,9 @@ use crate::api::executor::TemporaryResources;
 use crate::backend::vulkan::{
     Adapter, CommandPool, Device, Fence, Instance, Semaphore, Surface, Swapchain,
 };
-use crate::backend::{PresentMode, SwapchainCapabilities, SwapchainConfig, TextureFormat};
+use crate::backend::{
+    ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig, TextureFormat,
+};
 use crate::fps_limiter::FpsLimiter;
 use crate::FpsLimit;
 
@@ -122,7 +124,7 @@ fn create_surface(
             .unwrap()
     };
 
-    let caps = surface.get_capabilities(device);
+    let caps = surface.get_capabilities(device).unwrap();
     let config = create_swapchain_config(&caps, size);
     let swapchain = surface.create_swapchain(device, config, &caps);
 
@@ -157,7 +159,7 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
         return;
     }
 
-    let caps = surface.surface.get_capabilities(device);
+    let caps = surface.surface.get_capabilities(device).unwrap();
     let config = create_swapchain_config(&caps, size);
 
     if surface.config.image_count != config.image_count {
@@ -207,9 +209,9 @@ fn create_swapchain_config(caps: &SwapchainCapabilities, surface_size: UVec2) ->
     }
 }
 
-fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {
+fn get_surface_format(formats: &[SurfaceFormat]) -> Option<SurfaceFormat> {
     for format in formats {
-        if !format.is_srgb() {
+        if format.color_space == ColorSpace::SrgbNonLinear && !format.format.is_srgb() {
             return Some(*format);
         }
     }

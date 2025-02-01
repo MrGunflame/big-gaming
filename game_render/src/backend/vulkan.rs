@@ -47,18 +47,18 @@ use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
-use crate::backend::{mip_level_size_2d, TextureLayout};
+use crate::backend::{mip_level_size_2d, SurfaceFormat, TextureLayout};
 
 use super::shader::{self, BindingInfo, BindingLocation, Shader};
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage,
-    BufferView, CompareOp, CopyBuffer, DescriptorPoolDescriptor, DescriptorSetDescriptor, Face,
-    FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryHeapFlags, MemoryRequirements, MemoryType,
-    MemoryTypeFlags, PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode,
-    QueueCapabilities, QueueFamily, QueueSubmit, RenderPassColorAttachment, RenderPassDescriptor,
-    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig,
-    TextureDescriptor, TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
-    WriteDescriptorResources,
+    BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
+    DescriptorSetDescriptor, Face, FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryHeapFlags,
+    MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
+    PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
+    RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStage, ShaderStages,
+    StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
+    TextureUsage, TextureViewDescriptor, WriteDescriptorResource, WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -157,6 +157,8 @@ pub enum Error {
     MissingLayer(&'static CStr),
     #[error("missing extension: {0:?}")]
     MissingExtension(&'static CStr),
+    #[error("unsupported surface")]
+    UnsupportedSurface,
     #[error(transparent)]
     Other(vk::Result),
 }
@@ -286,13 +288,22 @@ impl Instance {
             info = info.push_next(&mut layer_settings);
         }
 
-        // FIXME: This will leak the instance if the below code
-        // returns an error or panics.
         let instance = unsafe { entry.create_instance(&info, None)? };
 
         let messenger = if config.validation {
-            let instance = debug_utils::Instance::new(&entry, &instance);
-            Some(unsafe { instance.create_debug_utils_messenger(&debug_info, None)? })
+            let instance_d = debug_utils::Instance::new(&entry, &instance);
+            match unsafe { instance_d.create_debug_utils_messenger(&debug_info, None) } {
+                Ok(messenger) => Some(messenger),
+                Err(err) => {
+                    // We must manually destroy the instance if an error occurs,
+                    // otherwise the vkInstance would leak.
+                    unsafe {
+                        instance.destroy_instance(None);
+                    }
+
+                    return Err(err.into());
+                }
+            }
         } else {
             None
         };
@@ -319,6 +330,11 @@ impl Instance {
             .collect()
     }
 
+    /// Creates a new [`Surface`].
+    ///
+    /// # Safety
+    ///
+    /// - The passed `display` and `window` handles must be valid until the [`Surface`] is dropped.
     pub unsafe fn create_surface(
         &self,
         display: RawDisplayHandle,
@@ -332,8 +348,12 @@ impl Instance {
                 assert!(self.extensions.surface_wayland);
 
                 let info = vk::WaylandSurfaceCreateInfoKHR::default()
+                    // - `display` must be a valid Wayland `wl_display`.
                     .display(display.display.as_ptr())
-                    .surface(window.surface.as_ptr());
+                    // - `surface` must be a valid Wayland `wl_surface`.
+                    .surface(window.surface.as_ptr())
+                    // - `flags` must be `0`.
+                    .flags(vk::WaylandSurfaceCreateFlagsKHR::empty());
 
                 let instance =
                     ash::khr::wayland_surface::Instance::new(&self.instance.entry, &self.instance);
@@ -344,8 +364,12 @@ impl Instance {
                 assert!(self.extensions.surface_xcb);
 
                 let info = vk::XcbSurfaceCreateInfoKHR::default()
+                    // - `connection` must point to a valid X11 `xcb_connection_t`.
                     .connection(display.connection.map(|v| v.as_ptr()).unwrap_or(null_mut()))
-                    .window(window.window.get());
+                    // - `window` must be a valid X11 `xcb_window_t`.
+                    .window(window.window.get())
+                    // - `flags` must be `0`.
+                    .flags(vk::XcbSurfaceCreateFlagsKHR::empty());
 
                 let instance =
                     ash::khr::xcb_surface::Instance::new(&self.instance.entry, &self.instance);
@@ -356,8 +380,12 @@ impl Instance {
                 assert!(self.extensions.surface_xlib);
 
                 let info = vk::XlibSurfaceCreateInfoKHR::default()
+                    // - `dpy` must point to a valid Xlib `Display`.
                     .dpy(display.display.map(|v| v.as_ptr()).unwrap_or(null_mut()))
-                    .window(window.window);
+                    // - `window` must point to a valid Xlib `Window`.
+                    .window(window.window)
+                    // - `flags` must be `0`.
+                    .flags(vk::XlibSurfaceCreateFlagsKHR::empty());
 
                 let instance =
                     ash::khr::xlib_surface::Instance::new(&self.instance.entry, &self.instance);
@@ -368,8 +396,12 @@ impl Instance {
                 assert!(self.extensions.surface_win32);
 
                 let info = vk::Win32SurfaceCreateInfoKHR::default()
+                    // - `hinstance` must be a valid Win32 `HINSTANCE`.
                     .hinstance(window.hinstance.map(|v| v.get()).unwrap_or_default())
-                    .hwnd(window.hwnd.get());
+                    // - `hwnd` must be a valid Win32 `HWND`.
+                    .hwnd(window.hwnd.get())
+                    // - `flags` must be `0`.
+                    .flags(vk::Win32SurfaceCreateFlagsKHR::empty());
 
                 let instance =
                     ash::khr::win32_surface::Instance::new(&self.instance.entry, &self.instance);
@@ -665,7 +697,8 @@ impl Device {
         }
     }
 
-    pub fn create_buffer(&self, size: NonZeroU64, usage: BufferUsage) -> Buffer {
+    /// Creates a new [`Buffer`] with the given size and usage flags.
+    pub fn create_buffer(&self, size: NonZeroU64, usage: BufferUsage) -> Result<Buffer, Error> {
         let mut buffer_usage_flags = BufferUsageFlags::empty();
         if usage.contains(BufferUsage::TRANSFER_SRC) {
             buffer_usage_flags |= BufferUsageFlags::TRANSFER_SRC;
@@ -699,12 +732,12 @@ impl Device {
             .usage(buffer_usage_flags)
             .sharing_mode(SharingMode::EXCLUSIVE);
 
-        let buffer = unsafe { self.device.create_buffer(&info, None).unwrap() };
-        Buffer {
+        let buffer = unsafe { self.device.create_buffer(&info, None)? };
+        Ok(Buffer {
             buffer,
             device: self.device.clone(),
             size: size.get(),
-        }
+        })
     }
 
     pub fn allocate_memory(
@@ -777,7 +810,11 @@ impl Device {
         }
     }
 
+    /// Returns the [`MemoryRequirements`] for a [`Buffer`].
     pub fn buffer_memory_requirements(&self, buffer: &Buffer) -> MemoryRequirements {
+        // - `buffer` must have been created from the same `device`.
+        assert!(self.device.same(&buffer.device));
+
         let req = unsafe { self.device.get_buffer_memory_requirements(buffer.buffer) };
 
         // Bit `i` is set iff the memory type at index `i` is
@@ -795,6 +832,10 @@ impl Device {
         debug_assert!(req.size > 0);
         debug_assert!(req.alignment > 0);
 
+        // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#resources-association
+        // - The `alignment` member is a power of two.
+        debug_assert!(req.alignment.is_power_of_two());
+
         MemoryRequirements {
             size: unsafe { NonZeroU64::new_unchecked(req.size) },
             align: unsafe { NonZeroU64::new_unchecked(req.alignment) },
@@ -802,7 +843,10 @@ impl Device {
         }
     }
 
+    /// Returns the [`MemoryRequirements`] for a [`Texture`].
     pub fn image_memory_requirements(&self, texture: &Texture) -> MemoryRequirements {
+        assert!(self.device.same(&texture.device));
+
         let req = unsafe { self.device.get_image_memory_requirements(texture.image) };
 
         // Bit `i` is set iff the memory type at index `i` is
@@ -817,6 +861,10 @@ impl Device {
 
         debug_assert!(req.size > 0);
         debug_assert!(req.alignment > 0);
+
+        // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#resources-association
+        // - The `alignment` member is a power of two.
+        debug_assert!(req.alignment.is_power_of_two());
 
         MemoryRequirements {
             size: unsafe { NonZeroU64::new_unchecked(req.size) },
@@ -1470,9 +1518,10 @@ impl SurfaceShared {
             .min_image_count(config.image_count)
             // - `imageFormat` must match one of the formats returned by `vkGetPhysicalDeviceSurfaceFormatsKHR`.
             // Checked above.
-            .image_format(config.format.into())
-            // TODO: Unchecked
-            .image_color_space(ColorSpaceKHR::SRGB_NONLINEAR)
+            .image_format(config.format.format.into())
+            // - `imageColorSpace` must match one of the formats returned by `vkGetPhysicalDeviceSurfaceFormatsKHR`.
+            // Checked above.
+            .image_color_space(config.format.color_space.into())
             // - `width` and `height` must both ne non-zero. Checked above.
             // - `width` and `height` must be between `minImageExtent` and `maxImageExtent`. Checked above.
             .image_extent(Extent2D {
@@ -1529,46 +1578,42 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn get_capabilities(&self, device: &Device) -> SwapchainCapabilities {
+    pub fn get_capabilities(&self, device: &Device) -> Result<SwapchainCapabilities, Error> {
+        // - `physicalDevice` and `surface` must have been created from the same `VkInstance`.
+        assert!(self.shared.instance.same(&device.device.instance));
+
         let instance = ash::khr::surface::Instance::new(
             &self.shared.instance.entry,
             &self.shared.instance.instance,
         );
 
         let is_supported = unsafe {
-            instance
-                .get_physical_device_surface_support(
-                    device.physical_device,
-                    device.device.queue_family_index,
-                    self.shared.surface,
-                )
-                .unwrap()
+            instance.get_physical_device_surface_support(
+                device.physical_device,
+                device.device.queue_family_index,
+                self.shared.surface,
+            )?
         };
 
         if !is_supported {
-            todo!()
+            return Err(Error::UnsupportedSurface);
         }
 
         let caps = unsafe {
-            instance
-                .get_physical_device_surface_capabilities(
-                    device.physical_device,
-                    self.shared.surface,
-                )
-                .unwrap()
+            instance.get_physical_device_surface_capabilities(
+                device.physical_device,
+                self.shared.surface,
+            )?
         };
         let formats = unsafe {
             instance
-                .get_physical_device_surface_formats(device.physical_device, self.shared.surface)
-                .unwrap()
+                .get_physical_device_surface_formats(device.physical_device, self.shared.surface)?
         };
         let present_modes = unsafe {
-            instance
-                .get_physical_device_surface_present_modes(
-                    device.physical_device,
-                    self.shared.surface,
-                )
-                .unwrap()
+            instance.get_physical_device_surface_present_modes(
+                device.physical_device,
+                self.shared.surface,
+            )?
         };
 
         // Vulkan spec requires that `maxImageArrayLayers` is at least one.
@@ -1583,7 +1628,7 @@ impl Surface {
         // See https://github.com/KhronosGroup/Vulkan-Docs/issues/2440
         assert!(caps.supported_transforms.contains(caps.current_transform));
 
-        SwapchainCapabilities {
+        Ok(SwapchainCapabilities {
             min_extent: UVec2 {
                 x: caps.min_image_extent.width,
                 y: caps.min_image_extent.height,
@@ -1594,11 +1639,18 @@ impl Surface {
             },
             min_images: caps.min_image_count,
             max_images: NonZeroU32::new(caps.max_image_count),
-            // FIXME: What to do about color space?
-            // It is probably always SRGB_NONLINEAR.
             formats: formats
                 .into_iter()
-                .filter_map(|v| v.format.try_into().ok())
+                .filter_map(|v| {
+                    let format = v.format.try_into().ok();
+                    let color_space = v.color_space.try_into().ok();
+                    format
+                        .zip(color_space)
+                        .map(|(format, color_space)| SurfaceFormat {
+                            format,
+                            color_space,
+                        })
+                })
                 .collect(),
             present_modes: present_modes
                 .into_iter()
@@ -1606,7 +1658,7 @@ impl Surface {
                 .collect(),
             current_transform: caps.current_transform,
             supported_composite_alpha: caps.supported_composite_alpha,
-        }
+        })
     }
 
     pub fn create_swapchain(
@@ -1639,7 +1691,7 @@ pub struct Swapchain {
     swapchain: SwapchainKHR,
     images: Vec<vk::Image>,
 
-    format: TextureFormat,
+    format: SurfaceFormat,
     extent: UVec2,
 }
 
@@ -1686,7 +1738,7 @@ impl Swapchain {
             texture: Some(Texture {
                 device: self.device.device.clone(),
                 image: self.images[image_index as usize],
-                format: self.format,
+                format: self.format.format,
                 size: self.extent,
                 destroy_on_drop: false,
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
@@ -1774,10 +1826,29 @@ impl From<TextureFormat> for Format {
         match value {
             TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
             TextureFormat::Rgba8UnormSrgb => Self::R8G8B8A8_SRGB,
-            TextureFormat::Bgra8Unorm => Self::B8G8R8A8_SNORM,
+            TextureFormat::Bgra8Unorm => Self::B8G8R8A8_UNORM,
             TextureFormat::Bgra8UnormSrgb => Self::B8G8R8A8_SRGB,
             TextureFormat::Depth32Float => Self::D32_SFLOAT,
             TextureFormat::Rgba16Float => Self::R16G16B16A16_SFLOAT,
+        }
+    }
+}
+
+impl From<ColorSpace> for vk::ColorSpaceKHR {
+    fn from(value: ColorSpace) -> Self {
+        match value {
+            ColorSpace::SrgbNonLinear => vk::ColorSpaceKHR::SRGB_NONLINEAR,
+        }
+    }
+}
+
+impl TryFrom<vk::ColorSpaceKHR> for ColorSpace {
+    type Error = UnknownEnumValue;
+
+    fn try_from(value: vk::ColorSpaceKHR) -> Result<Self, Self::Error> {
+        match value {
+            vk::ColorSpaceKHR::SRGB_NONLINEAR => Ok(Self::SrgbNonLinear),
+            _ => Err(UnknownEnumValue),
         }
     }
 }
@@ -3178,6 +3249,12 @@ struct InstanceShared {
     entry: ash::Entry,
     instance: ash::Instance,
     messenger: Option<DebugUtilsMessengerEXT>,
+}
+
+impl InstanceShared {
+    fn same(self: &Arc<Self>, other: &Arc<Self>) -> bool {
+        Arc::ptr_eq(&self, other)
+    }
 }
 
 impl Debug for InstanceShared {
