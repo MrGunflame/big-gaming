@@ -671,6 +671,7 @@ impl Adapter {
             max_push_constants_size: props.limits.max_push_constants_size,
             max_bound_descriptor_sets: props.limits.max_bound_descriptor_sets,
             max_memory_allocation_count: props.limits.max_memory_allocation_count,
+            buffer_image_granularity: props.limits.buffer_image_granularity,
         }
     }
 }
@@ -866,9 +867,24 @@ impl Device {
         // - The `alignment` member is a power of two.
         debug_assert!(req.alignment.is_power_of_two());
 
+        // To handle `bufferImageGranularity` we just overalign all images
+        // to `bufferImageGranularity`. This means the image will always
+        // start on a fresh "page".
+        // To ensure that the next resource is a new "page" we grow the size
+        // to the next multiple of `bufferImageGranularity`.
+        // This is usually not a problem, since images already have a big
+        // alignment and size and `bufferImageGranularity` is usually relatively small.
+        let buffer_image_granularity = self.device.limits.buffer_image_granularity;
+        let align = u64::max(req.alignment, buffer_image_granularity);
+        // size + (size % align) = (size + align - 1) & !(align - 1)
+        let size = (req.size + buffer_image_granularity - 1) & !(buffer_image_granularity - 1);
+
+        debug_assert_eq!(align % self.device.limits.buffer_image_granularity, 0);
+        debug_assert_eq!(size % self.device.limits.buffer_image_granularity, 0);
+
         MemoryRequirements {
-            size: unsafe { NonZeroU64::new_unchecked(req.size) },
-            align: unsafe { NonZeroU64::new_unchecked(req.alignment) },
+            size: unsafe { NonZeroU64::new_unchecked(size) },
+            align: unsafe { NonZeroU64::new_unchecked(align) },
             memory_types,
         }
     }
@@ -3334,6 +3350,8 @@ struct DeviceLimits {
     max_push_constants_size: u32,
     max_bound_descriptor_sets: u32,
     max_memory_allocation_count: u32,
+    /// Is always a power of two.
+    buffer_image_granularity: u64,
 }
 
 trait RangeBoundsExt {
