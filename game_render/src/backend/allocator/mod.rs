@@ -308,6 +308,10 @@ impl GeneralPurposeAllocator {
         }
 
         for mem_typ in req.memory_types {
+            let host_visible = self.manager.properties().types[mem_typ as usize]
+                .flags
+                .contains(MemoryTypeFlags::HOST_VISIBLE);
+
             // Note: entry API does not work since we need to borrow inner
             // multiple times, so we use contains_key and get instead.
             if !inner.pools.contains_key(&mem_typ) {
