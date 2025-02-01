@@ -37,13 +37,18 @@ impl Allocator for BuddyAllocator {
     fn alloc(&mut self, layout: Layout) -> Option<Region> {
         let _span = trace_span!("BuddyAllocator::alloc").entered();
 
+        // We can only allocate in power-of-two blocks so we must always
+        // round up.
         let size = layout.size().next_power_of_two();
         debug_assert_ne!(size, 0);
 
-        let mut queue = VecDeque::new();
-        queue.push_back(self.root);
+        let align = layout.align();
+        debug_assert!(align.is_power_of_two());
 
-        while let Some(index) = queue.pop_front() {
+        let mut stack = Vec::new();
+        stack.push(self.root);
+
+        while let Some(index) = stack.pop() {
             let block = &mut self.blocks[index];
 
             if size > block.size {
@@ -56,8 +61,18 @@ impl Allocator for BuddyAllocator {
                 State::Split { left, right } => {
                     // Walk down the left subtree first.
                     // This will keep smaller allocations on the left side.
-                    queue.push_back(left);
-                    queue.push_back(right);
+
+                    // The left block will be at the same offset as the parent
+                    // block.
+                    // The right block will be at `offset + size / 2`. This means
+                    // we can only allocate in the right block if the alignment
+                    // is small enough.
+                    if (block.offset + block.size / 2) % align == 0 {
+                        stack.push(right);
+                    }
+
+                    stack.push(left);
+
                     continue;
                 }
             }
@@ -67,6 +82,9 @@ impl Allocator for BuddyAllocator {
             // since both `block.size` and `size` are power-of-twos.
             if block.size == size {
                 block.state = State::Used;
+
+                debug_assert!(block.offset % align == 0);
+
                 return Some(Region {
                     offset: block.offset,
                     size: block.size,
@@ -99,7 +117,7 @@ impl Allocator for BuddyAllocator {
             // will be big enough for `size`.
             // This means we only need to walk down the left side.
             debug_assert!(block.size >= size);
-            queue.push_back(left);
+            stack.push(left);
         }
 
         None
@@ -273,5 +291,21 @@ mod tests {
         }
 
         None
+    }
+
+    #[test]
+    fn buddy_allocator_big_alignment() {
+        let mut allocator = BuddyAllocator::new(Region::new(0, 2048));
+
+        for _ in 0..4 {
+            // Do a small allocation to cause fragmentation.
+            allocator
+                .alloc(Layout::from_size_align(1, 1).unwrap())
+                .unwrap();
+
+            allocator
+                .alloc(Layout::from_size_align(128, 256).unwrap())
+                .unwrap();
+        }
     }
 }
