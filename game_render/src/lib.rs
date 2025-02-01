@@ -84,6 +84,8 @@ impl Renderer {
 
         let instance = Instance::new(config).unwrap();
 
+        let preferred_adapter_name = std::env::var("RENDER_ADAPTER").ok();
+
         let mut adapter = None;
         for a in instance.adapters() {
             let Some(current_adapter) = &adapter else {
@@ -91,16 +93,23 @@ impl Renderer {
                 continue;
             };
 
+            if let Some(preferred_adapter_name) = &preferred_adapter_name {
+                if a.properties().name.contains(preferred_adapter_name) {
+                    adapter = Some(a);
+                    continue;
+                }
+            }
+
             let new_kind = match a.properties().kind {
-                AdapterKind::DiscreteGpu => 1,
+                AdapterKind::DiscreteGpu => 0,
                 AdapterKind::IntegratedGpu => 1,
-                AdapterKind::Cpu => 0,
+                AdapterKind::Cpu => 2,
                 AdapterKind::Other => 3,
             };
             let cur_kind = match current_adapter.properties().kind {
-                AdapterKind::DiscreteGpu => 1,
+                AdapterKind::DiscreteGpu => 0,
                 AdapterKind::IntegratedGpu => 1,
-                AdapterKind::Cpu => 0,
+                AdapterKind::Cpu => 2,
                 AdapterKind::Other => 3,
             };
 
