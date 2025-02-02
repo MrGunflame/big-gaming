@@ -3050,10 +3050,29 @@ pub struct DescriptorSet<'a> {
 
 impl<'a> DescriptorSet<'a> {
     pub fn update(&mut self, op: &WriteDescriptorResources<'_>) {
-        let mut buffer_infos = Vec::new();
-        let mut image_infos = Vec::new();
-        let mut sampler_infos = Vec::new();
-        let mut image_array_infos = Vec::new();
+        #[derive(Copy, Clone, Debug)]
+        struct Header {
+            binding: u32,
+            kind: DescriptorType,
+            count: usize,
+        }
+
+        // This union must be `#[repr(C)]`, so we can pass a
+        // pointer to it to Vulkan.
+        #[derive(Copy, Clone)]
+        #[repr(C)]
+        union Info {
+            header: Header,
+            buffer: vk::DescriptorBufferInfo,
+            image: vk::DescriptorImageInfo,
+        }
+
+        // We include all necessary data in one array.
+        // Every descriptor begins with a `Header`, which describes
+        // which `DescriptorType` follows in the next `count` elements.
+        // Start with an initial capacity of `bindings * 2` which is the
+        // minimum needed (1 for header, 1 for info).
+        let mut infos = Vec::with_capacity(op.bindings.len() * 2);
 
         for (index, binding) in op.bindings.iter().enumerate() {
             let Some(layout_binding) = self.bindings.get(index) else {
@@ -3064,122 +3083,104 @@ impl<'a> DescriptorSet<'a> {
                 );
             };
 
-            match &binding.resource {
-                WriteDescriptorResource::UniformBuffer(buffer)
-                | WriteDescriptorResource::StorageBuffer(buffer) => {
-                    if layout_binding.kind != super::DescriptorType::Uniform
-                        && layout_binding.kind != super::DescriptorType::Storage
-                    {
-                        panic!(
-                            "type missmatch at index {}: op = {:?}, layout = {:?}",
-                            index, buffer, layout_binding.kind,
-                        );
-                    }
-
-                    let buffer_info = vk::DescriptorBufferInfo::default()
-                        .buffer(buffer.buffer().buffer)
-                        .offset(buffer.offset())
-                        .range(buffer.len());
-
-                    buffer_infos.push(buffer_info);
+            let (kind, count) = match binding.resource {
+                WriteDescriptorResource::UniformBuffer(buffers) => {
+                    (DescriptorType::Uniform, buffers.len())
                 }
-                WriteDescriptorResource::Texture(texture) => {
-                    if layout_binding.kind != super::DescriptorType::Texture {
-                        panic!(
-                            "type missmatch at index {}: op = {:?}, layout = {:?}",
-                            index, texture, layout_binding.kind
-                        );
-                    }
-
-                    let info = vk::DescriptorImageInfo::default()
-                        .image_view(texture.view)
-                        .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        .sampler(vk::Sampler::null());
-                    image_infos.push(info);
+                WriteDescriptorResource::StorageBuffer(buffers) => {
+                    (DescriptorType::Storage, buffers.len())
                 }
-                WriteDescriptorResource::Sampler(sampler) => {
-                    if layout_binding.kind != super::DescriptorType::Sampler {
-                        panic!(
-                            "type missmatch at index {}: op = {:?}, layout = {:?}",
-                            index, sampler, layout_binding.kind
-                        );
-                    }
-
-                    let info = vk::DescriptorImageInfo::default()
-                        .sampler(sampler.sampler)
-                        .image_view(vk::ImageView::null());
-
-                    sampler_infos.push(info);
+                WriteDescriptorResource::Texture(textures) => {
+                    (DescriptorType::Texture, textures.len())
                 }
-                WriteDescriptorResource::TextureArray(textures) => {
-                    if layout_binding.kind != super::DescriptorType::Texture {
-                        panic!(
-                            "type missmatch at index {}: op = {:?}, layout = {:?}",
-                            index, textures, layout_binding.kind
-                        );
-                    }
+                WriteDescriptorResource::Sampler(samplers) => {
+                    (DescriptorType::Sampler, samplers.len())
+                }
+            };
 
-                    let mut infos = Vec::new();
-                    for texture in *textures {
+            assert_ne!(count, 0);
+            assert!(count <= layout_binding.count.get() as usize);
+
+            assert_eq!(
+                layout_binding.kind, kind,
+                "type missmatch at index {}: op = {:?}, layout = {:?}",
+                index, kind, layout_binding.kind,
+            );
+
+            infos.push(Info {
+                header: Header {
+                    binding: binding.binding,
+                    kind,
+                    count,
+                },
+            });
+
+            match binding.resource {
+                WriteDescriptorResource::UniformBuffer(buffers)
+                | WriteDescriptorResource::StorageBuffer(buffers) => {
+                    for buffer in buffers {
+                        let info = vk::DescriptorBufferInfo::default()
+                            .buffer(buffer.buffer().buffer)
+                            .offset(buffer.offset())
+                            .range(buffer.len());
+
+                        infos.push(Info { buffer: info });
+                    }
+                }
+                WriteDescriptorResource::Texture(textures) => {
+                    for texture in textures {
                         let info = vk::DescriptorImageInfo::default()
                             .image_view(texture.view)
                             .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                             .sampler(vk::Sampler::null());
-                        infos.push(info);
-                    }
 
-                    image_array_infos.push(infos);
+                        infos.push(Info { image: info });
+                    }
+                }
+                WriteDescriptorResource::Sampler(samplers) => {
+                    for sampler in samplers {
+                        let info = vk::DescriptorImageInfo::default()
+                            .sampler(sampler.sampler)
+                            .image_view(vk::ImageView::null());
+
+                        infos.push(Info { image: info });
+                    }
                 }
             }
         }
 
-        let mut writes = Vec::new();
+        let mut writes = Vec::with_capacity(op.bindings.len());
 
-        let mut next_buffer = 0;
-        let mut next_image = 0;
-        let mut next_sampler = 0;
-        let mut next_image_array = 0;
-        for binding in op.bindings {
+        let mut index = 0;
+        while index < infos.len() {
+            let header = unsafe { infos[index].header };
+            // Skip over header.
+            index += 1;
+
+            let descriptor_type = match header.kind {
+                DescriptorType::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
+                DescriptorType::Storage => vk::DescriptorType::STORAGE_BUFFER,
+                DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
+                DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
+            };
+
             let mut write = vk::WriteDescriptorSet::default()
                 .dst_set(self.set)
-                .dst_binding(binding.binding)
+                .dst_binding(header.binding)
                 .dst_array_element(0)
-                .descriptor_count(1);
+                // - `descriptorCount` must be greater than 0.
+                .descriptor_count(header.count as u32)
+                .descriptor_type(descriptor_type);
 
-            match &binding.resource {
-                WriteDescriptorResource::UniformBuffer(_) => {
-                    write = write
-                        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                        .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
-                    next_buffer += 1;
-                }
-                WriteDescriptorResource::StorageBuffer(_) => {
-                    write = write
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(core::slice::from_ref(&buffer_infos[next_buffer]));
-                    next_buffer += 1;
-                }
-                WriteDescriptorResource::Texture(_) => {
-                    write = write
-                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                        .image_info(core::slice::from_ref(&image_infos[next_image]));
-                    next_image += 1;
-                }
-                WriteDescriptorResource::Sampler(_) => {
-                    write = write
-                        .descriptor_type(vk::DescriptorType::SAMPLER)
-                        .image_info(core::slice::from_ref(&sampler_infos[next_sampler]));
-                    next_sampler += 1;
-                }
-                WriteDescriptorResource::TextureArray(_) => {
-                    write = write
-                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                        .image_info(&image_array_infos[next_image_array]);
-                    next_image_array += 1;
-                }
-            }
+            // Depending on the `descriptor_type` either `p_buffer_infos` or
+            // `p_image_infos` is used, the other one is ignored.
+            let ptr = infos[index..].as_ptr();
+            write.p_buffer_info = ptr.cast::<vk::DescriptorBufferInfo>();
+            write.p_image_info = ptr.cast::<vk::DescriptorImageInfo>();
 
-            writes.push(write)
+            // Jump over all infos of this descriptor and the header.
+            index += header.count;
+            writes.push(write);
         }
 
         unsafe {

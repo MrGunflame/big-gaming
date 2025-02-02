@@ -294,7 +294,6 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
     let buffer_views = ScratchBuffer::new(descriptor_set.buffers.len());
     let texture_views = ScratchBuffer::new(descriptor_set.textures.len());
     let texture_array_views = ScratchBuffer::new(descriptor_set.texture_arrays.len());
-    let texture_array_view_refs = ScratchBuffer::new(descriptor_set.texture_arrays.len());
 
     for (binding, id) in &descriptor_set.buffers {
         let buffer = resources.buffers.get(*id).unwrap();
@@ -305,13 +304,13 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
             DescriptorType::Uniform => {
                 bindings.push(WriteDescriptorBinding {
                     binding: *binding,
-                    resource: WriteDescriptorResource::UniformBuffer(&*view),
+                    resource: WriteDescriptorResource::UniformBuffer(core::slice::from_ref(view)),
                 });
             }
             DescriptorType::Storage => {
                 bindings.push(WriteDescriptorBinding {
                     binding: *binding,
-                    resource: WriteDescriptorResource::StorageBuffer(&*view),
+                    resource: WriteDescriptorResource::StorageBuffer(core::slice::from_ref(view)),
                 });
             }
             _ => unreachable!(),
@@ -337,7 +336,7 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
 
         bindings.push(WriteDescriptorBinding {
             binding: *binding,
-            resource: WriteDescriptorResource::Texture(view),
+            resource: WriteDescriptorResource::Texture(core::slice::from_ref(view)),
         });
     }
 
@@ -345,7 +344,7 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         let sampler = resources.samplers.get(*id).unwrap();
         bindings.push(WriteDescriptorBinding {
             binding: *binding,
-            resource: WriteDescriptorResource::Sampler(&sampler.inner),
+            resource: WriteDescriptorResource::Sampler(core::slice::from_ref(&sampler.inner)),
         });
     }
 
@@ -369,12 +368,9 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
             });
         }
 
-        let view_refs = views.iter_mut().map(|v| &*v).collect::<Vec<_>>();
-        let view_refs = texture_array_view_refs.insert(view_refs);
-
         bindings.push(WriteDescriptorBinding {
             binding: *binding,
-            resource: WriteDescriptorResource::TextureArray(&*view_refs),
+            resource: WriteDescriptorResource::Texture(views.as_slice()),
         });
     }
 
@@ -383,7 +379,6 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         bindings: &bindings,
     });
 
-    drop(texture_array_view_refs);
     descriptor_set.physical_texture_views.extend(texture_views);
     for texture_views in texture_array_views {
         descriptor_set.physical_texture_views.extend(texture_views);
