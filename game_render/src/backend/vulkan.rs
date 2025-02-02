@@ -698,6 +698,7 @@ impl Adapter {
             max_descriptor_set_storage_buffers: props.limits.max_descriptor_set_storage_buffers,
             max_descriptor_set_uniform_buffers: props.limits.max_descriptor_set_uniform_buffers,
             max_color_attachments: props.limits.max_color_attachments,
+            non_coherent_atom_size: props.limits.non_coherent_atom_size,
         }
     }
 }
@@ -2966,6 +2967,53 @@ impl DeviceMemory {
                 .unwrap();
         }
     }
+
+    pub fn flush<R>(&mut self, range: R) -> Result<(), Error>
+    where
+        R: RangeBounds<u64>,
+    {
+        // Emit an SFENCE instruction.
+        // Ensure that all prior stores are made visible.
+        // This step is explicitly required by the Vulkan spec and not
+        // handled by the driver.
+        #[cfg(target_arch = "x86_64")]
+        unsafe {
+            core::arch::x86_64::_mm_sfence();
+        }
+
+        if self.flags.contains(MemoryTypeFlags::HOST_COHERENT) {
+            return Ok(());
+        }
+
+        let mut start = range.start(0);
+        let mut end = range.end(self.size.get());
+
+        // Round down `start` to the next multiple of `nonCoherentAtomSize`.
+        // Round up `end` to the next multiple of `nonCoherentAtomSize`.
+        let non_coherent_atom_size = self.device.limits.non_coherent_atom_size;
+        start = start & !(non_coherent_atom_size - 1);
+        end = (end + non_coherent_atom_size - 1) & !(non_coherent_atom_size - 1);
+        // Clamp at memory size.
+        end = u64::min(end, self.size.get());
+
+        let offset = start;
+        let size = end - start;
+
+        // TODO: `offset`..`size` must specify a currently mapped memory range.
+
+        let range = vk::MappedMemoryRange::default()
+            .memory(self.memory)
+            // - `offset` must be a multiple of `nonCoherentAtomSize`.
+            .offset(offset)
+            // - `size` must either be a multiple of `nonCoherentAtomSize` or `offset + size` must be equal
+            // to the size of the `memory`.
+            .size(size);
+
+        unsafe {
+            self.device.flush_mapped_memory_ranges(&[range])?;
+        }
+        Ok(())
+    }
 }
 
 impl Drop for DeviceMemory {
@@ -3442,16 +3490,37 @@ struct DeviceLimits {
     max_descriptor_set_storage_buffers: u32,
     max_descriptor_set_sampled_images: u32,
     max_color_attachments: u32,
+    /// Is always a power of two.
+    non_coherent_atom_size: u64,
 }
 
 trait RangeBoundsExt {
     fn into_offset_size(self, upper_bound: u64) -> (u64, u64);
+
+    fn start(&self, lower_bound: u64) -> u64;
+    fn end(&self, upper_bound: u64) -> u64;
 }
 
 impl<T> RangeBoundsExt for T
 where
     T: RangeBounds<u64>,
 {
+    fn start(&self, lower_bound: u64) -> u64 {
+        match self.start_bound() {
+            Bound::Included(start) => *start,
+            Bound::Excluded(start) => *start + 1,
+            Bound::Unbounded => lower_bound,
+        }
+    }
+
+    fn end(&self, upper_bound: u64) -> u64 {
+        match self.end_bound() {
+            Bound::Included(end) => *end + 1,
+            Bound::Excluded(end) => *end,
+            Bound::Unbounded => upper_bound,
+        }
+    }
+
     fn into_offset_size(self, upper_bound: u64) -> (u64, u64) {
         let start = match self.start_bound() {
             Bound::Included(start) => *start,
