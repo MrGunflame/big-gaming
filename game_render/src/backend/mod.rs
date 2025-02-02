@@ -160,9 +160,13 @@ pub struct PushConstantRange {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum PrimitiveTopology {
     TriangleList,
     LineList,
+    PointList,
+    LineStrip,
+    TriangleStrip,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

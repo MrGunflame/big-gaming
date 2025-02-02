@@ -47,7 +47,7 @@ use glam::UVec2;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
-use crate::backend::{mip_level_size_2d, SurfaceFormat, TextureLayout};
+use crate::backend::{mip_level_size_2d, DescriptorType, SurfaceFormat, TextureLayout};
 
 use super::shader::{self, BindingInfo, BindingLocation, Shader};
 use super::{
@@ -672,6 +672,22 @@ impl Adapter {
             max_bound_descriptor_sets: props.limits.max_bound_descriptor_sets,
             max_memory_allocation_count: props.limits.max_memory_allocation_count,
             buffer_image_granularity: props.limits.buffer_image_granularity,
+            max_per_stage_descriptor_samplers: props.limits.max_per_stage_descriptor_samplers,
+            max_per_stage_descriptor_uniform_buffers: props
+                .limits
+                .max_per_stage_descriptor_uniform_buffers,
+            max_per_stage_descriptor_storage_buffers: props
+                .limits
+                .max_per_stage_descriptor_storage_buffers,
+            max_per_stage_descriptor_sampled_images: props
+                .limits
+                .max_per_stage_descriptor_sampled_images,
+            max_per_stage_resources: props.limits.max_per_stage_resources,
+            max_descriptor_set_sampled_images: props.limits.max_descriptor_set_sampled_images,
+            max_descriptor_set_samplers: props.limits.max_descriptor_set_samplers,
+            max_descriptor_set_storage_buffers: props.limits.max_descriptor_set_storage_buffers,
+            max_descriptor_set_uniform_buffers: props.limits.max_descriptor_set_uniform_buffers,
+            max_color_attachments: props.limits.max_color_attachments,
         }
     }
 }
@@ -1052,9 +1068,9 @@ impl Device {
         }
     }
 
-    pub unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule {
+    unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule {
         // Code size must be greater than 0.
-        assert!(code.len() != 0);
+        debug_assert!(code.len() != 0);
 
         let info = ShaderModuleCreateInfo::default().code(code);
 
@@ -1109,6 +1125,44 @@ impl Device {
             .map(|layout| layout.layout)
             .collect::<Vec<_>>();
 
+        let mut samplers = 0;
+        let mut uniform_buffers = 0;
+        let mut storage_buffers = 0;
+        let mut textures = 0;
+        for layout in descriptor.descriptors {
+            for binding in &layout.bindings {
+                let count = binding.count.get();
+                match binding.kind {
+                    // Equivalent to SAMPLER
+                    DescriptorType::Sampler => samplers += count,
+                    // Equivalent to UNIFORM_BUFFER
+                    DescriptorType::Uniform => uniform_buffers += count,
+                    // Equivalent to STORAGE_BUFFER
+                    DescriptorType::Storage => storage_buffers += count,
+                    // Equivalent to SAMPLED_IMAGE
+                    DescriptorType::Texture => textures += count,
+                }
+            }
+        }
+
+        // These must be true accross all pipeline stages.
+        assert!(samplers <= self.device.limits.max_descriptor_set_samplers);
+        assert!(uniform_buffers <= self.device.limits.max_descriptor_set_uniform_buffers);
+        assert!(storage_buffers <= self.device.limits.max_descriptor_set_storage_buffers);
+        assert!(textures <= self.device.limits.max_descriptor_set_sampled_images);
+
+        // These must only be true for each pipeline stage individually.
+        // FIXME: Right now count all descriptors in all pipeline stages,
+        // which is more restrictive that necessary.
+        assert!(samplers <= self.device.limits.max_per_stage_descriptor_samplers);
+        assert!(uniform_buffers <= self.device.limits.max_per_stage_descriptor_uniform_buffers);
+        assert!(storage_buffers <= self.device.limits.max_per_stage_descriptor_storage_buffers);
+        assert!(textures <= self.device.limits.max_per_stage_descriptor_sampled_images);
+        assert!(
+            samplers + uniform_buffers + storage_buffers + textures
+                <= self.device.limits.max_per_stage_resources
+        );
+
         let push_constant_ranges = descriptor
             .push_constant_ranges
             .iter()
@@ -1154,6 +1208,17 @@ impl Device {
 
         let mut stages = Vec::new();
         let mut color_attchment_formats: Vec<Format> = Vec::new();
+
+        // We need exactly one `VK_SHADER_STAGE_VERTEX_BIT` or `VK_SHADER_STAGE_MESH_BIT_EXT` stage.
+        assert_eq!(
+            descriptor
+                .stages
+                .iter()
+                .filter(|stage| matches!(stage, PipelineStage::Vertex(_)))
+                .count(),
+            1,
+            "Exactly one VERTEX or MESH shader stage is needed",
+        );
 
         let shader_modules = ScratchBuffer::new(descriptor.stages.len());
         let stage_entry_pointers = ScratchBuffer::new(descriptor.stages.len());
@@ -1272,6 +1337,7 @@ impl Device {
                 .max_depth_bounds(1.0)
         });
 
+        assert!(color_attchment_formats.len() <= self.device.limits.max_color_attachments as usize);
         let mut rendering_info = PipelineRenderingCreateInfo::default()
             // - `colorAttachmentCount` must be less than `VkPhysicalDeviceLimits::maxColorAttachments`.
             .color_attachment_formats(&color_attchment_formats);
@@ -1885,6 +1951,9 @@ impl From<super::PrimitiveTopology> for PrimitiveTopology {
         match value {
             super::PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
             super::PrimitiveTopology::LineList => Self::LINE_LIST,
+            super::PrimitiveTopology::PointList => Self::POINT_LIST,
+            super::PrimitiveTopology::LineStrip => Self::LINE_STRIP,
+            super::PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
         }
     }
 }
@@ -3352,6 +3421,16 @@ struct DeviceLimits {
     max_memory_allocation_count: u32,
     /// Is always a power of two.
     buffer_image_granularity: u64,
+    max_per_stage_descriptor_samplers: u32,
+    max_per_stage_descriptor_uniform_buffers: u32,
+    max_per_stage_descriptor_storage_buffers: u32,
+    max_per_stage_descriptor_sampled_images: u32,
+    max_per_stage_resources: u32,
+    max_descriptor_set_samplers: u32,
+    max_descriptor_set_uniform_buffers: u32,
+    max_descriptor_set_storage_buffers: u32,
+    max_descriptor_set_sampled_images: u32,
+    max_color_attachments: u32,
 }
 
 trait RangeBoundsExt {
