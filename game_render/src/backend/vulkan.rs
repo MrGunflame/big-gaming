@@ -340,12 +340,16 @@ impl Instance {
         display: RawDisplayHandle,
         window: RawWindowHandle,
     ) -> Result<Surface, Error> {
-        assert!(self.extensions.surface);
+        if self.extensions.surface {
+            return Err(Error::UnsupportedSurface);
+        }
 
         let surface = match (display, window) {
             #[cfg(all(unix, feature = "wayland"))]
             (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(window)) => {
-                assert!(self.extensions.surface_wayland);
+                if !self.extensions.surface_wayland {
+                    return Err(Error::UnsupportedSurface);
+                }
 
                 let info = vk::WaylandSurfaceCreateInfoKHR::default()
                     // - `display` must be a valid Wayland `wl_display`.
@@ -361,7 +365,9 @@ impl Instance {
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
-                assert!(self.extensions.surface_xcb);
+                if self.extensions.surface_xcb {
+                    return Err(Error::UnsupportedSurface);
+                }
 
                 let info = vk::XcbSurfaceCreateInfoKHR::default()
                     // - `connection` must point to a valid X11 `xcb_connection_t`.
@@ -377,7 +383,9 @@ impl Instance {
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
-                assert!(self.extensions.surface_xlib);
+                if self.extensions.surface_xlib {
+                    return Err(Error::UnsupportedSurface);
+                }
 
                 let info = vk::XlibSurfaceCreateInfoKHR::default()
                     // - `dpy` must point to a valid Xlib `Display`.
@@ -393,7 +401,9 @@ impl Instance {
             }
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
-                assert!(self.extensions.surface_win32);
+                if self.extensions.surface_win32 {
+                    return Err(Error::UnsupportedSurface);
+                }
 
                 let info = vk::Win32SurfaceCreateInfoKHR::default()
                     // - `hinstance` must be a valid Win32 `HINSTANCE`.
@@ -407,7 +417,7 @@ impl Instance {
                     ash::khr::win32_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_win32_surface(&info, None)? }
             }
-            _ => todo!(),
+            _ => return Err(Error::UnsupportedSurface),
         };
 
         Ok(Surface {
