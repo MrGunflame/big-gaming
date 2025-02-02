@@ -189,9 +189,8 @@ impl Region {
     }
 }
 
-const MIN_SIZE: NonZeroU64 = NonZeroU64::new(8192).unwrap();
-// const MAX_SIZE: NonZeroU64 = NonZeroU64::new(u32::MAX as u64 + 1).unwrap();
-const MAX_SIZE: NonZeroU64 = NonZeroU64::new(1 << 28).unwrap();
+const MIN_SIZE: NonZeroU64 = NonZeroU64::new(1_048_576).unwrap();
+const MAX_SIZE: NonZeroU64 = NonZeroU64::new(4_294_967_296).unwrap();
 const GROWTH_FACTOR: NonZeroU64 = NonZeroU64::new(2).unwrap();
 
 #[derive(Clone, Debug)]
@@ -307,95 +306,24 @@ impl GeneralPurposeAllocator {
             });
         }
 
-        for mem_typ in req.memory_types {
+        for &mem_typ in &req.memory_types {
             let host_visible = self.manager.properties().types[mem_typ as usize]
                 .flags
                 .contains(MemoryTypeFlags::HOST_VISIBLE);
 
-            // Note: entry API does not work since we need to borrow inner
-            // multiple times, so we use contains_key and get instead.
-            if !inner.pools.contains_key(&mem_typ) {
-                let size = core::cmp::max(MIN_SIZE, req.size.checked_next_power_of_two().unwrap());
-                let Ok(mut memory) = self.manager.allocate(size, mem_typ) else {
-                    continue;
-                };
-                let memory_host_ptr = if host_visible {
-                    unsafe { memory.map(..).as_mut_ptr() }
-                } else {
-                    core::ptr::null_mut()
-                };
-                let mut blocks = Slab::new();
-                let last = blocks.insert(Block {
-                    memory: Arc::new(memory),
-                    allocator: BuddyAllocator::new(Region {
-                        offset: 0,
-                        size: MIN_SIZE.get() as usize,
-                    }),
-                    num_allocs: 0,
-                    size,
-                    memory_host_ptr,
-                });
+            let pool = inner
+                .pools
+                .entry(mem_typ)
+                .or_insert_with(|| Pool::new(mem_typ));
 
-                inner.pools.insert(mem_typ, Pool { blocks, last });
-            }
-
-            let pool = inner.pools.get_mut(&mem_typ).unwrap();
-
-            for (block_index, block) in &mut pool.blocks {
-                let Some(region) = block.alloc(req.size, req.align) else {
-                    continue;
-                };
-
-                return DeviceMemoryRegion {
-                    allocator: self.clone(),
-                    memory: block.memory.clone(),
-                    region,
-                    memory_type: mem_typ,
-                    block_index,
-                    memory_host_ptr: block.memory_host_ptr,
-                };
-            }
-
-            let prev_size = pool.blocks[pool.last].size;
-            let new_size = core::cmp::max(
-                prev_size.saturating_mul(GROWTH_FACTOR),
-                req.size.checked_next_power_of_two().unwrap(),
-            )
-            .min(MAX_SIZE);
-            let Ok(mut memory) = self.manager.allocate(new_size, mem_typ) else {
-                continue;
-            };
-
-            let memory_host_ptr = if host_visible {
-                unsafe { memory.map(..).as_mut_ptr() }
-            } else {
-                core::ptr::null_mut()
-            };
-
-            let block = Block {
-                allocator: BuddyAllocator::new(Region {
-                    offset: 0,
-                    size: new_size.get() as usize,
-                }),
-                memory: Arc::new(memory),
-                num_allocs: 0,
-                size: new_size,
-                memory_host_ptr,
-            };
-            pool.last = pool.blocks.insert(block);
-
-            let block = &mut pool.blocks[pool.last];
-            let Some(region) = block.alloc(req.size, req.align) else {
-                continue;
-            };
-
+            let allocation = pool.alloc(&self.manager, &req, host_visible).unwrap();
             return DeviceMemoryRegion {
                 allocator: self.clone(),
-                memory: block.memory.clone(),
-                region,
-                memory_type: mem_typ,
-                block_index: pool.last,
-                memory_host_ptr: block.memory_host_ptr,
+                memory: allocation.memory.clone(),
+                region: allocation.region,
+                memory_type: allocation.memory.memory_type,
+                block_index: allocation.block_index,
+                memory_host_ptr: allocation.memory_host_ptr,
             };
         }
 
@@ -408,26 +336,13 @@ impl GeneralPurposeAllocator {
         let mut inner = self.inner.lock();
 
         let pool = inner.pools.get_mut(&mem_typ).unwrap();
-        let block = pool.blocks.get_mut(block_index).unwrap();
 
         unsafe {
-            block.allocator.dealloc(region);
+            pool.dealloc(block_index, region);
         }
 
-        block.num_allocs -= 1;
-        if block.num_allocs != 0 {
-            return;
-        }
-
-        pool.blocks.remove(block_index);
-        if block_index == pool.last {
-            pool.last = match pool.blocks.iter().map(|(index, _)| index).last() {
-                Some(v) => v,
-                None => {
-                    inner.pools.remove(&mem_typ);
-                    return;
-                }
-            };
+        if pool.blocks.is_empty() {
+            inner.pools.remove(&mem_typ);
         }
     }
 }
@@ -440,7 +355,95 @@ struct GpAllocatorInner {
 #[derive(Debug)]
 struct Pool {
     blocks: Slab<Block>,
-    last: usize,
+    next_block_size: NonZeroU64,
+    memory_type: u32,
+}
+
+impl Pool {
+    fn new(memory_type: u32) -> Self {
+        Self {
+            blocks: Slab::new(),
+            next_block_size: MIN_SIZE,
+            memory_type,
+        }
+    }
+
+    fn alloc(
+        &mut self,
+        manager: &MemoryManager,
+        req: &MemoryRequirements,
+        host_visible: bool,
+    ) -> Result<PoolAllocation, AllocError> {
+        for (block_index, block) in &mut self.blocks {
+            let Some(region) = block.alloc(req.size, req.align) else {
+                continue;
+            };
+
+            return Ok(PoolAllocation {
+                memory: block.memory.clone(),
+                region,
+                block_index,
+                memory_host_ptr: block.memory_host_ptr,
+            });
+        }
+
+        let block_size = core::cmp::max(
+            self.next_block_size,
+            req.size.checked_next_power_of_two().unwrap(),
+        );
+        self.next_block_size = block_size.saturating_mul(GROWTH_FACTOR).min(MAX_SIZE);
+
+        let mut memory = manager.allocate(block_size, self.memory_type)?;
+        let memory_host_ptr = if host_visible {
+            unsafe { memory.map(..).as_mut_ptr() }
+        } else {
+            core::ptr::null_mut()
+        };
+
+        let block_index = self.blocks.insert(Block {
+            memory: Arc::new(memory),
+            allocator: BuddyAllocator::new(Region {
+                offset: 0,
+                size: block_size.get() as usize,
+            }),
+            num_allocs: 0,
+            size: block_size,
+            memory_host_ptr,
+        });
+        let block = &mut self.blocks[block_index];
+
+        let region = block.alloc(req.size, req.align).unwrap();
+
+        Ok(PoolAllocation {
+            memory: block.memory.clone(),
+            region,
+            block_index,
+            memory_host_ptr: block.memory_host_ptr,
+        })
+    }
+
+    unsafe fn dealloc(&mut self, block_index: usize, region: Region) {
+        let block = &mut self.blocks[block_index];
+
+        unsafe {
+            block.allocator.dealloc(region);
+        }
+
+        block.num_allocs -= 1;
+        if block.num_allocs != 0 {
+            return;
+        }
+
+        self.blocks.remove(block_index);
+    }
+}
+
+#[derive(Debug)]
+struct PoolAllocation {
+    memory: Arc<MemoryAllocation>,
+    region: Region,
+    block_index: usize,
+    memory_host_ptr: *mut u8,
 }
 
 #[derive(Debug)]

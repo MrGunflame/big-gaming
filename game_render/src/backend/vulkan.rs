@@ -340,7 +340,7 @@ impl Instance {
         display: RawDisplayHandle,
         window: RawWindowHandle,
     ) -> Result<Surface, Error> {
-        if self.extensions.surface {
+        if !self.extensions.surface {
             return Err(Error::UnsupportedSurface);
         }
 
@@ -365,7 +365,7 @@ impl Instance {
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
-                if self.extensions.surface_xcb {
+                if !self.extensions.surface_xcb {
                     return Err(Error::UnsupportedSurface);
                 }
 
@@ -383,7 +383,7 @@ impl Instance {
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
-                if self.extensions.surface_xlib {
+                if !self.extensions.surface_xlib {
                     return Err(Error::UnsupportedSurface);
                 }
 
@@ -401,7 +401,7 @@ impl Instance {
             }
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
-                if self.extensions.surface_win32 {
+                if !self.extensions.surface_win32 {
                     return Err(Error::UnsupportedSurface);
                 }
 
