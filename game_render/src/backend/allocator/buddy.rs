@@ -157,7 +157,7 @@ impl Allocator for BuddyAllocator {
             let other = if index == left { right } else { left };
             debug_assert_ne!(index, other);
 
-            // If our boddy is not free we cannot merge any further.
+            // If our buddy is not free we cannot merge any further.
             if !self.blocks[other].state.is_free() {
                 break;
             }

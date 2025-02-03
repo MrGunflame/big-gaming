@@ -258,10 +258,6 @@ impl GeneralPurposeAllocator {
     pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
         let _span = trace_span!("GeneralPurposeAllocator::alloc").entered();
 
-        if req.size >= MAX_SIZE {
-            panic!("{:?}", req.size);
-        }
-
         let inner = &mut *self.inner.lock();
 
         let host_visible = flags.contains(UsageFlags::HOST_VISIBLE);
@@ -322,15 +318,15 @@ impl GeneralPurposeAllocator {
                 memory: allocation.memory.clone(),
                 region: allocation.region,
                 memory_type: allocation.memory.memory_type,
-                block_index: allocation.block_index,
                 memory_host_ptr: allocation.memory_host_ptr,
+                strategy: allocation.strategy,
             };
         }
 
         todo!()
     }
 
-    unsafe fn dealloc(&self, mem_typ: u32, block_index: usize, region: Region) {
+    unsafe fn dealloc(&self, mem_typ: u32, strategy: Strategy, region: Region) {
         let _span = trace_span!("GeneralPurposeAllocator::dealloc").entered();
 
         let mut inner = self.inner.lock();
@@ -338,10 +334,10 @@ impl GeneralPurposeAllocator {
         let pool = inner.pools.get_mut(&mem_typ).unwrap();
 
         unsafe {
-            pool.dealloc(block_index, region);
+            pool.dealloc(strategy, region);
         }
 
-        if pool.blocks.is_empty() {
+        if pool.is_empty() {
             inner.pools.remove(&mem_typ);
         }
     }
@@ -357,6 +353,7 @@ struct Pool {
     blocks: Slab<Block>,
     next_block_size: NonZeroU64,
     memory_type: u32,
+    dedicated_allocs: usize,
 }
 
 impl Pool {
@@ -365,7 +362,12 @@ impl Pool {
             blocks: Slab::new(),
             next_block_size: MIN_SIZE,
             memory_type,
+            dedicated_allocs: 0,
         }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.blocks.is_empty() && self.dedicated_allocs == 0
     }
 
     fn alloc(
@@ -374,6 +376,24 @@ impl Pool {
         req: &MemoryRequirements,
         host_visible: bool,
     ) -> Result<PoolAllocation, AllocError> {
+        if req.size.get() > MAX_SIZE.get() {
+            let mut memory = manager.allocate(req.size, self.memory_type)?;
+            let memory_host_ptr = if host_visible {
+                unsafe { memory.map(..).as_mut_ptr() }
+            } else {
+                core::ptr::null_mut()
+            };
+
+            self.dedicated_allocs += 1;
+
+            return Ok(PoolAllocation {
+                region: Region::new(0, memory.size.get() as usize),
+                memory: Arc::new(memory),
+                memory_host_ptr,
+                strategy: Strategy::Dedicated,
+            });
+        }
+
         for (block_index, block) in &mut self.blocks {
             let Some(region) = block.alloc(req.size, req.align) else {
                 continue;
@@ -382,8 +402,8 @@ impl Pool {
             return Ok(PoolAllocation {
                 memory: block.memory.clone(),
                 region,
-                block_index,
                 memory_host_ptr: block.memory_host_ptr,
+                strategy: Strategy::Block { block_index },
             });
         }
 
@@ -417,24 +437,31 @@ impl Pool {
         Ok(PoolAllocation {
             memory: block.memory.clone(),
             region,
-            block_index,
             memory_host_ptr: block.memory_host_ptr,
+            strategy: Strategy::Block { block_index },
         })
     }
 
-    unsafe fn dealloc(&mut self, block_index: usize, region: Region) {
-        let block = &mut self.blocks[block_index];
+    unsafe fn dealloc(&mut self, strategy: Strategy, region: Region) {
+        match strategy {
+            Strategy::Block { block_index } => {
+                let block = &mut self.blocks[block_index];
 
-        unsafe {
-            block.allocator.dealloc(region);
+                unsafe {
+                    block.allocator.dealloc(region);
+                }
+
+                block.num_allocs -= 1;
+                if block.num_allocs != 0 {
+                    return;
+                }
+
+                self.blocks.remove(block_index);
+            }
+            Strategy::Dedicated => {
+                self.dedicated_allocs -= 1;
+            }
         }
-
-        block.num_allocs -= 1;
-        if block.num_allocs != 0 {
-            return;
-        }
-
-        self.blocks.remove(block_index);
     }
 }
 
@@ -442,8 +469,14 @@ impl Pool {
 struct PoolAllocation {
     memory: Arc<MemoryAllocation>,
     region: Region,
-    block_index: usize,
+    strategy: Strategy,
     memory_host_ptr: *mut u8,
+}
+
+#[derive(Copy, Clone, Debug)]
+enum Strategy {
+    Block { block_index: usize },
+    Dedicated,
 }
 
 #[derive(Debug)]
@@ -477,9 +510,9 @@ pub struct DeviceMemoryRegion {
     memory: Arc<MemoryAllocation>,
     region: Region,
     memory_type: u32,
-    block_index: usize,
     /// Pointer to host mapped memory. This pointer starts at memory, not at this region.
     memory_host_ptr: *mut u8,
+    strategy: Strategy,
 }
 
 // We lose the `Send` impl because of `memory_host_ptr`, but
@@ -498,7 +531,7 @@ impl Drop for DeviceMemoryRegion {
     fn drop(&mut self) {
         unsafe {
             self.allocator
-                .dealloc(self.memory_type, self.block_index, self.region);
+                .dealloc(self.memory_type, self.strategy, self.region);
         }
     }
 }
