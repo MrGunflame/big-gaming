@@ -9,6 +9,7 @@ use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::thread;
 use std::time::{self, Duration};
 
 use ash::ext::debug_utils;
@@ -1656,6 +1657,10 @@ impl SurfaceShared {
 
 impl Drop for SurfaceShared {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         let instance =
             ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
 
@@ -1865,6 +1870,10 @@ impl Swapchain {
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         let device =
             ash::khr::swapchain::Device::new(&self.surface.instance.instance, &self.device.device);
         unsafe {
@@ -2093,6 +2102,10 @@ pub struct ShaderModule {
 
 impl Drop for ShaderModule {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.device.destroy_shader_module(self.shader, None);
         }
@@ -2109,6 +2122,10 @@ pub struct Pipeline {
 
 impl Drop for Pipeline {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.device.destroy_pipeline(self.pipeline, None);
             self.device
@@ -2184,6 +2201,10 @@ impl CommandPool {
 
 impl Drop for CommandPool {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         // Deallocate the command buffers of this pool:
         // https://registry.khronos.org/vulkan/specs/latest/man/html/vkFreeCommandBuffers.html
         // Safety:
@@ -2674,6 +2695,10 @@ impl Semaphore {}
 
 impl Drop for Semaphore {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.device.destroy_semaphore(self.semaphore, None);
         }
@@ -2788,6 +2813,10 @@ impl Texture {
 
 impl Drop for Texture {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         if self.destroy_on_drop {
             unsafe {
                 self.device.device.destroy_image(self.image, None);
@@ -2856,6 +2885,10 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.destroy_buffer(self.buffer, None);
         }
@@ -3018,6 +3051,10 @@ impl DeviceMemory {
 
 impl Drop for DeviceMemory {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.free_memory(self.memory, None);
         }
@@ -3049,6 +3086,10 @@ impl DescriptorSetLayout {
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.destroy_descriptor_set_layout(self.layout, None);
         }
@@ -3318,6 +3359,10 @@ impl Fence {
 
 impl Drop for Fence {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.destroy_fence(self.fence, None);
         }
@@ -3332,6 +3377,10 @@ pub struct Sampler {
 
 impl Drop for Sampler {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.destroy_sampler(self.sampler, None);
         }
@@ -3418,6 +3467,10 @@ impl Deref for InstanceShared {
 
 impl Drop for InstanceShared {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         if let Some(messenger) = self.messenger.take() {
             unsafe {
                 let instance = debug_utils::Instance::new(&self.entry, &self.instance);
@@ -3467,6 +3520,10 @@ impl Deref for DeviceShared {
 
 impl Drop for DeviceShared {
     fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
         unsafe {
             self.device.destroy_device(None);
         }
