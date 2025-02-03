@@ -233,6 +233,10 @@ impl Renderer {
         self.render_thread
             .send(Command::UpdateSurface(id, SurfaceConfig { size }));
 
+        if let Some(parker) = self.parker.take() {
+            parker.park();
+        }
+
         // Resize all cameras that are linked to the surface handle.
         // Technically this will happend before the actual surface is resized,
         // but this should be considered a rare case anyway, so we can afford

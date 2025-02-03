@@ -148,7 +148,7 @@ impl RenderThread {
 
         for (fence, used) in &mut surface.ready {
             if *used {
-                fence.wait(None);
+                fence.wait(None).unwrap();
                 *used = false;
             }
         }
