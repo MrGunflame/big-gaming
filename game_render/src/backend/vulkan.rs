@@ -1,3 +1,4 @@
+use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{c_void, CStr, CString};
@@ -45,6 +46,7 @@ use ash::Entry;
 use bitflags::bitflags;
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
+use naga::back;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
@@ -3411,26 +3413,20 @@ extern "system" fn debug_callback(
         None => Cow::Borrowed("(no message)"),
     };
 
-    let backtrace = std::backtrace::Backtrace::force_capture();
-
     match severity {
         DebugUtilsMessageSeverityFlagsEXT::ERROR => {
-            println!("{:?} {} {}", typ, message, backtrace);
-            panic!();
+            let backtrace = Backtrace::force_capture();
+            tracing::error!("[{:?}]: {}\n{}", typ, message, backtrace);
+            panic!("abort due to prior validation error");
         }
         DebugUtilsMessageSeverityFlagsEXT::WARNING => {
-            println!("{:?} {}", typ, message);
+            tracing::warn!("[{:?}]: {}", typ, message);
         }
-        DebugUtilsMessageSeverityFlagsEXT::INFO => {
-            println!("{:?} {}", typ, message);
-        }
-        DebugUtilsMessageSeverityFlagsEXT::VERBOSE | _ => {
-            println!("{:?} {}", typ, message);
-        }
+        _ => (),
     }
 
     // The application should always return `VK_FALSE`.
-    FALSE
+    vk::FALSE
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
