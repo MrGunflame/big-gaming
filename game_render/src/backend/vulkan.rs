@@ -8,7 +8,7 @@ use std::mem::ManuallyDrop;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::{self, Duration};
@@ -47,6 +47,7 @@ use bitflags::bitflags;
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
 use naga::back;
+use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
@@ -58,7 +59,7 @@ use super::{
     BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
     DescriptorSetDescriptor, Face, FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryHeapFlags,
     MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
-    PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueSubmit,
+    PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueFamilyId, QueueSubmit,
     RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStage, ShaderStages,
     StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
     TextureUsage, TextureViewDescriptor, WriteDescriptorResource, WriteDescriptorResources,
@@ -156,6 +157,8 @@ pub enum Error {
     OutOfPoolMemory,
     #[error("no allocations left")]
     NoAllocationsLeft,
+    #[error("no queue left")]
+    NoQueueLeft,
     #[error("missing layer: {0:?}")]
     MissingLayer(&'static CStr),
     #[error("missing extension: {0:?}")]
@@ -322,18 +325,24 @@ impl Instance {
         })
     }
 
-    pub fn adapters(&self) -> Vec<Adapter> {
-        let physical_devices = unsafe { self.instance.enumerate_physical_devices().unwrap() };
-        physical_devices
+    /// Returns a list of all physical [`Adapter`]s available.
+    pub fn adapters(&self) -> Result<Vec<Adapter>, Error> {
+        let physical_devices = unsafe { self.instance.enumerate_physical_devices()? };
+        Ok(physical_devices
             .into_iter()
             .map(|physical_device| Adapter {
                 instance: self.instance.clone(),
                 physical_device,
             })
-            .collect()
+            .collect())
     }
 
     /// Creates a new [`Surface`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if `display` or `window` reference an unsupported handle type or
+    /// creation of the [`Surface`] fails.
     ///
     /// # Safety
     ///
@@ -470,6 +479,7 @@ impl Instance {
     }
 }
 
+/// A physical graphics device.
 #[derive(Debug)]
 pub struct Adapter {
     instance: Arc<InstanceShared>,
@@ -477,6 +487,7 @@ pub struct Adapter {
 }
 
 impl Adapter {
+    /// Queries and returns general metadata about this `Adapter`.
     pub fn properties(&self) -> AdapterProperties {
         let properties = unsafe {
             self.instance
@@ -501,6 +512,7 @@ impl Adapter {
         AdapterProperties { name, kind }
     }
 
+    /// Queries and returns information about this `Adapter`'s memories.
     pub fn memory_properties(&self) -> AdapterMemoryProperties {
         let props = unsafe {
             self.instance
@@ -566,6 +578,7 @@ impl Adapter {
         AdapterMemoryProperties { heaps, types }
     }
 
+    /// Queries and returns the queue families that can be created on this `Adapter`.
     pub fn queue_families(&self) -> Vec<QueueFamily> {
         let queue_families = unsafe {
             self.instance
@@ -581,10 +594,14 @@ impl Adapter {
 
                 if queue.queue_flags.contains(QueueFlags::GRAPHICS) {
                     capabilities |= QueueCapabilities::GRAPHICS;
+                    // Graphics queues always have transfer capabilities.
+                    capabilities |= QueueCapabilities::TRANSFER;
                 }
 
                 if queue.queue_flags.contains(QueueFlags::COMPUTE) {
                     capabilities |= QueueCapabilities::COMPUTE;
+                    // Compute queues always have transfer capabilities.
+                    capabilities |= QueueCapabilities::TRANSFER;
                 }
 
                 if queue.queue_flags.contains(QueueFlags::TRANSFER) {
@@ -592,7 +609,7 @@ impl Adapter {
                 }
 
                 QueueFamily {
-                    id: index as u32,
+                    id: QueueFamilyId(index as u32),
                     count: queue.queue_count,
                     capabilities,
                 }
@@ -600,12 +617,53 @@ impl Adapter {
             .collect()
     }
 
-    pub fn create_device(&self, queue_id: u32) -> Device {
-        let queue_priorities = &[1.0];
-        let queue_info = DeviceQueueCreateInfo::default()
-            .queue_family_index(queue_id)
-            .queue_priorities(queue_priorities);
-        let queue_infos = [queue_info];
+    pub fn create_device(&self, queue_families: &[QueueFamily]) -> Device {
+        let mut valid_queue_families = self.queue_families();
+
+        for (i1, q1) in queue_families.iter().enumerate() {
+            let Some(valid_queue) = valid_queue_families
+                .iter()
+                .find(|family| family.id == q1.id)
+            else {
+                panic!("Queue {:?} does not exist on this Device", queue_families);
+            };
+
+            assert!(
+                q1.count <= valid_queue.count,
+                "Cannot create more queues of family than exist"
+            );
+
+            // Every element in `queue_families` must be unique.
+            for (i2, q2) in queue_families.iter().enumerate() {
+                if i1 == i2 {
+                    continue;
+                }
+
+                assert_ne!(
+                    q1.id, q2.id,
+                    "queue {:?} used multiple times in create_device",
+                    q1,
+                );
+            }
+        }
+
+        let mut queue_count = queue_families
+            .iter()
+            .map(|family| family.count as usize)
+            .max()
+            .unwrap_or_default();
+        let queue_priorities = vec![1.0; queue_count];
+
+        let mut queue_infos = queue_families
+            .iter()
+            .map(|family| {
+                DeviceQueueCreateInfo::default()
+                    .queue_family_index(family.id.0)
+                    .queue_priorities(&queue_priorities[..family.count as usize])
+                    // - Must be equal to the flags used in `create_queue`.
+                    .flags(vk::DeviceQueueCreateFlags::empty())
+            })
+            .collect::<Vec<_>>();
 
         let mut layers = Vec::new();
         if self.instance.config.validation {
@@ -660,6 +718,18 @@ impl Adapter {
                 .unwrap()
         };
 
+        let queues = queue_families
+            .iter()
+            .flat_map(|family| {
+                (0..family.count).map(|index| QueueSlot {
+                    id: family.id,
+                    index,
+                    used: Mutex::new(false),
+                })
+            })
+            .collect::<Vec<_>>()
+            .into();
+
         Device {
             physical_device: self.physical_device,
             device: Arc::new(DeviceShared {
@@ -667,8 +737,8 @@ impl Adapter {
                 device,
                 limits: self.device_limits(),
                 memory_properties: self.memory_properties(),
-                queue_family_index: queue_id,
                 num_allocations: Arc::new(AtomicU32::new(0)),
+                queues,
             }),
         }
     }
@@ -713,19 +783,43 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn queue(&self) -> Queue {
+    /// Creates a new [`Queue`], bound to this `Device`.
+    pub fn create_queue(&mut self, family: QueueFamilyId) -> Result<Queue, Error> {
+        // Find a queue with the fitting `id` that is not yet
+        // marked as `used`.
+        let queue_index = self.device.queues.iter().find_map(|queue| {
+            if queue.id != family {
+                return None;
+            }
+
+            let mut used = queue.used.lock();
+            if !*used {
+                *used = true;
+                Some(queue.index)
+            } else {
+                None
+            }
+        });
+        let Some(queue_index) = queue_index else {
+            return Err(Error::NoQueueLeft);
+        };
+
         let info = DeviceQueueInfo2::default()
-            .queue_family_index(self.device.queue_family_index)
+            .queue_family_index(family.0)
             // Index is always 0 since we only create
             // a single queue for now.
-            .queue_index(0);
+            .queue_index(queue_index)
+            // - Must be equal to the flags used when calling `vkCreateDevice`.
+            .flags(vk::DeviceQueueCreateFlags::empty());
 
         let queue = unsafe { self.device.get_device_queue2(&info) };
 
-        Queue {
+        Ok(Queue {
             device: self.device.clone(),
             queue,
-        }
+            queue_family: family,
+            queue_index,
+        })
     }
 
     /// Creates a new [`Buffer`] with the given size and usage flags.
@@ -1400,25 +1494,55 @@ impl Device {
         }
     }
 
-    pub fn create_command_pool(&self) -> CommandPool {
+    /// Creates a new [`CommandPool`].
+    ///
+    /// The buffers allocated from that [`CommandPool`] may only be used in [`Queue`]s which match
+    /// the provided [`QueueFamilyId`].
+    pub fn create_command_pool(&self, queue_family: QueueFamilyId) -> Result<CommandPool, Error> {
+        if !self
+            .device
+            .queues
+            .iter()
+            .any(|queue| queue.id == queue_family)
+        {
+            panic!(
+                "Cannot create command pool for queue family {:?} which does not exist",
+                queue_family,
+            );
+        }
+
+        // All command buffers must only be used on queues with the given `queue_family`.
         let info = CommandPoolCreateInfo::default()
             .flags(CommandPoolCreateFlags::empty())
-            .queue_family_index(self.device.queue_family_index);
+            .queue_family_index(queue_family.0);
 
-        let pool = unsafe { self.device.create_command_pool(&info, None).unwrap() };
+        let pool = unsafe { self.device.create_command_pool(&info, None)? };
 
         let info = CommandBufferAllocateInfo::default()
             .command_pool(pool)
             .level(CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
-        let buffers = unsafe { self.device.allocate_command_buffers(&info).unwrap() };
 
-        CommandPool {
+        let buffers = match unsafe { self.device.allocate_command_buffers(&info) } {
+            Ok(buffers) => buffers,
+            Err(err) => {
+                // Destroy the previously created pool. It is not destroyed
+                // automatically in this function.
+                unsafe {
+                    self.device.destroy_command_pool(pool, None);
+                }
+
+                return Err(err.into());
+            }
+        };
+
+        Ok(CommandPool {
             device: self.device.clone(),
             pool,
             buffers,
             next_buffer: 0,
-        }
+            queue_family,
+        })
     }
 
     pub fn create_semaphore(&self) -> Semaphore {
@@ -1514,14 +1638,32 @@ impl Device {
 pub struct Queue {
     device: Arc<DeviceShared>,
     queue: vk::Queue,
+    queue_family: QueueFamilyId,
+    queue_index: u32,
 }
 
 impl Queue {
+    pub fn family(&self) -> QueueFamilyId {
+        self.queue_family
+    }
+
     pub fn submit<'a, T>(&mut self, buffers: T, cmd: QueueSubmit<'_>) -> Result<(), Error>
     where
         T: IntoIterator<Item = CommandBuffer<'a>>,
     {
-        let buffers: Vec<_> = buffers.into_iter().map(|buf| buf.buffer).collect();
+        let buffers: Vec<_> = buffers
+            .into_iter()
+            .map(|buf| {
+                assert_eq!(
+                    buf.queue_family, self.queue_family,
+                    "Queue with family {:?} cannot submit buffer allocated for queue family {:?}",
+                    self.queue_family, buf.queue_family,
+                );
+
+                buf.buffer
+            })
+            .collect();
+
         let wait_semaphores: Vec<_> = cmd
             .wait
             .iter()
@@ -1566,6 +1708,25 @@ impl Queue {
     }
 }
 
+impl Drop for Queue {
+    fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
+        for queue in self.device.queues.iter() {
+            if queue.id != self.queue_family || queue.index != self.queue_index {
+                continue;
+            }
+
+            // Release the queue by marking it as unused.
+            let mut used = queue.used.lock();
+            debug_assert!(*used);
+            *used = false;
+        }
+    }
+}
+
 #[derive(Debug)]
 struct SurfaceShared {
     instance: Arc<InstanceShared>,
@@ -1604,8 +1765,6 @@ impl SurfaceShared {
 
         assert!(caps.formats.contains(&config.format));
 
-        let queue_family_indices = [device.device.queue_family_index];
-
         let info = SwapchainCreateInfoKHR::default()
             // - Surface must be supported. This is checked by the call to `get_capabilities` above.
             .surface(self.surface)
@@ -1632,7 +1791,10 @@ impl SurfaceShared {
             // `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must always be included, so this value is always valid.
             .image_usage(ImageUsageFlags::COLOR_ATTACHMENT)
             .image_sharing_mode(SharingMode::EXCLUSIVE)
-            .queue_family_indices(&queue_family_indices)
+            // - Must be a list of queues which are allowed to access the swapchain images when
+            // the `imageSharingMode` is `CONCURRENT`.
+            // We only use `EXCLUSIVE`, so this can be empty.
+            .queue_family_indices(&[])
             // - `compositeAlpha` must be one bit from `supportedCompositeAlpha`. Checked above.
             .composite_alpha(CompositeAlphaFlagsKHR::OPAQUE)
             // - `preTransform` must be one bit from `supportedTransforms`.
@@ -1678,7 +1840,14 @@ pub struct Surface {
 }
 
 impl Surface {
-    pub fn get_capabilities(&self, device: &Device) -> Result<SwapchainCapabilities, Error> {
+    /// Returns the [`SwapchainCapabilities`] that can be used for this `Surface`.
+    ///
+    /// The passed [`Queue`] will be the queue used to present the swapchain.
+    pub fn get_capabilities(
+        &self,
+        device: &Device,
+        queue: &Queue,
+    ) -> Result<SwapchainCapabilities, Error> {
         // - `physicalDevice` and `surface` must have been created from the same `VkInstance`.
         assert!(self.shared.instance.same(&device.device.instance));
 
@@ -1690,7 +1859,7 @@ impl Surface {
         let is_supported = unsafe {
             instance.get_physical_device_surface_support(
                 device.physical_device,
-                device.device.queue_family_index,
+                queue.queue_family.0,
                 self.shared.surface,
             )?
         };
@@ -2144,6 +2313,8 @@ pub struct CommandPool {
     buffers: Vec<vk::CommandBuffer>,
     /// Index of the next buffer.
     next_buffer: usize,
+    /// Queue family allowed to submit buffers allocated from this pool.
+    queue_family: QueueFamilyId,
 }
 
 impl CommandPool {
@@ -2175,6 +2346,7 @@ impl CommandPool {
             device: &self.device,
             pool: self,
             buffer,
+            queue_family: self.queue_family,
         })
     }
 
@@ -2238,6 +2410,8 @@ pub struct CommandEncoder<'a> {
     device: &'a DeviceShared,
     pool: &'a CommandPool,
     buffer: vk::CommandBuffer,
+    /// Queue family which can be used to submit this buffer.
+    queue_family: QueueFamilyId,
 }
 
 impl<'a> CommandEncoder<'a> {
@@ -2560,6 +2734,7 @@ impl<'a> CommandEncoder<'a> {
         CommandBuffer {
             device: self.device,
             buffer: self.buffer,
+            queue_family: self.queue_family,
         }
     }
 }
@@ -2685,6 +2860,8 @@ impl<'encoder, 'resources> Drop for RenderPass<'encoder, 'resources> {
 pub struct CommandBuffer<'a> {
     device: &'a DeviceShared,
     buffer: vk::CommandBuffer,
+    /// Queue family which can be used to submit this buffer.
+    queue_family: QueueFamilyId,
 }
 
 #[derive(Debug)]
@@ -3484,11 +3661,11 @@ impl Drop for InstanceShared {
 struct DeviceShared {
     instance: Arc<InstanceShared>,
     device: ash::Device,
-    queue_family_index: u32,
     limits: DeviceLimits,
     memory_properties: AdapterMemoryProperties,
     /// Number of currently active allocations.
     num_allocations: Arc<AtomicU32>,
+    queues: Arc<[QueueSlot]>,
 }
 
 impl DeviceShared {
@@ -3524,6 +3701,13 @@ impl Drop for DeviceShared {
             self.device.destroy_device(None);
         }
     }
+}
+
+#[derive(Debug)]
+struct QueueSlot {
+    id: QueueFamilyId,
+    index: u32,
+    used: Mutex<bool>,
 }
 
 #[derive(Copy, Clone, Debug)]

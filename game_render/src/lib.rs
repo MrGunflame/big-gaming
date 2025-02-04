@@ -87,7 +87,7 @@ impl Renderer {
         let preferred_adapter_name = std::env::var("RENDER_ADAPTER").ok();
 
         let mut adapter = None;
-        for a in instance.adapters() {
+        for a in instance.adapters().unwrap() {
             let Some(current_adapter) = &adapter else {
                 adapter = Some(a);
                 continue;
@@ -157,11 +157,14 @@ impl Renderer {
         let queue_family = *adapter
             .queue_families()
             .iter()
-            .find(|q| q.capabilities.contains(QueueCapabilities::GRAPHICS))
+            .find(|q| {
+                q.capabilities.contains(QueueCapabilities::GRAPHICS)
+                    && q.capabilities.contains(QueueCapabilities::TRANSFER)
+            })
             .unwrap();
 
-        let device = adapter.create_device(queue_family.id);
-        let queue = device.queue();
+        let mut device = adapter.create_device(&[queue_family]);
+        let queue = device.create_queue(queue_family.id).unwrap();
 
         let render_thread = RenderThreadHandle::new(instance, adapter, device, queue);
 

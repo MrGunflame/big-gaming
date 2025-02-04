@@ -104,6 +104,7 @@ impl RenderThread {
                         &self.shared.instance,
                         &self.shared.adapter,
                         &self.shared.device,
+                        &self.queue,
                         window,
                         id,
                     );
@@ -115,7 +116,8 @@ impl RenderThread {
                     // SAFETY: We have waited for all commands on this surface
                     // to be completed.
                     unsafe {
-                        self.surfaces.resize(id, &self.shared.device, config.size);
+                        self.surfaces
+                            .resize(id, &self.shared.device, &self.queue, config.size);
                     }
                 }
                 Command::DestroySurface(id) => {

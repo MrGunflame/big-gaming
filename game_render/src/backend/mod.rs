@@ -81,10 +81,13 @@ bitflags! {
 
 #[derive(Copy, Clone, Debug)]
 pub struct QueueFamily {
-    pub id: u32,
+    pub id: QueueFamilyId,
     pub count: u32,
     pub capabilities: QueueCapabilities,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct QueueFamilyId(u32);
 
 #[derive(Clone, Debug)]
 pub struct SwapchainCapabilities {

@@ -6,7 +6,7 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crate::api::executor::TemporaryResources;
 use crate::backend::vulkan::{
-    Adapter, CommandPool, Device, Fence, Instance, Semaphore, Surface, Swapchain,
+    Adapter, CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
 };
 use crate::backend::{
     ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig, TextureFormat,
@@ -40,10 +40,11 @@ impl RenderSurfaces {
         instance: &Instance,
         adapter: &Adapter,
         device: &Device,
+        queue: &Queue,
         window: WindowState,
         id: WindowId,
     ) {
-        let surfce = create_surface(window, instance, adapter, device).unwrap();
+        let surfce = create_surface(window, instance, adapter, device, queue).unwrap();
         self.windows.insert(id, surfce);
     }
 
@@ -53,12 +54,12 @@ impl RenderSurfaces {
     ///
     /// This will invalidate the current swapchain and commands accessing it must have been
     /// completed.
-    pub unsafe fn resize(&mut self, id: WindowId, device: &Device, size: UVec2) {
+    pub unsafe fn resize(&mut self, id: WindowId, device: &Device, queue: &Queue, size: UVec2) {
         let Some(surface) = self.windows.get_mut(&id) else {
             return;
         };
 
-        resize_surface(surface, device, size);
+        resize_surface(surface, device, queue, size);
     }
 
     pub fn get(&self, id: WindowId) -> Option<&SurfaceData> {
@@ -112,6 +113,7 @@ fn create_surface(
     instance: &Instance,
     adapter: &Adapter,
     device: &Device,
+    queue: &Queue,
 ) -> Result<SurfaceData, ()> {
     let size = window.inner_size();
 
@@ -124,7 +126,7 @@ fn create_surface(
             .unwrap()
     };
 
-    let caps = surface.get_capabilities(device).unwrap();
+    let caps = surface.get_capabilities(device, queue).unwrap();
     let config = create_swapchain_config(&caps, size);
     let swapchain = surface.create_swapchain(device, config, &caps);
 
@@ -148,18 +150,18 @@ fn create_surface(
             .collect(),
         swapchain_textures: vec![(const { None }); config.image_count as usize],
         command_pools: (0..config.image_count)
-            .map(|_| device.create_command_pool())
+            .map(|_| device.create_command_pool(queue.family()).unwrap())
             .collect(),
         limiter: FpsLimiter::new(FpsLimit::UNLIMITED),
     })
 }
 
-fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
+fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, size: UVec2) {
     if size.x == 0 || size.y == 0 {
         return;
     }
 
-    let caps = surface.surface.get_capabilities(device).unwrap();
+    let caps = surface.surface.get_capabilities(device, queue).unwrap();
     let config = create_swapchain_config(&caps, size);
 
     if surface.config.image_count != config.image_count {
@@ -182,7 +184,7 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
         surface.swapchain_textures.resize_with(len, || None);
         surface
             .command_pools
-            .resize_with(len, || device.create_command_pool());
+            .resize_with(len, || device.create_command_pool(queue.family()).unwrap());
     }
 
     unsafe {
