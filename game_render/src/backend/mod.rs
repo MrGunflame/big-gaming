@@ -465,6 +465,43 @@ impl AccessFlags {
     pub const SHADER_WRITE: Self =
         Self::from_bits(Self::VERTEX_SHADER_WRITE.bits() | Self::FRAGMENT_SHADER_WRITE.bits())
             .unwrap();
+
+    /// Returns `true` if all access flags are allowed to be used in a queue with the given
+    /// [`QueueCapabilities`].
+    fn is_allowed_for_queue(&self, caps: &QueueCapabilities) -> bool {
+        // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#VUID-vkCmdPipelineBarrier2-dstStageMask-09676
+        let graphics_flags = AccessFlags::COLOR_ATTACHMENT_WRITE
+            | AccessFlags::COLOR_ATTACHMENT_WRITE
+            | AccessFlags::INDEX
+            | AccessFlags::INDIRECT
+            | AccessFlags::DEPTH_ATTACHMENT_READ
+            | AccessFlags::DEPTH_ATTACHMENT_WRITE
+            | AccessFlags::VERTEX_SHADER_READ
+            | AccessFlags::VERTEX_SHADER_WRITE
+            | AccessFlags::FRAGMENT_SHADER_READ
+            | AccessFlags::FRAGMENT_SHADER_WRITE;
+        let compute_flags = AccessFlags::empty();
+        let transfer_flags = AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
+
+        let mut flags = *self;
+
+        // The PRESENT flag is different in that it only defines a image
+        // transition and no vulkan access flags.
+        // Therefore there are no direct requirements on which queue this can
+        // appear in a barrier.
+        flags &= !AccessFlags::PRESENT;
+
+        for cap in caps.iter() {
+            match cap {
+                QueueCapabilities::GRAPHICS => flags &= !graphics_flags,
+                QueueCapabilities::COMPUTE => flags &= !compute_flags,
+                QueueCapabilities::TRANSFER => flags &= !transfer_flags,
+                _ => (),
+            }
+        }
+
+        flags.is_empty()
+    }
 }
 
 impl AccessFlags {

@@ -633,6 +633,8 @@ impl Adapter {
                 "Cannot create more queues of family than exist"
             );
 
+            assert_eq!(q1.capabilities, valid_queue.capabilities);
+
             // Every element in `queue_families` must be unique.
             for (i2, q2) in queue_families.iter().enumerate() {
                 if i1 == i2 {
@@ -647,14 +649,15 @@ impl Adapter {
             }
         }
 
-        let mut queue_count = queue_families
+        // Use a default priority of 1.0 for every queue.
+        let queue_count = queue_families
             .iter()
             .map(|family| family.count as usize)
             .max()
             .unwrap_or_default();
         let queue_priorities = vec![1.0; queue_count];
 
-        let mut queue_infos = queue_families
+        let queue_infos = queue_families
             .iter()
             .map(|family| {
                 DeviceQueueCreateInfo::default()
@@ -725,6 +728,7 @@ impl Adapter {
                     id: family.id,
                     index,
                     used: Mutex::new(false),
+                    caps: family.capabilities,
                 })
             })
             .collect::<Vec<_>>()
@@ -1499,17 +1503,17 @@ impl Device {
     /// The buffers allocated from that [`CommandPool`] may only be used in [`Queue`]s which match
     /// the provided [`QueueFamilyId`].
     pub fn create_command_pool(&self, queue_family: QueueFamilyId) -> Result<CommandPool, Error> {
-        if !self
+        let Some(queue) = self
             .device
             .queues
             .iter()
-            .any(|queue| queue.id == queue_family)
-        {
+            .find(|queue| queue.id == queue_family)
+        else {
             panic!(
                 "Cannot create command pool for queue family {:?} which does not exist",
                 queue_family,
             );
-        }
+        };
 
         // All command buffers must only be used on queues with the given `queue_family`.
         let info = CommandPoolCreateInfo::default()
@@ -1542,6 +1546,7 @@ impl Device {
             buffers,
             next_buffer: 0,
             queue_family,
+            queue_caps: queue.caps,
         })
     }
 
@@ -2315,6 +2320,7 @@ pub struct CommandPool {
     next_buffer: usize,
     /// Queue family allowed to submit buffers allocated from this pool.
     queue_family: QueueFamilyId,
+    queue_caps: QueueCapabilities,
 }
 
 impl CommandPool {
@@ -2347,6 +2353,7 @@ impl CommandPool {
             pool: self,
             buffer,
             queue_family: self.queue_family,
+            queue_caps: self.queue_caps,
         })
     }
 
@@ -2412,6 +2419,7 @@ pub struct CommandEncoder<'a> {
     buffer: vk::CommandBuffer,
     /// Queue family which can be used to submit this buffer.
     queue_family: QueueFamilyId,
+    queue_caps: QueueCapabilities,
 }
 
 impl<'a> CommandEncoder<'a> {
@@ -2424,6 +2432,8 @@ impl<'a> CommandEncoder<'a> {
         dst_offset: u64,
         count: u64,
     ) {
+        assert!(self.queue_caps.contains(QueueCapabilities::TRANSFER));
+
         if count == 0 {
             return;
         }
@@ -2471,6 +2481,8 @@ impl<'a> CommandEncoder<'a> {
     }
 
     pub fn copy_buffer_to_texture(&mut self, src: CopyBuffer<'_>, dst: &Texture, mip_level: u32) {
+        assert!(self.queue_caps.contains(QueueCapabilities::TRANSFER));
+
         assert_ne!(dst.size.x, 0);
         assert_ne!(dst.size.y, 0);
 
@@ -2524,6 +2536,8 @@ impl<'a> CommandEncoder<'a> {
         &mut self,
         descriptor: &RenderPassDescriptor<'_, 'res>,
     ) -> RenderPass<'_, 'res> {
+        assert!(self.queue_caps.contains(QueueCapabilities::GRAPHICS));
+
         let mut extent = UVec2::ZERO;
 
         let mut color_attachments = Vec::new();
@@ -2647,6 +2661,9 @@ impl<'a> CommandEncoder<'a> {
     pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
         let mut buffer_barriers = Vec::new();
         for barrier in barriers.buffer {
+            assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
+            assert!(barrier.dst_access.is_allowed_for_queue(&self.queue_caps));
+
             let src_access_flags = convert_access_flags(barrier.src_access);
             let dst_access_flags = convert_access_flags(barrier.dst_access);
             let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
@@ -2675,6 +2692,9 @@ impl<'a> CommandEncoder<'a> {
 
         let mut image_barriers = Vec::new();
         for barrier in barriers.texture {
+            assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
+            assert!(barrier.dst_access.is_allowed_for_queue(&self.queue_caps));
+
             let src_access_flags = convert_access_flags(barrier.src_access);
             let dst_access_flags = convert_access_flags(barrier.dst_access);
             let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
@@ -3707,6 +3727,7 @@ impl Drop for DeviceShared {
 struct QueueSlot {
     id: QueueFamilyId,
     index: u32,
+    caps: QueueCapabilities,
     used: Mutex<bool>,
 }
 
