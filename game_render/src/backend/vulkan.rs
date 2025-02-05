@@ -13,34 +13,8 @@ use std::thread;
 use std::time::Duration;
 
 use ash::ext::debug_utils;
-use ash::vk::{
-    self, ApplicationInfo, AttachmentLoadOp, AttachmentStoreOp, BindBufferMemoryInfo, BlendFactor,
-    BlendOp, Bool32, BufferCreateInfo, BufferUsageFlags, ClearColorValue, ClearValue,
-    ColorComponentFlags, CommandBufferAllocateInfo, CommandBufferBeginInfo,
-    CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags,
-    CommandPoolCreateFlags, CommandPoolCreateInfo, CommandPoolResetFlags, ComponentMapping,
-    ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
-    DebugUtilsMessageTypeFlagsEXT, DebugUtilsMessengerCallbackDataEXT,
-    DebugUtilsMessengerCreateInfoEXT, DebugUtilsMessengerEXT, DependencyFlags,
-    DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
-    DescriptorSetAllocateInfo, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-    DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D,
-    FenceCreateInfo, Format, FrontFace, GraphicsPipelineCreateInfo, Handle, ImageAspectFlags,
-    ImageLayout, ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType,
-    InstanceCreateInfo, LayerSettingEXT, LayerSettingsCreateInfoEXT, LogicOp, MemoryAllocateInfo,
-    MemoryPropertyFlags, Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
-    PhysicalDeviceFeatures, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
-    PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
-    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
-    PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
-    PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
-    PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
-    PrimitiveTopology, QueueFlags, Rect2D, RenderingAttachmentInfo, RenderingFlags, RenderingInfo,
-    ResolveModeFlags, SampleCountFlags, SemaphoreCreateInfo, ShaderModuleCreateInfo,
-    ShaderStageFlags, SharingMode, SubmitInfo, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
-    Viewport,
-};
-use ash::Entry;
+use ash::vk::Handle;
+use ash::{vk, Entry};
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
 use parking_lot::Mutex;
@@ -53,12 +27,13 @@ use super::shader::{self, BindingInfo, Shader};
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage,
     BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
-    DescriptorSetDescriptor, Face, FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryHeapFlags,
-    MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
-    PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueFamilyId, QueueSubmit,
-    RenderPassDescriptor, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp,
-    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat, TextureUsage,
-    TextureViewDescriptor, WriteDescriptorResource, WriteDescriptorResources,
+    DescriptorSetDescriptor, Face, FilterMode, FrontFace, IndexFormat, LoadOp, MemoryHeap,
+    MemoryHeapFlags, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
+    PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology, QueueCapabilities,
+    QueueFamily, QueueFamilyId, QueueSubmit, RenderPassDescriptor, SamplerDescriptor, ShaderStage,
+    ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
+    TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
+    WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -199,7 +174,7 @@ impl Instance {
     pub fn new(config: Config) -> Result<Self, Error> {
         let entry = unsafe { Entry::load().unwrap() };
 
-        let mut app = ApplicationInfo::default()
+        let mut app = vk::ApplicationInfo::default()
             .application_version(APPLICATION_VERSION)
             .engine_version(ENGINE_VERSION)
             .api_version(API_VERSION);
@@ -238,17 +213,17 @@ impl Instance {
             .map(|v| v.as_ptr())
             .collect::<Vec<_>>();
 
-        let mut debug_info = DebugUtilsMessengerCreateInfoEXT::default()
+        let mut debug_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
             .message_severity(
-                DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    | DebugUtilsMessageSeverityFlagsEXT::INFO
-                    | DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE,
             )
             .message_type(
-                DebugUtilsMessageTypeFlagsEXT::GENERAL
-                    | DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
             )
             .pfn_user_callback(Some(debug_callback));
 
@@ -273,7 +248,7 @@ impl Instance {
             (c"validate_best_practices", TRUE),
         ] {
             settings.push(
-                LayerSettingEXT::default()
+                vk::LayerSettingEXT::default()
                     .layer_name(InstanceLayers::VALIDATION)
                     .setting_name(&key)
                     .ty(vk::LayerSettingTypeEXT::BOOL32)
@@ -281,9 +256,9 @@ impl Instance {
             );
         }
 
-        let mut layer_settings = LayerSettingsCreateInfoEXT::default().settings(&settings);
+        let mut layer_settings = vk::LayerSettingsCreateInfoEXT::default().settings(&settings);
 
-        let mut info = InstanceCreateInfo::default()
+        let mut info = vk::InstanceCreateInfo::default()
             .application_info(&app)
             .enabled_layer_names(&enabled_layers)
             .enabled_extension_names(&enabled_extensions);
@@ -482,7 +457,7 @@ impl Instance {
 #[derive(Debug)]
 pub struct Adapter {
     instance: Arc<InstanceShared>,
-    physical_device: PhysicalDevice,
+    physical_device: vk::PhysicalDevice,
 }
 
 impl Adapter {
@@ -502,9 +477,9 @@ impl Adapter {
         };
 
         let kind = match properties.device_type {
-            PhysicalDeviceType::DISCRETE_GPU => AdapterKind::DiscreteGpu,
-            PhysicalDeviceType::INTEGRATED_GPU => AdapterKind::IntegratedGpu,
-            PhysicalDeviceType::CPU => AdapterKind::Cpu,
+            vk::PhysicalDeviceType::DISCRETE_GPU => AdapterKind::DiscreteGpu,
+            vk::PhysicalDeviceType::INTEGRATED_GPU => AdapterKind::IntegratedGpu,
+            vk::PhysicalDeviceType::CPU => AdapterKind::Cpu,
             _ => AdapterKind::Other,
         };
 
@@ -546,23 +521,26 @@ impl Adapter {
                 let mut flags = MemoryTypeFlags::empty();
                 if typ
                     .property_flags
-                    .contains(MemoryPropertyFlags::DEVICE_LOCAL)
+                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
                 {
                     flags |= MemoryTypeFlags::DEVICE_LOCAL;
                 }
                 if typ
                     .property_flags
-                    .contains(MemoryPropertyFlags::HOST_VISIBLE)
+                    .contains(vk::MemoryPropertyFlags::HOST_VISIBLE)
                 {
                     flags |= MemoryTypeFlags::HOST_VISIBLE;
                 }
                 if typ
                     .property_flags
-                    .contains(MemoryPropertyFlags::HOST_COHERENT)
+                    .contains(vk::MemoryPropertyFlags::HOST_COHERENT)
                 {
                     flags |= MemoryTypeFlags::HOST_COHERENT;
                 }
-                if typ.property_flags.contains(MemoryPropertyFlags::PROTECTED) {
+                if typ
+                    .property_flags
+                    .contains(vk::MemoryPropertyFlags::PROTECTED)
+                {
                     flags |= MemoryTypeFlags::_VK_PROTECTED;
                 }
 
@@ -591,19 +569,19 @@ impl Adapter {
             .map(|(index, queue)| {
                 let mut capabilities = QueueCapabilities::empty();
 
-                if queue.queue_flags.contains(QueueFlags::GRAPHICS) {
+                if queue.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
                     capabilities |= QueueCapabilities::GRAPHICS;
                     // Graphics queues always have transfer capabilities.
                     capabilities |= QueueCapabilities::TRANSFER;
                 }
 
-                if queue.queue_flags.contains(QueueFlags::COMPUTE) {
+                if queue.queue_flags.contains(vk::QueueFlags::COMPUTE) {
                     capabilities |= QueueCapabilities::COMPUTE;
                     // Compute queues always have transfer capabilities.
                     capabilities |= QueueCapabilities::TRANSFER;
                 }
 
-                if queue.queue_flags.contains(QueueFlags::TRANSFER) {
+                if queue.queue_flags.contains(vk::QueueFlags::TRANSFER) {
                     capabilities |= QueueCapabilities::TRANSFER;
                 }
 
@@ -660,7 +638,7 @@ impl Adapter {
         let queue_infos = queue_families
             .iter()
             .map(|family| {
-                DeviceQueueCreateInfo::default()
+                vk::DeviceQueueCreateInfo::default()
                     .queue_family_index(family.id.0)
                     .queue_priorities(&queue_priorities[..family.count as usize])
                     // - Must be equal to the flags used in `create_queue`.
@@ -676,10 +654,10 @@ impl Adapter {
         let mut extensions = Vec::new();
         extensions.extend(DEVICE_EXTENSIONS.iter().map(|v| v.as_ptr()));
 
-        let features = PhysicalDeviceFeatures::default();
+        let features = vk::PhysicalDeviceFeatures::default();
 
         let mut dynamic_rendering =
-            PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
+            vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
 
         let mut synchronization2 =
             vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
@@ -702,7 +680,7 @@ impl Adapter {
             .descriptor_binding_variable_descriptor_count(true)
             .runtime_descriptor_array(true);
 
-        let create_info = DeviceCreateInfo::default()
+        let create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             // Device layers are deprecated, but the Vulkan spec still recommends
             // applications to pass layers.
@@ -807,7 +785,7 @@ impl Device {
             return Err(Error::NoQueueLeft);
         };
 
-        let info = DeviceQueueInfo2::default()
+        let info = vk::DeviceQueueInfo2::default()
             .queue_family_index(family.0)
             // Index is always 0 since we only create
             // a single queue for now.
@@ -827,38 +805,38 @@ impl Device {
 
     /// Creates a new [`Buffer`] with the given size and usage flags.
     pub fn create_buffer(&self, size: NonZeroU64, usage: BufferUsage) -> Result<Buffer, Error> {
-        let mut buffer_usage_flags = BufferUsageFlags::empty();
+        let mut buffer_usage_flags = vk::BufferUsageFlags::empty();
         if usage.contains(BufferUsage::TRANSFER_SRC) {
-            buffer_usage_flags |= BufferUsageFlags::TRANSFER_SRC;
+            buffer_usage_flags |= vk::BufferUsageFlags::TRANSFER_SRC;
         }
         if usage.contains(BufferUsage::TRANSFER_DST) {
-            buffer_usage_flags |= BufferUsageFlags::TRANSFER_DST;
+            buffer_usage_flags |= vk::BufferUsageFlags::TRANSFER_DST;
         }
         if usage.contains(BufferUsage::UNIFORM) {
-            buffer_usage_flags |= BufferUsageFlags::UNIFORM_BUFFER;
+            buffer_usage_flags |= vk::BufferUsageFlags::UNIFORM_BUFFER;
         }
         if usage.contains(BufferUsage::STORAGE) {
-            buffer_usage_flags |= BufferUsageFlags::STORAGE_BUFFER;
+            buffer_usage_flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
         }
         if usage.contains(BufferUsage::VERTEX) {
-            buffer_usage_flags |= BufferUsageFlags::VERTEX_BUFFER;
+            buffer_usage_flags |= vk::BufferUsageFlags::VERTEX_BUFFER;
         }
         if usage.contains(BufferUsage::INDEX) {
-            buffer_usage_flags |= BufferUsageFlags::INDEX_BUFFER;
+            buffer_usage_flags |= vk::BufferUsageFlags::INDEX_BUFFER;
         }
         if usage.contains(BufferUsage::INDIRECT) {
-            buffer_usage_flags |= BufferUsageFlags::INDIRECT_BUFFER;
+            buffer_usage_flags |= vk::BufferUsageFlags::INDIRECT_BUFFER;
         }
 
         assert!(!buffer_usage_flags.is_empty());
 
-        let info = BufferCreateInfo::default()
+        let info = vk::BufferCreateInfo::default()
             // - `size` must be greater than 0.
             .size(size.get())
             // - `usage` must not be 0. (Unless `VkBufferUsageFlags2CreateInfo` is used.)
             // Checked above.
             .usage(buffer_usage_flags)
-            .sharing_mode(SharingMode::EXCLUSIVE);
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
         let buffer = unsafe { self.device.create_buffer(&info, None)? };
         Ok(Buffer {
@@ -883,7 +861,7 @@ impl Device {
                 .contains(MemoryTypeFlags::_VK_PROTECTED),
         );
 
-        let info = MemoryAllocateInfo::default()
+        let info = vk::MemoryAllocateInfo::default()
             // - `allocationSize` must be greater than 0.
             .allocation_size(size.get())
             // - memoryTypeIndex must not indicate a memory type that reports `VK_MEMORY_PROPERTY_PROTECTED_BIT`.
@@ -1047,7 +1025,7 @@ impl Device {
         assert!(reqs.memory_types.contains(&memory.memory.memory_type));
 
         // https://registry.khronos.org/vulkan/specs/latest/man/html/VkBindBufferMemoryInfo.html
-        let info = BindBufferMemoryInfo::default()
+        let info = vk::BindBufferMemoryInfo::default()
             // - `buffer` must not have been bound to a memory object.
             // - `buffer` must not have been created with any sparse memory binding flags.
             .buffer(buffer.buffer)
@@ -1187,7 +1165,7 @@ impl Device {
         // Code size must be greater than 0.
         debug_assert!(code.len() != 0);
 
-        let info = ShaderModuleCreateInfo::default().code(code);
+        let info = vk::ShaderModuleCreateInfo::default().code(code);
 
         let shader = unsafe { self.device.create_shader_module(&info, None).unwrap() };
         ShaderModule {
@@ -1205,7 +1183,7 @@ impl Device {
         let mut flags = Vec::new();
 
         for binding in descriptor.bindings {
-            let info = DescriptorSetLayoutBinding::default()
+            let info = vk::DescriptorSetLayoutBinding::default()
                 .binding(binding.binding)
                 .stage_flags(binding.visibility.into())
                 .descriptor_count(binding.count.get())
@@ -1218,7 +1196,7 @@ impl Device {
         let mut flags =
             vk::DescriptorSetLayoutBindingFlagsCreateInfo::default().binding_flags(&flags);
 
-        let info = DescriptorSetLayoutCreateInfo::default()
+        let info = vk::DescriptorSetLayoutCreateInfo::default()
             .bindings(&bindings)
             .push_next(&mut flags)
             .flags(vk::DescriptorSetLayoutCreateFlags::empty());
@@ -1310,7 +1288,7 @@ impl Device {
 
         assert!(descriptors.len() as u32 <= self.device.limits.max_bound_descriptor_sets);
 
-        let pipeline_layout_info = PipelineLayoutCreateInfo::default()
+        let pipeline_layout_info = vk::PipelineLayoutCreateInfo::default()
             // - `setLayoutCount` must be less than or equal to `VkPhysicalDeviceLimits::maxBoundDescriptorSets`.
             .set_layouts(&descriptors)
             .push_constant_ranges(&push_constant_ranges);
@@ -1320,7 +1298,7 @@ impl Device {
         };
 
         let mut stages = Vec::new();
-        let mut color_attchment_formats: Vec<Format> = Vec::new();
+        let mut color_attchment_formats: Vec<vk::Format> = Vec::new();
 
         // We need exactly one `VK_SHADER_STAGE_VERTEX_BIT` or `VK_SHADER_STAGE_MESH_BIT_EXT` stage.
         assert_eq!(
@@ -1350,13 +1328,14 @@ impl Device {
 
                     validate_shader_bindings(stage.shader, descriptor.descriptors);
 
-                    PipelineShaderStageCreateInfo::default()
-                        .stage(ShaderStageFlags::VERTEX)
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::VERTEX)
                         .module(module.shader)
                         .name(&*name)
                 }
                 PipelineStage::Fragment(stage) => {
-                    color_attchment_formats.extend(stage.targets.iter().copied().map(Format::from));
+                    color_attchment_formats
+                        .extend(stage.targets.iter().copied().map(vk::Format::from));
 
                     let spirv = create_pipeline_shader_module(
                         &stage.shader.shader,
@@ -1370,8 +1349,8 @@ impl Device {
 
                     validate_shader_bindings(stage.shader, descriptor.descriptors);
 
-                    PipelineShaderStageCreateInfo::default()
-                        .stage(ShaderStageFlags::FRAGMENT)
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::FRAGMENT)
                         .module(module.shader)
                         .name(&*name)
                 }
@@ -1380,16 +1359,16 @@ impl Device {
             stages.push(vk_stage);
         }
 
-        let vertex_input_state = PipelineVertexInputStateCreateInfo::default();
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
 
-        let input_assembly_state = PipelineInputAssemblyStateCreateInfo::default()
+        let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
             .topology(descriptor.topology.into())
             .primitive_restart_enable(false);
 
         // We use dynamic viewport and scissors, so the actual viewport and scissors
         // pointers are ignored. We still have to enter the correct count of viewport/
         // scissors.
-        let viewport_state = PipelineViewportStateCreateInfo::default()
+        let viewport_state = vk::PipelineViewportStateCreateInfo::default()
             // - `viewportCount` must be less than or equal to `VkPhysicalDeviceLimits::maxViewports`.
             // - `viewportCount` must not be greater than 1. (If `multiViewport` feature is not enabled.)
             // - `viewportCount` must be greater than 0. (If `VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT` not set.)
@@ -1400,42 +1379,42 @@ impl Device {
             .scissor_count(1);
 
         let cull_mode = match descriptor.cull_mode {
-            Some(Face::Front) => CullModeFlags::FRONT,
-            Some(Face::Back) => CullModeFlags::BACK,
-            None => CullModeFlags::NONE,
+            Some(Face::Front) => vk::CullModeFlags::FRONT,
+            Some(Face::Back) => vk::CullModeFlags::BACK,
+            None => vk::CullModeFlags::NONE,
         };
 
-        let rasterization_state = PipelineRasterizationStateCreateInfo::default()
+        let rasterization_state = vk::PipelineRasterizationStateCreateInfo::default()
             .depth_bias_enable(true)
             .rasterizer_discard_enable(false)
-            .polygon_mode(PolygonMode::FILL)
+            .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
             .cull_mode(cull_mode)
             .front_face(descriptor.front_face.into());
 
-        let multisample_state = PipelineMultisampleStateCreateInfo::default()
+        let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
             .sample_shading_enable(false)
-            .rasterization_samples(SampleCountFlags::TYPE_1);
+            .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        let attachment = PipelineColorBlendAttachmentState::default()
-            .color_write_mask(ColorComponentFlags::RGBA)
+        let attachment = vk::PipelineColorBlendAttachmentState::default()
+            .color_write_mask(vk::ColorComponentFlags::RGBA)
             .blend_enable(false)
-            .src_color_blend_factor(BlendFactor::ONE)
-            .dst_color_blend_factor(BlendFactor::ZERO)
-            .color_blend_op(BlendOp::ADD)
-            .src_alpha_blend_factor(BlendFactor::ONE)
-            .dst_alpha_blend_factor(BlendFactor::ZERO)
-            .alpha_blend_op(BlendOp::ADD);
+            .src_color_blend_factor(vk::BlendFactor::ONE)
+            .dst_color_blend_factor(vk::BlendFactor::ZERO)
+            .color_blend_op(vk::BlendOp::ADD)
+            .src_alpha_blend_factor(vk::BlendFactor::ONE)
+            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
+            .alpha_blend_op(vk::BlendOp::ADD);
 
         let attachments = &[attachment];
-        let color_blend_state = PipelineColorBlendStateCreateInfo::default()
+        let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
-            .logic_op(LogicOp::COPY)
+            .logic_op(vk::LogicOp::COPY)
             .attachments(attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
-        let dynamic_state = PipelineDynamicStateCreateInfo::default()
-            .dynamic_states(&[DynamicState::VIEWPORT, DynamicState::SCISSOR]);
+        let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
+            .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
 
         let depth_stencil_state = descriptor.depth_stencil_state.as_ref().map(|state| {
             vk::PipelineDepthStencilStateCreateInfo::default()
@@ -1451,7 +1430,7 @@ impl Device {
         });
 
         assert!(color_attchment_formats.len() <= self.device.limits.max_color_attachments as usize);
-        let mut rendering_info = PipelineRenderingCreateInfo::default()
+        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
             // - `colorAttachmentCount` must be less than `VkPhysicalDeviceLimits::maxColorAttachments`.
             .color_attachment_formats(&color_attchment_formats);
 
@@ -1459,7 +1438,7 @@ impl Device {
             rendering_info = rendering_info.depth_attachment_format(state.format.into());
         }
 
-        let mut info = GraphicsPipelineCreateInfo::default()
+        let mut info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&stages)
             .vertex_input_state(&vertex_input_state)
             .input_assembly_state(&input_assembly_state)
@@ -1480,7 +1459,7 @@ impl Device {
 
         let pipelines = match unsafe {
             self.device
-                .create_graphics_pipelines(PipelineCache::null(), &[info], None)
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None)
         } {
             Ok(pipeline) => pipeline,
             Err((pipelines, err)) => {
@@ -1501,11 +1480,6 @@ impl Device {
             device: self.device.clone(),
             pipeline: pipelines[0],
             pipeline_layout,
-            descriptors: descriptor
-                .descriptors
-                .iter()
-                .map(|descriptor| descriptor.bindings.clone())
-                .collect(),
         })
     }
 
@@ -1527,15 +1501,15 @@ impl Device {
         };
 
         // All command buffers must only be used on queues with the given `queue_family`.
-        let info = CommandPoolCreateInfo::default()
-            .flags(CommandPoolCreateFlags::empty())
+        let info = vk::CommandPoolCreateInfo::default()
+            .flags(vk::CommandPoolCreateFlags::empty())
             .queue_family_index(queue_family.0);
 
         let pool = unsafe { self.device.create_command_pool(&info, None)? };
 
-        let info = CommandBufferAllocateInfo::default()
+        let info = vk::CommandBufferAllocateInfo::default()
             .command_pool(pool)
-            .level(CommandBufferLevel::PRIMARY)
+            .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
         let buffers = match unsafe { self.device.allocate_command_buffers(&info) } {
@@ -1563,7 +1537,7 @@ impl Device {
 
     /// Creates a new [`Semaphore`].
     pub fn create_semaphore(&self) -> Result<Semaphore, Error> {
-        let info = SemaphoreCreateInfo::default();
+        let info = vk::SemaphoreCreateInfo::default();
 
         let semaphore = unsafe { self.device.create_semaphore(&info, None)? };
 
@@ -1600,12 +1574,14 @@ impl Device {
             }
 
             // - `descriptorCount` must be greater than 0.
-            let size = DescriptorPoolSize::default().ty(ty).descriptor_count(count);
+            let size = vk::DescriptorPoolSize::default()
+                .ty(ty)
+                .descriptor_count(count);
 
             sizes.push(size);
         }
 
-        let info = DescriptorPoolCreateInfo::default()
+        let info = vk::DescriptorPoolCreateInfo::default()
             .pool_sizes(&sizes)
             // - `maxSets` must be greater than 0.
             .max_sets(descriptor.max_sets.get());
@@ -1620,7 +1596,7 @@ impl Device {
 
     /// Creates a new [`Fence`].
     pub fn create_fence(&self) -> Result<Fence, Error> {
-        let info = FenceCreateInfo::default();
+        let info = vk::FenceCreateInfo::default();
 
         let fence = unsafe { self.device.create_fence(&info, None)? };
         Ok(Fence {
@@ -1705,7 +1681,7 @@ impl Queue {
             .map(|semaphore| semaphore.semaphore)
             .collect();
 
-        let info = SubmitInfo::default()
+        let info = vk::SubmitInfo::default()
             .wait_semaphores(&wait_semaphores)
             .wait_dst_stage_mask(&wait_stages)
             .command_buffers(&buffers)
@@ -1759,7 +1735,7 @@ impl Drop for Queue {
 #[derive(Debug)]
 struct SurfaceShared {
     instance: Arc<InstanceShared>,
-    surface: SurfaceKHR,
+    surface: vk::SurfaceKHR,
 }
 
 impl SurfaceShared {
@@ -1785,8 +1761,8 @@ impl SurfaceShared {
         device: &Device,
         config: &SwapchainConfig,
         caps: &SwapchainCapabilities,
-        old_swapchain: SwapchainKHR,
-    ) -> Result<(SwapchainKHR, Vec<vk::Image>), Error> {
+        old_swapchain: vk::SwapchainKHR,
+    ) -> Result<(vk::SwapchainKHR, Vec<vk::Image>), Error> {
         // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkSwapchainCreateInfoKHR.html
         // `imageExtent` members `width` and `height` must both be non-zero.
         assert_ne!(config.extent.x, 0);
@@ -1800,13 +1776,13 @@ impl SurfaceShared {
         // TODO: Handle case where `OPAQUE` is not supported.
         assert!(caps
             .supported_composite_alpha
-            .contains(CompositeAlphaFlagsKHR::OPAQUE));
+            .contains(vk::CompositeAlphaFlagsKHR::OPAQUE));
 
         assert!(caps.present_modes.contains(&config.present_mode));
 
         assert!(caps.formats.contains(&config.format));
 
-        let info = SwapchainCreateInfoKHR::default()
+        let info = vk::SwapchainCreateInfoKHR::default()
             // - Surface must be supported. This is checked by the call to `get_capabilities` above.
             .surface(self.surface)
             // - `minImageCount` must be less than or equal to the `maxImageCount`. Checked above.
@@ -1820,7 +1796,7 @@ impl SurfaceShared {
             .image_color_space(config.format.color_space.into())
             // - `width` and `height` must both ne non-zero. Checked above.
             // - `width` and `height` must be between `minImageExtent` and `maxImageExtent`. Checked above.
-            .image_extent(Extent2D {
+            .image_extent(vk::Extent2D {
                 width: config.extent.x,
                 height: config.extent.y,
             })
@@ -1830,14 +1806,14 @@ impl SurfaceShared {
             .image_array_layers(1)
             // - `imageUsage` must be a set of `supportedUsageFlags`.
             // `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must always be included, so this value is always valid.
-            .image_usage(ImageUsageFlags::COLOR_ATTACHMENT)
-            .image_sharing_mode(SharingMode::EXCLUSIVE)
+            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             // - Must be a list of queues which are allowed to access the swapchain images when
             // the `imageSharingMode` is `CONCURRENT`.
             // We only use `EXCLUSIVE`, so this can be empty.
             .queue_family_indices(&[])
             // - `compositeAlpha` must be one bit from `supportedCompositeAlpha`. Checked above.
-            .composite_alpha(CompositeAlphaFlagsKHR::OPAQUE)
+            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             // - `preTransform` must be one bit from `supportedTransforms`.
             .pre_transform(caps.current_transform)
             // - `presentMode` must be one of the values returned by `vkGetPhysicalDeviceSurfacePresentModesKHR`.
@@ -1944,7 +1920,7 @@ impl Surface {
         // Vulkan spec requires that `VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT` must be included.
         debug_assert!(caps
             .supported_usage_flags
-            .contains(ImageUsageFlags::COLOR_ATTACHMENT));
+            .contains(vk::ImageUsageFlags::COLOR_ATTACHMENT));
 
         // FIXME: This does not seem strictly required by the Vulkan spec?
         // See https://github.com/KhronosGroup/Vulkan-Docs/issues/2440
@@ -1992,7 +1968,7 @@ impl Surface {
         // SAFETY: `old_swapchain` is null.
         let (swapchain, images) = unsafe {
             self.shared
-                .create_swapchain_inner(device, &config, &caps, SwapchainKHR::null())?
+                .create_swapchain_inner(device, &config, &caps, vk::SwapchainKHR::null())?
         };
 
         Ok(Swapchain {
@@ -2010,7 +1986,7 @@ impl Surface {
 pub struct Swapchain {
     surface: Arc<SurfaceShared>,
     device: Device,
-    swapchain: SwapchainKHR,
+    swapchain: vk::SwapchainKHR,
     images: Vec<vk::Image>,
 
     format: SurfaceFormat,
@@ -2145,56 +2121,56 @@ impl Drop for Swapchain {
     }
 }
 
-impl TryFrom<PresentModeKHR> for PresentMode {
+impl TryFrom<vk::PresentModeKHR> for PresentMode {
     type Error = UnknownEnumValue;
 
-    fn try_from(value: PresentModeKHR) -> Result<Self, Self::Error> {
+    fn try_from(value: vk::PresentModeKHR) -> Result<Self, Self::Error> {
         match value {
-            PresentModeKHR::FIFO => Ok(PresentMode::Fifo),
-            PresentModeKHR::IMMEDIATE => Ok(PresentMode::Immediate),
-            PresentModeKHR::FIFO_RELAXED => Ok(PresentMode::FifoRelaxed),
-            PresentModeKHR::MAILBOX => Ok(PresentMode::Mailbox),
+            vk::PresentModeKHR::FIFO => Ok(PresentMode::Fifo),
+            vk::PresentModeKHR::IMMEDIATE => Ok(PresentMode::Immediate),
+            vk::PresentModeKHR::FIFO_RELAXED => Ok(PresentMode::FifoRelaxed),
+            vk::PresentModeKHR::MAILBOX => Ok(PresentMode::Mailbox),
             _ => Err(UnknownEnumValue),
         }
     }
 }
 
-impl From<PresentMode> for PresentModeKHR {
+impl From<PresentMode> for vk::PresentModeKHR {
     fn from(value: PresentMode) -> Self {
         match value {
-            PresentMode::Fifo => PresentModeKHR::FIFO,
-            PresentMode::Immediate => PresentModeKHR::IMMEDIATE,
-            PresentMode::FifoRelaxed => PresentModeKHR::FIFO_RELAXED,
-            PresentMode::Mailbox => PresentModeKHR::MAILBOX,
+            PresentMode::Fifo => vk::PresentModeKHR::FIFO,
+            PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
+            PresentMode::FifoRelaxed => vk::PresentModeKHR::FIFO_RELAXED,
+            PresentMode::Mailbox => vk::PresentModeKHR::MAILBOX,
         }
     }
 }
 
-impl TryFrom<Format> for TextureFormat {
+impl TryFrom<vk::Format> for TextureFormat {
     type Error = UnknownEnumValue;
 
-    fn try_from(value: Format) -> Result<Self, Self::Error> {
+    fn try_from(value: vk::Format) -> Result<Self, Self::Error> {
         match value {
-            Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
-            Format::R8G8B8A8_SRGB => Ok(Self::Rgba8UnormSrgb),
-            Format::B8G8R8A8_UNORM => Ok(Self::Bgra8Unorm),
-            Format::B8G8R8A8_SRGB => Ok(Self::Bgra8UnormSrgb),
-            Format::D32_SFLOAT => Ok(Self::Depth32Float),
-            Format::R16G16B16A16_SFLOAT => Ok(Self::Rgba16Float),
+            vk::Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
+            vk::Format::R8G8B8A8_SRGB => Ok(Self::Rgba8UnormSrgb),
+            vk::Format::B8G8R8A8_UNORM => Ok(Self::Bgra8Unorm),
+            vk::Format::B8G8R8A8_SRGB => Ok(Self::Bgra8UnormSrgb),
+            vk::Format::D32_SFLOAT => Ok(Self::Depth32Float),
+            vk::Format::R16G16B16A16_SFLOAT => Ok(Self::Rgba16Float),
             _ => Err(UnknownEnumValue),
         }
     }
 }
 
-impl From<TextureFormat> for Format {
+impl From<TextureFormat> for vk::Format {
     fn from(value: TextureFormat) -> Self {
         match value {
-            TextureFormat::Rgba8Unorm => Self::R8G8B8A8_UNORM,
-            TextureFormat::Rgba8UnormSrgb => Self::R8G8B8A8_SRGB,
-            TextureFormat::Bgra8Unorm => Self::B8G8R8A8_UNORM,
-            TextureFormat::Bgra8UnormSrgb => Self::B8G8R8A8_SRGB,
-            TextureFormat::Depth32Float => Self::D32_SFLOAT,
-            TextureFormat::Rgba16Float => Self::R16G16B16A16_SFLOAT,
+            TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
+            TextureFormat::Rgba8UnormSrgb => vk::Format::R8G8B8A8_SRGB,
+            TextureFormat::Bgra8Unorm => vk::Format::B8G8R8A8_UNORM,
+            TextureFormat::Bgra8UnormSrgb => vk::Format::B8G8R8A8_SRGB,
+            TextureFormat::Depth32Float => vk::Format::D32_SFLOAT,
+            TextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
         }
     }
 }
@@ -2218,58 +2194,58 @@ impl TryFrom<vk::ColorSpaceKHR> for ColorSpace {
     }
 }
 
-impl TryFrom<PrimitiveTopology> for super::PrimitiveTopology {
+impl TryFrom<vk::PrimitiveTopology> for PrimitiveTopology {
     type Error = UnknownEnumValue;
 
-    fn try_from(value: PrimitiveTopology) -> Result<Self, Self::Error> {
+    fn try_from(value: vk::PrimitiveTopology) -> Result<Self, Self::Error> {
         match value {
-            PrimitiveTopology::TRIANGLE_LIST => Ok(Self::TriangleList),
+            vk::PrimitiveTopology::TRIANGLE_LIST => Ok(Self::TriangleList),
             _ => Err(UnknownEnumValue),
         }
     }
 }
 
-impl From<super::PrimitiveTopology> for PrimitiveTopology {
-    fn from(value: super::PrimitiveTopology) -> Self {
+impl From<PrimitiveTopology> for vk::PrimitiveTopology {
+    fn from(value: PrimitiveTopology) -> Self {
         match value {
-            super::PrimitiveTopology::TriangleList => Self::TRIANGLE_LIST,
-            super::PrimitiveTopology::LineList => Self::LINE_LIST,
-            super::PrimitiveTopology::PointList => Self::POINT_LIST,
-            super::PrimitiveTopology::LineStrip => Self::LINE_STRIP,
-            super::PrimitiveTopology::TriangleStrip => Self::TRIANGLE_STRIP,
+            PrimitiveTopology::TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
+            PrimitiveTopology::LineList => vk::PrimitiveTopology::LINE_LIST,
+            PrimitiveTopology::PointList => vk::PrimitiveTopology::POINT_LIST,
+            PrimitiveTopology::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
+            PrimitiveTopology::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
         }
     }
 }
 
-impl From<super::FrontFace> for FrontFace {
-    fn from(value: super::FrontFace) -> Self {
+impl From<FrontFace> for vk::FrontFace {
+    fn from(value: FrontFace) -> Self {
         match value {
-            super::FrontFace::Cw => Self::CLOCKWISE,
-            super::FrontFace::Ccw => Self::COUNTER_CLOCKWISE,
+            FrontFace::Cw => vk::FrontFace::CLOCKWISE,
+            FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
         }
     }
 }
 
-impl From<super::DescriptorType> for vk::DescriptorType {
-    fn from(value: super::DescriptorType) -> Self {
+impl From<DescriptorType> for vk::DescriptorType {
+    fn from(value: DescriptorType) -> Self {
         match value {
-            super::DescriptorType::Uniform => Self::UNIFORM_BUFFER,
-            super::DescriptorType::Storage => Self::STORAGE_BUFFER,
-            super::DescriptorType::Sampler => Self::SAMPLER,
-            super::DescriptorType::Texture => Self::SAMPLED_IMAGE,
+            DescriptorType::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
+            DescriptorType::Storage => vk::DescriptorType::STORAGE_BUFFER,
+            DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
+            DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
         }
     }
 }
 
-impl From<ShaderStages> for ShaderStageFlags {
+impl From<ShaderStages> for vk::ShaderStageFlags {
     fn from(value: ShaderStages) -> Self {
-        let mut flags = ShaderStageFlags::empty();
+        let mut flags = vk::ShaderStageFlags::empty();
 
         if value.contains(ShaderStages::VERTEX) {
-            flags |= ShaderStageFlags::VERTEX;
+            flags |= vk::ShaderStageFlags::VERTEX;
         }
         if value.contains(ShaderStages::FRAGMENT) {
-            flags |= ShaderStageFlags::FRAGMENT;
+            flags |= vk::ShaderStageFlags::FRAGMENT;
         }
 
         flags
@@ -2380,7 +2356,6 @@ pub struct Pipeline {
     device: Arc<DeviceShared>,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
-    descriptors: Vec<Vec<super::DescriptorBinding>>,
 }
 
 impl Drop for Pipeline {
@@ -2413,10 +2388,10 @@ pub struct CommandPool {
 impl CommandPool {
     /// Acquires a new [`CommandEncoder`] from this `CommandPool`.
     pub fn create_encoder(&mut self) -> Result<CommandEncoder<'_>, Error> {
-        let inheritance = CommandBufferInheritanceInfo::default();
+        let inheritance = vk::CommandBufferInheritanceInfo::default();
 
-        let info = CommandBufferBeginInfo::default()
-            .flags(CommandBufferUsageFlags::empty())
+        let info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::empty())
             .inheritance_info(&inheritance);
 
         let Some(buffer) = self.buffers.get(self.next_buffer).copied() else {
@@ -2462,7 +2437,7 @@ impl CommandPool {
         unsafe {
             self.device
                 .device
-                .reset_command_pool(self.pool, CommandPoolResetFlags::empty())?
+                .reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())?
         }
 
         self.next_buffer = 0;
@@ -2607,8 +2582,14 @@ impl<'a> CommandEncoder<'a> {
 
         assert!(mip_level < dst.mip_levels);
 
+        let aspect_mask = if dst.format.is_depth() {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            vk::ImageAspectFlags::COLOR
+        };
+
         let subresource = vk::ImageSubresourceLayers::default()
-            .aspect_mask(ImageAspectFlags::COLOR)
+            .aspect_mask(aspect_mask)
             .mip_level(mip_level)
             .base_array_layer(0)
             .layer_count(1);
@@ -2677,27 +2658,27 @@ impl<'a> CommandEncoder<'a> {
         let mut color_attachments = Vec::new();
         for attachment in descriptor.color_attachments {
             let load_op = match attachment.load_op {
-                LoadOp::Load => AttachmentLoadOp::LOAD,
-                LoadOp::Clear(_) => AttachmentLoadOp::CLEAR,
+                LoadOp::Load => vk::AttachmentLoadOp::LOAD,
+                LoadOp::Clear(_) => vk::AttachmentLoadOp::CLEAR,
             };
 
             let store_op = match attachment.store_op {
-                StoreOp::Discard => AttachmentStoreOp::NONE,
-                StoreOp::Store => AttachmentStoreOp::STORE,
+                StoreOp::Discard => vk::AttachmentStoreOp::NONE,
+                StoreOp::Store => vk::AttachmentStoreOp::STORE,
             };
 
             let clear_value = match attachment.load_op {
-                LoadOp::Clear(color) => ClearValue {
-                    color: ClearColorValue { float32: color.0 },
+                LoadOp::Clear(color) => vk::ClearValue {
+                    color: vk::ClearColorValue { float32: color.0 },
                 },
-                LoadOp::Load => ClearValue::default(),
+                LoadOp::Load => vk::ClearValue::default(),
             };
 
             let layout = access_flags_to_image_layout(attachment.access);
-            let info = RenderingAttachmentInfo::default()
+            let info = vk::RenderingAttachmentInfo::default()
                 .image_view(attachment.view.view)
                 .image_layout(layout)
-                .resolve_mode(ResolveModeFlags::NONE)
+                .resolve_mode(vk::ResolveModeFlags::NONE)
                 .load_op(load_op)
                 .store_op(store_op)
                 .clear_value(clear_value);
@@ -2730,7 +2711,7 @@ impl<'a> CommandEncoder<'a> {
             vk::RenderingAttachmentInfo::default()
                 .image_view(attachment.view.view)
                 .image_layout(layout)
-                .resolve_mode(ResolveModeFlags::NONE)
+                .resolve_mode(vk::ResolveModeFlags::NONE)
                 .load_op(load_op)
                 .store_op(store_op)
                 .clear_value(clear_value)
@@ -2739,11 +2720,11 @@ impl<'a> CommandEncoder<'a> {
         assert_ne!(extent.x, 0);
         assert_ne!(extent.y, 0);
 
-        let mut info = RenderingInfo::default()
-            .flags(RenderingFlags::empty())
-            .render_area(Rect2D {
-                offset: Offset2D { x: 0, y: 0 },
-                extent: Extent2D {
+        let mut info = vk::RenderingInfo::default()
+            .flags(vk::RenderingFlags::empty())
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
                     width: extent.x,
                     height: extent.y,
                 },
@@ -2763,7 +2744,7 @@ impl<'a> CommandEncoder<'a> {
         // Since we have created the pipeline with `VK_DYNAMIC_STATE_VIEWPORT` and
         // `VK_DYNAMIC_STATE_SCISSOR` we must set the the viewport and scissors
         // before any draw opertaions.
-        let viewport = Viewport {
+        let viewport = vk::Viewport {
             x: 0.0,
             y: 0.0,
             width: extent.x as f32,
@@ -2771,9 +2752,9 @@ impl<'a> CommandEncoder<'a> {
             min_depth: 0.0,
             max_depth: 1.0,
         };
-        let scissor = Rect2D {
-            offset: Offset2D { x: 0, y: 0 },
-            extent: Extent2D {
+        let scissor = vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D {
                 width: extent.x,
                 height: extent.y,
             },
@@ -2844,18 +2825,18 @@ impl<'a> CommandEncoder<'a> {
             let new_layout = access_flags_to_image_layout(barrier.dst_access);
 
             let aspect_mask = if barrier.texture.format.is_depth() {
-                ImageAspectFlags::DEPTH
+                vk::ImageAspectFlags::DEPTH
             } else {
-                ImageAspectFlags::COLOR
+                vk::ImageAspectFlags::COLOR
             };
 
             // Images cannot be transitioned into `UNDEFINED`.
-            assert_ne!(new_layout, ImageLayout::UNDEFINED);
+            assert_ne!(new_layout, vk::ImageLayout::UNDEFINED);
 
             assert!(barrier.base_mip_level < barrier.texture.mip_levels);
             assert!(barrier.base_mip_level + barrier.mip_levels <= barrier.texture.mip_levels);
 
-            let subresource_range = ImageSubresourceRange::default()
+            let subresource_range = vk::ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
                 .base_mip_level(barrier.base_mip_level)
                 .level_count(barrier.mip_levels)
@@ -2878,7 +2859,7 @@ impl<'a> CommandEncoder<'a> {
         }
 
         let info = vk::DependencyInfo::default()
-            .dependency_flags(DependencyFlags::empty())
+            .dependency_flags(vk::DependencyFlags::empty())
             .buffer_memory_barriers(&buffer_barriers)
             .image_memory_barriers(&image_barriers);
 
@@ -2919,7 +2900,7 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         unsafe {
             self.encoder.device.device.cmd_bind_pipeline(
                 self.encoder.buffer,
-                PipelineBindPoint::GRAPHICS,
+                vk::PipelineBindPoint::GRAPHICS,
                 pipeline.pipeline,
             );
         }
@@ -2933,7 +2914,7 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         unsafe {
             self.encoder.device.device.cmd_bind_descriptor_sets(
                 self.encoder.buffer,
-                PipelineBindPoint::GRAPHICS,
+                vk::PipelineBindPoint::GRAPHICS,
                 pipeline.pipeline_layout,
                 slot,
                 &[descriptor_set.set],
@@ -3095,7 +3076,7 @@ impl<'a> SwapchainTexture<'a> {
 
         let swapchains = &[self.swapchain.swapchain];
         let image_indices = &[self.index];
-        let info = PresentInfoKHR::default()
+        let info = vk::PresentInfoKHR::default()
             .wait_semaphores(wait_semaphores)
             // - Every element must be unique.
             .swapchains(swapchains)
@@ -3143,28 +3124,28 @@ impl Texture {
     pub fn create_view<'a>(&'a self, descriptor: &TextureViewDescriptor) -> TextureView<'a> {
         assert!(descriptor.base_mip_level + descriptor.mip_levels <= self.mip_levels);
 
-        let components = ComponentMapping::default()
-            .r(ComponentSwizzle::IDENTITY)
-            .g(ComponentSwizzle::IDENTITY)
-            .b(ComponentSwizzle::IDENTITY)
-            .a(ComponentSwizzle::IDENTITY);
+        let components = vk::ComponentMapping::default()
+            .r(vk::ComponentSwizzle::IDENTITY)
+            .g(vk::ComponentSwizzle::IDENTITY)
+            .b(vk::ComponentSwizzle::IDENTITY)
+            .a(vk::ComponentSwizzle::IDENTITY);
 
         let aspect_mask = if self.format.is_depth() {
-            ImageAspectFlags::DEPTH
+            vk::ImageAspectFlags::DEPTH
         } else {
-            ImageAspectFlags::COLOR
+            vk::ImageAspectFlags::COLOR
         };
 
-        let subresource_range = ImageSubresourceRange::default()
+        let subresource_range = vk::ImageSubresourceRange::default()
             .aspect_mask(aspect_mask)
             .base_mip_level(descriptor.base_mip_level)
             .level_count(descriptor.mip_levels)
             .base_array_layer(0)
             .layer_count(1);
 
-        let info = ImageViewCreateInfo::default()
+        let info = vk::ImageViewCreateInfo::default()
             .image(self.image)
-            .view_type(ImageViewType::TYPE_2D)
+            .view_type(vk::ImageViewType::TYPE_2D)
             .format(self.format.into())
             .subresource_range(subresource_range)
             .components(components);
@@ -3478,7 +3459,7 @@ impl DescriptorPool {
     ) -> Result<DescriptorSet<'_>, Error> {
         let layouts = [layout.layout];
 
-        let info = DescriptorSetAllocateInfo::default()
+        let info = vk::DescriptorSetAllocateInfo::default()
             .descriptor_pool(self.pool)
             // - `descriptorSetCount` must be greater than 0.
             .set_layouts(&layouts);
@@ -3495,7 +3476,7 @@ impl DescriptorPool {
         unsafe {
             // - `flags` must be 0.
             self.device
-                .reset_descriptor_pool(self.pool, DescriptorPoolResetFlags::empty())
+                .reset_descriptor_pool(self.pool, vk::DescriptorPoolResetFlags::empty())
                 .unwrap();
         }
     }
@@ -3605,7 +3586,7 @@ impl<'a> DescriptorSet<'a> {
                     for texture in textures {
                         let info = vk::DescriptorImageInfo::default()
                             .image_view(texture.view)
-                            .image_layout(ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                             .sampler(vk::Sampler::null());
 
                         infos.push(Info { image: info });
@@ -3775,11 +3756,11 @@ const fn cstr_to_fixed_array<const N: usize>(s: &CStr) -> [i8; N] {
 }
 
 extern "system" fn debug_callback(
-    severity: DebugUtilsMessageSeverityFlagsEXT,
-    typ: DebugUtilsMessageTypeFlagsEXT,
-    data: *const DebugUtilsMessengerCallbackDataEXT<'_>,
+    severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    typ: vk::DebugUtilsMessageTypeFlagsEXT,
+    data: *const vk::DebugUtilsMessengerCallbackDataEXT<'_>,
     _: *mut c_void,
-) -> Bool32 {
+) -> vk::Bool32 {
     let data = unsafe { *data };
     let message = match unsafe { data.message_as_c_str() } {
         Some(msg) => msg.to_string_lossy(),
@@ -3787,12 +3768,12 @@ extern "system" fn debug_callback(
     };
 
     match severity {
-        DebugUtilsMessageSeverityFlagsEXT::ERROR => {
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
             let backtrace = Backtrace::force_capture();
             tracing::error!("[{:?}]: {}\n{}", typ, message, backtrace);
             panic!("abort due to prior validation error");
         }
-        DebugUtilsMessageSeverityFlagsEXT::WARNING => {
+        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
             tracing::warn!("[{:?}]: {}", typ, message);
         }
         _ => (),
@@ -3808,9 +3789,9 @@ pub struct UnknownEnumValue;
 #[derive(Clone)]
 struct InstanceShared {
     config: Config,
-    entry: ash::Entry,
+    entry: Entry,
     instance: ash::Instance,
-    messenger: Option<DebugUtilsMessengerEXT>,
+    messenger: Option<vk::DebugUtilsMessengerEXT>,
 }
 
 impl InstanceShared {
