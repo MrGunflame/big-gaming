@@ -6,7 +6,7 @@ pub mod vulkan;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
 
-use ash::vk::{self, PipelineStageFlags};
+use ash::vk;
 use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
@@ -209,17 +209,17 @@ pub struct RenderPassDescriptor<'a, 'res> {
 #[derive(Debug)]
 pub struct RenderPassColorAttachment<'res> {
     pub view: &'res TextureView<'res>,
-    pub layout: vk::ImageLayout,
     pub load_op: LoadOp<Color>,
     pub store_op: StoreOp,
+    pub access: AccessFlags,
 }
 
 #[derive(Debug)]
 pub struct RenderPassDepthStencilAttachment<'res> {
     pub view: &'res TextureView<'res>,
-    pub layout: vk::ImageLayout,
     pub depth_load_op: LoadOp<f32>,
     pub depth_store_op: StoreOp,
+    pub access: AccessFlags,
 }
 
 #[derive(Copy, Clone, Debug)]

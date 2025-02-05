@@ -1,16 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::Hash;
 
-use ash::ext::pci_bus_info;
-use ash::khr::acceleration_structure;
-use ash::vk;
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
 
-use crate::backend::allocator::{BufferAlloc, UsageFlags};
+use crate::backend::allocator::BufferAlloc;
 use crate::backend::vulkan::{CommandEncoder, TextureView};
 use crate::backend::{
-    BufferBarrier, CopyBuffer, DescriptorType, ImageDataLayout, PipelineBarriers,
+    AccessFlags, BufferBarrier, CopyBuffer, DescriptorType, PipelineBarriers,
     RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
     TextureBarrier, TextureViewDescriptor, WriteDescriptorBinding, WriteDescriptorResource,
     WriteDescriptorResources,
@@ -18,9 +15,9 @@ use crate::backend::{
 
 use super::scheduler::{Barrier, Step};
 use super::{
-    Buffer, BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, DescriptorSet,
-    DescriptorSetId, Draw, DrawCall, DrawCmd, LifecycleEvent, PipelineId, RenderPassCmd,
-    ResourceId, Resources, SamplerId, Texture, TextureData, TextureId,
+    BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, DescriptorSetId, DrawCall, DrawCmd,
+    LifecycleEvent, PipelineId, RenderPassCmd, ResourceId, Resources, SamplerId, TextureData,
+    TextureId,
 };
 
 pub fn execute<'a, I>(
@@ -102,13 +99,18 @@ fn copy_buffer_to_buffer(
     let src = resources.buffers.get(cmd.src).unwrap();
     let dst = resources.buffers.get(cmd.dst).unwrap();
 
-    encoder.copy_buffer_to_buffer(
-        src.buffer.buffer(),
-        cmd.src_offset,
-        dst.buffer.buffer(),
-        cmd.dst_offset,
-        cmd.count.get(),
-    );
+    // SAFETY:
+    // We have inserted the proper barriers such that the source is
+    // `TRANSFER_READ` and the destination is `TRANSFER_WRITE`.
+    unsafe {
+        encoder.copy_buffer_to_buffer(
+            src.buffer.buffer(),
+            cmd.src_offset,
+            dst.buffer.buffer(),
+            cmd.dst_offset,
+            cmd.count.get(),
+        );
+    }
 
     // Both buffers must be kept alive until the copy
     // operation is complete.
@@ -125,15 +127,20 @@ fn copy_buffer_to_texture(
     let buffer = resources.buffers.get(cmd.src).unwrap();
     let texture = resources.textures.get(cmd.dst).unwrap();
 
-    encoder.copy_buffer_to_texture(
-        CopyBuffer {
-            buffer: buffer.buffer.buffer(),
-            offset: cmd.src_offset,
-            layout: cmd.layout,
-        },
-        texture.data.texture(),
-        cmd.dst_mip_level,
-    );
+    // SAFETY:
+    // We have inserted the proper barriers such that the source buffer
+    // is `TRANSFER_READ` and the texture mip is `TRANSFER_WRITE`.
+    unsafe {
+        encoder.copy_buffer_to_texture(
+            CopyBuffer {
+                buffer: buffer.buffer.buffer(),
+                offset: cmd.src_offset,
+                layout: cmd.layout,
+            },
+            texture.data.texture(),
+            cmd.dst_mip_level,
+        );
+    }
 
     // Both buffer and texture must be kept alive until the
     // copy operation is complete.
@@ -189,7 +196,7 @@ fn run_render_pass(
             view,
             load_op: attachment.load_op,
             store_op: attachment.store_op,
-            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            access: AccessFlags::COLOR_ATTACHMENT_WRITE,
         });
     }
 
@@ -217,14 +224,18 @@ fn run_render_pass(
             depth_load_op: attachment.load_op,
             depth_store_op: attachment.store_op,
             view,
-            layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            access: AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE,
         }
     });
 
-    let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-        color_attachments: &color_attachments,
-        depth_stencil_attachment: depth_attachment.as_ref(),
-    });
+    // SAFETY: We have inserted the necessary barrier so that all
+    // color/depth attachments have the appropriate access flags set.
+    let mut render_pass = unsafe {
+        encoder.begin_render_pass(&RenderPassDescriptor {
+            color_attachments: &color_attachments,
+            depth_stencil_attachment: depth_attachment.as_ref(),
+        })
+    };
 
     for cmd in &cmd.cmds {
         match cmd {

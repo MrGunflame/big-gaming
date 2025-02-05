@@ -865,6 +865,7 @@ impl Device {
             buffer,
             device: self.device.clone(),
             size: size.get(),
+            usages: buffer_usage_flags,
         })
     }
 
@@ -2513,7 +2514,16 @@ pub struct CommandEncoder<'a> {
 
 impl<'a> CommandEncoder<'a> {
     /// Copy `count` bytes from `src` to `dst`.
-    pub fn copy_buffer_to_buffer(
+    ///
+    /// # Safety
+    ///
+    /// - `src` must have the [`TRANSFER_READ`] flag set at the time of operation.
+    /// - `dst` must have the [`TRANSFER_WRITE`] flag set at the time of operation.
+    /// - Only one operation must write to `dst` before the write is flushed.
+    ///
+    /// [`TRANSFER_READ`]: AccessFlags::TRANSFER_READ
+    /// [`TRANSFER_WRITE`]: AccessFlags::TRANSFER_WRITE
+    pub unsafe fn copy_buffer_to_buffer(
         &mut self,
         src: &Buffer,
         src_offset: u64,
@@ -2569,7 +2579,23 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
-    pub fn copy_buffer_to_texture(&mut self, src: CopyBuffer<'_>, dst: &Texture, mip_level: u32) {
+    /// Copies data from a [`Buffer`] into a [`Texture`].
+    ///
+    /// # Safety
+    ///
+    /// - The `src` [`Buffer`] must have the [`TRANSFER_READ`] flag set at the time of operation.
+    /// - The target mip-level of the `dst` [`Texture`] must have the [`TRANSFER_WRITE`] flag set
+    /// at the time of operation.
+    /// - Only one operation must write to `dst` before the write is flushed.
+    ///
+    /// [`TRANSFER_READ`]: AccessFlags::TRANSFER_READ
+    /// [`TRANSFER_WRITE`]: AccessFlags::TRANSFER_WRITE
+    pub unsafe fn copy_buffer_to_texture(
+        &mut self,
+        src: CopyBuffer<'_>,
+        dst: &Texture,
+        mip_level: u32,
+    ) {
         assert!(self.queue_caps.contains(QueueCapabilities::TRANSFER));
 
         assert_ne!(dst.size.x, 0);
@@ -2621,7 +2647,26 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
-    pub fn begin_render_pass<'res>(
+    /// Begins the recording of a [`RenderPass`].
+    ///
+    /// # Safety
+    ///
+    /// - All color attachments must have the [`COLOR_ATTACHMENT_READ`] flag set at the time of
+    /// operation if they are being read from a shader.
+    /// - All color attachments must have the [`COLOR_ATTACHMENT_WRITE`] flag set at the time of
+    /// operation if they are being written to from a shader.
+    /// - The depth attachment must have the [`DEPTH_ATTACHMENT_READ`] flag set at the time of
+    /// operation if they are being read from.
+    /// - The depth attachment must have the [`DEPTH_ATTACHMENT_WRITE`] flag set at the time of
+    /// operation if they are being written to.
+    /// - Every color/depth attachment that is being written to must not have any writes that
+    /// are not yet flushed.
+    ///
+    /// [`COLOR_ATTACHMENT_READ`]: AccessFlags::COLOR_ATTACHMENT_READ
+    /// [`COLOR_ATTACHMENT_WRITE`]: AccessFlags::COLOR_ATTACHMENT_WRITE
+    /// [`DEPTH_ATTACHMENT_READ`]: AccessFlags::DEPTH_ATTACHMENT_READ
+    /// [`DEPTH_ATTACHMENT_WRITE`]: AccessFlags::DEPTH_ATTACHMENT_WRITE
+    pub unsafe fn begin_render_pass<'res>(
         &mut self,
         descriptor: &RenderPassDescriptor<'_, 'res>,
     ) -> RenderPass<'_, 'res> {
@@ -2648,9 +2693,10 @@ impl<'a> CommandEncoder<'a> {
                 LoadOp::Load => ClearValue::default(),
             };
 
+            let layout = access_flags_to_image_layout(attachment.access);
             let info = RenderingAttachmentInfo::default()
                 .image_view(attachment.view.view)
-                .image_layout(attachment.layout)
+                .image_layout(layout)
                 .resolve_mode(ResolveModeFlags::NONE)
                 .load_op(load_op)
                 .store_op(store_op)
@@ -2679,10 +2725,11 @@ impl<'a> CommandEncoder<'a> {
                 StoreOp::Store => vk::AttachmentStoreOp::STORE,
             };
 
+            let layout = access_flags_to_image_layout(attachment.access);
             extent = UVec2::max(extent, attachment.view.size);
             vk::RenderingAttachmentInfo::default()
                 .image_view(attachment.view.view)
-                .image_layout(attachment.layout)
+                .image_layout(layout)
                 .resolve_mode(ResolveModeFlags::NONE)
                 .load_op(load_op)
                 .store_op(store_op)
@@ -2747,7 +2794,12 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
+    /// Inserts a batch of memory/execution barriers.
     pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
+        // FIXME: This function should probably require the caller to
+        // guarantee that the resource referenced by the barrier is
+        // in the "correct" AccessFlags state (esp. for textures).
+
         let mut buffer_barriers = Vec::new();
         for barrier in barriers.buffer {
             assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
@@ -2891,6 +2943,13 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
     }
 
     pub fn bind_index_buffer(&mut self, buffer: BufferView<'_>, format: IndexFormat) {
+        assert!(buffer
+            .buffer
+            .usages
+            .contains(vk::BufferUsageFlags::INDEX_BUFFER));
+
+        assert_eq!(buffer.len() % u64::from(format.size()), 0);
+
         unsafe {
             self.encoder.device.device.cmd_bind_index_buffer(
                 self.encoder.buffer,
@@ -3166,6 +3225,7 @@ pub struct Buffer {
     device: Arc<DeviceShared>,
     buffer: vk::Buffer,
     size: u64,
+    usages: vk::BufferUsageFlags,
 }
 
 impl Buffer {
