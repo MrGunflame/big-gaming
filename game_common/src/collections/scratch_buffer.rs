@@ -73,6 +73,9 @@ where
         }
     }
 
+    // False positive, we return a different `&mut T` value on every call,
+    // similar to how allocator functions behave.
+    #[expect(clippy::mut_from_ref)]
     pub unsafe fn insert_unchecked(&self, value: T) -> &mut T {
         debug_assert!(self.len.get() < self.cap);
 

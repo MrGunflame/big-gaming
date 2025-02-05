@@ -1,3 +1,5 @@
+use std::iter::FusedIterator;
+
 pub trait Index: Copy + Eq {
     fn index(&self) -> usize;
 }
@@ -8,7 +10,15 @@ impl Index for super::arena::Key {
     }
 }
 
+impl Index for usize {
+    fn index(&self) -> usize {
+        *self
+    }
+}
+
 /// A key-value map backed by a [`Vec`].
+///
+/// This is more efficient alternative to a [`HashMap`] when the keys follow a linear pattern.
 #[derive(Clone, Debug)]
 pub struct VecMap<K, V> {
     inner: Vec<Entry<K, V>>,
@@ -89,6 +99,19 @@ where
         }
     }
 
+    pub fn iter_mut(&mut self) -> IterMut<'_, K, V> {
+        IterMut {
+            iter: self.inner.iter_mut(),
+            len: self.len,
+        }
+    }
+
+    pub fn values_mut(&mut self) -> ValuesMut<'_, K, V> {
+        ValuesMut {
+            iter: self.iter_mut(),
+        }
+    }
+
     pub fn clear(&mut self) {
         self.inner.clear();
         self.len = 0;
@@ -144,3 +167,78 @@ where
         self.len
     }
 }
+
+#[derive(Debug)]
+pub struct IterMut<'a, K, V> {
+    iter: std::slice::IterMut<'a, Entry<K, V>>,
+    len: usize,
+}
+
+impl<'a, K, V> Iterator for IterMut<'a, K, V>
+where
+    K: Index,
+{
+    type Item = (K, &'a mut V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let entry = self.iter.next()?;
+            match entry {
+                Entry::None => (),
+                Entry::Occupied((key, val)) => {
+                    self.len -= 1;
+                    return Some((*key, val));
+                }
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len, Some(self.len))
+    }
+}
+
+impl<'a, K, V> ExactSizeIterator for IterMut<'a, K, V>
+where
+    K: Index,
+{
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl<'a, K, V> FusedIterator for IterMut<'a, K, V> where K: Index {}
+
+#[derive(Debug)]
+pub struct ValuesMut<'a, K, V>
+where
+    K: Index,
+{
+    iter: IterMut<'a, K, V>,
+}
+
+impl<'a, K, V> Iterator for ValuesMut<'a, K, V>
+where
+    K: Index,
+{
+    type Item = &'a mut V;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(_, v)| v)
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, K, V> ExactSizeIterator for ValuesMut<'a, K, V>
+where
+    K: Index,
+{
+    fn len(&self) -> usize {
+        self.iter.len()
+    }
+}
+
+impl<'a, K, V> FusedIterator for ValuesMut<'a, K, V> where K: Index {}
