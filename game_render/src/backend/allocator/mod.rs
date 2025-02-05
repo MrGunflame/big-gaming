@@ -315,15 +315,26 @@ impl GeneralPurposeAllocator {
                 .entry(mem_typ)
                 .or_insert_with(|| Pool::new(mem_typ));
 
-            let allocation = pool.alloc(&self.manager, &req, host_visible).unwrap();
-            return DeviceMemoryRegion {
-                allocator: self.clone(),
-                memory: allocation.memory.clone(),
-                region: allocation.region,
-                memory_type: allocation.memory.memory_type,
-                strategy: allocation.strategy,
-                ptr: allocation.ptr,
-                flags: props.types[mem_typ as usize].flags,
+            match pool.alloc(&self.manager, &req, host_visible) {
+                Ok(allocation) => {
+                    return DeviceMemoryRegion {
+                        allocator: self.clone(),
+                        memory: allocation.memory.clone(),
+                        region: allocation.region,
+                        memory_type: allocation.memory.memory_type,
+                        strategy: allocation.strategy,
+                        ptr: allocation.ptr,
+                        flags: props.types[mem_typ as usize].flags,
+                    }
+                }
+                Err(err) => {
+                    tracing::error!(
+                        "allocation of {:?} for memory type {:?} failed: {}",
+                        req,
+                        mem_typ,
+                        err,
+                    );
+                }
             };
         }
 
