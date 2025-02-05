@@ -512,17 +512,6 @@ impl AccessFlags {
         !self.is_writable()
     }
 
-    pub(crate) fn is_readable(&self) -> bool {
-        matches!(
-            *self,
-            Self::SHADER_READ
-                | Self::INDEX
-                | Self::INDIRECT
-                | Self::DEPTH_ATTACHMENT_READ
-                | Self::TRANSFER_READ
-        )
-    }
-
     pub(crate) fn is_writable(&self) -> bool {
         matches!(
             *self,
@@ -611,7 +600,7 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    pub fn new(source: &ShaderSource<'_>, device: &vulkan::Device) -> Self {
+    pub fn new(source: &ShaderSource<'_>) -> Self {
         match source {
             ShaderSource::Wgsl(src) => {
                 let shader = Shader::from_wgsl(&src);

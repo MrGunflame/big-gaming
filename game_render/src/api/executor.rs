@@ -4,7 +4,6 @@ use std::hash::Hash;
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
 
-use crate::backend::allocator::{BufferAlloc, UsageFlags};
 use crate::backend::vulkan::{CommandEncoder, TextureView};
 use crate::backend::{
     AccessFlags, BufferBarrier, CopyBuffer, DescriptorType, MemoryTypeFlags, PipelineBarriers,
@@ -20,7 +19,7 @@ use super::{
     TextureId,
 };
 
-pub fn execute<'a, I>(
+pub(super) fn execute<'a, I>(
     resources: &mut Resources,
     steps: I,
     encoder: &mut CommandEncoder<'_>,
@@ -453,7 +452,6 @@ fn insert_barriers(
 
 #[derive(Debug, Default)]
 pub struct TemporaryResources {
-    staging_buffers: Vec<BufferAlloc>,
     texture_views: Vec<TextureView<'static>>,
     descriptor_sets: CountingSet<DescriptorSetId>,
     buffers: CountingSet<BufferId>,

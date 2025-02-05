@@ -9,7 +9,7 @@ use crate::backend::vulkan::{
     Adapter, CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
 };
 use crate::backend::{
-    ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig, TextureFormat,
+    ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
 };
 use crate::fps_limiter::FpsLimiter;
 use crate::FpsLimit;
@@ -38,13 +38,12 @@ impl RenderSurfaces {
     pub fn create(
         &mut self,
         instance: &Instance,
-        adapter: &Adapter,
         device: &Device,
         queue: &Queue,
         window: WindowState,
         id: WindowId,
     ) {
-        let surfce = create_surface(window, instance, adapter, device, queue).unwrap();
+        let surfce = create_surface(window, instance, device, queue).unwrap();
         self.windows.insert(id, surfce);
     }
 
@@ -111,7 +110,6 @@ pub(crate) struct SurfaceData {
 fn create_surface(
     window: WindowState,
     instance: &Instance,
-    adapter: &Adapter,
     device: &Device,
     queue: &Queue,
 ) -> Result<SurfaceData, ()> {

@@ -9,9 +9,9 @@ use crate::api::{
     RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
 };
 use crate::backend::{
-    max_mips_2d, AddressMode, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage,
-    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule,
-    ShaderSource, ShaderStages, StoreOp, TextureFormat, VertexStage,
+    AddressMode, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage, FrontFace,
+    LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderSource,
+    ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
 

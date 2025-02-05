@@ -7,13 +7,14 @@ use super::{Allocator, Region};
 
 #[derive(Clone, Debug)]
 pub struct BuddyAllocator {
-    region: Region,
     blocks: Slab<Block>,
     root: usize,
 }
 
 impl BuddyAllocator {
     pub fn new(region: Region) -> Self {
+        // TODO: Handle regions not starting at 0.
+        assert_eq!(region.offset, 0);
         assert!(region.size.is_power_of_two());
 
         let mut blocks = Slab::new();
@@ -24,11 +25,7 @@ impl BuddyAllocator {
             parent: None,
         });
 
-        Self {
-            region,
-            blocks,
-            root,
-        }
+        Self { blocks, root }
     }
 }
 

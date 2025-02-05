@@ -680,6 +680,8 @@ impl Adapter {
             .descriptor_binding_variable_descriptor_count(true)
             .runtime_descriptor_array(true);
 
+        // Allow passing deprecated `enabled_layer_names`.
+        #[allow(deprecated)]
         let create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             // Device layers are deprecated, but the Vulkan spec still recommends
@@ -752,7 +754,6 @@ impl Adapter {
             max_descriptor_set_storage_buffers: props.limits.max_descriptor_set_storage_buffers,
             max_descriptor_set_uniform_buffers: props.limits.max_descriptor_set_uniform_buffers,
             max_color_attachments: props.limits.max_color_attachments,
-            non_coherent_atom_size: props.limits.non_coherent_atom_size,
         }
     }
 }
@@ -1156,7 +1157,6 @@ impl Device {
             format: descriptor.format,
             size: descriptor.size,
             destroy_on_drop: true,
-            usage: usages,
             mip_levels: descriptor.mip_levels,
         })
     }
@@ -2090,7 +2090,6 @@ impl Swapchain {
                 format: self.format.format,
                 size: self.extent,
                 destroy_on_drop: false,
-                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
                 mip_levels: 1,
             }),
             suboptimal,
@@ -2415,10 +2414,10 @@ impl CommandPool {
 
         Ok(CommandEncoder {
             device: &self.device,
-            pool: self,
             buffer,
             queue_family: self.queue_family,
             queue_caps: self.queue_caps,
+            _pool: PhantomData,
         })
     }
 
@@ -2480,11 +2479,11 @@ impl Drop for CommandPool {
 
 pub struct CommandEncoder<'a> {
     device: &'a DeviceShared,
-    pool: &'a CommandPool,
     buffer: vk::CommandBuffer,
     /// Queue family which can be used to submit this buffer.
     queue_family: QueueFamilyId,
     queue_caps: QueueCapabilities,
+    _pool: PhantomData<&'a CommandPool>,
 }
 
 impl<'a> CommandEncoder<'a> {
@@ -2874,9 +2873,9 @@ impl<'a> CommandEncoder<'a> {
         }
 
         Ok(CommandBuffer {
-            device: self.device,
             buffer: self.buffer,
             queue_family: self.queue_family,
+            _device: PhantomData,
         })
     }
 }
@@ -3007,10 +3006,10 @@ impl<'encoder, 'resources> Drop for RenderPass<'encoder, 'resources> {
 
 #[derive(Debug)]
 pub struct CommandBuffer<'a> {
-    device: &'a DeviceShared,
     buffer: vk::CommandBuffer,
     /// Queue family which can be used to submit this buffer.
     queue_family: QueueFamilyId,
+    _device: PhantomData<&'a DeviceShared>,
 }
 
 #[derive(Debug)]
@@ -3102,7 +3101,6 @@ pub struct Texture {
     format: TextureFormat,
     size: UVec2,
     mip_levels: u32,
-    usage: vk::ImageUsageFlags,
     /// Whether to destroy the texture on drop.
     /// This is only used for swapchain textures.
     destroy_on_drop: bool,
@@ -3584,8 +3582,6 @@ enum FenceState {
     Idle,
     /// Fence has been registered, but it has not been signaled yet.
     Waiting,
-    /// Fence was signaled.
-    Signaled,
 }
 
 #[derive(Debug)]
@@ -3675,18 +3671,6 @@ impl Drop for Sampler {
             self.device.destroy_sampler(self.sampler, None);
         }
     }
-}
-
-const fn cstr_to_fixed_array<const N: usize>(s: &CStr) -> [i8; N] {
-    assert!(s.count_bytes() < N);
-
-    let mut arr = [0; N];
-
-    unsafe {
-        core::ptr::copy_nonoverlapping(s.as_ptr(), arr.as_mut_ptr(), s.count_bytes());
-    }
-
-    arr
 }
 
 extern "system" fn debug_callback(
@@ -3839,37 +3823,16 @@ struct DeviceLimits {
     max_descriptor_set_storage_buffers: u32,
     max_descriptor_set_sampled_images: u32,
     max_color_attachments: u32,
-    /// Is always a power of two.
-    non_coherent_atom_size: u64,
 }
 
 trait RangeBoundsExt {
     fn into_offset_size(self, upper_bound: u64) -> (u64, u64);
-
-    fn start(&self, lower_bound: u64) -> u64;
-    fn end(&self, upper_bound: u64) -> u64;
 }
 
 impl<T> RangeBoundsExt for T
 where
     T: RangeBounds<u64>,
 {
-    fn start(&self, lower_bound: u64) -> u64 {
-        match self.start_bound() {
-            Bound::Included(start) => *start,
-            Bound::Excluded(start) => *start + 1,
-            Bound::Unbounded => lower_bound,
-        }
-    }
-
-    fn end(&self, upper_bound: u64) -> u64 {
-        match self.end_bound() {
-            Bound::Included(end) => *end + 1,
-            Bound::Excluded(end) => *end,
-            Bound::Unbounded => upper_bound,
-        }
-    }
-
     fn into_offset_size(self, upper_bound: u64) -> (u64, u64) {
         let start = match self.start_bound() {
             Bound::Included(start) => *start,
@@ -4004,7 +3967,7 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
         VertexShader,
         EarlyFragmentTests,
         FragmentShader,
-        LateFragmentTests,
+        //LateFragmentTests,
         ColorAttachmentOutput,
     }
 
@@ -4077,7 +4040,7 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
         Some(GraphicsStage::VertexShader) => vk::PipelineStageFlags2::VERTEX_SHADER,
         Some(GraphicsStage::EarlyFragmentTests) => vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
         Some(GraphicsStage::FragmentShader) => vk::PipelineStageFlags2::FRAGMENT_SHADER,
-        Some(GraphicsStage::LateFragmentTests) => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        //Some(GraphicsStage::LateFragmentTests) => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
         Some(GraphicsStage::ColorAttachmentOutput) => {
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
         }

@@ -1,4 +1,3 @@
-mod block;
 mod buddy;
 mod bump;
 
@@ -12,7 +11,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use bitflags::bitflags;
-pub use block::BlockAllocator;
 pub use buddy::BuddyAllocator;
 use game_tracing::trace_span;
 use parking_lot::Mutex;
@@ -253,7 +251,10 @@ impl GeneralPurposeAllocator {
                 .unwrap();
         }
 
-        TextureAlloc { texture, memory }
+        TextureAlloc {
+            texture,
+            _memory: memory,
+        }
     }
 
     pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
@@ -424,7 +425,6 @@ impl Pool {
                 size: block_size.get() as usize,
             }),
             num_allocs: 0,
-            size: block_size,
             ptr,
         });
         let block = &mut self.blocks[block_index];
@@ -482,7 +482,6 @@ struct Block {
     memory: Arc<MemoryAllocation>,
     allocator: BuddyAllocator,
     num_allocs: usize,
-    size: NonZeroU64,
     /// Pointer to host memory if the allocation is host visible.
     /// We always use persistent mapping.
     ptr: Option<NonNull<u8>>,
@@ -607,34 +606,11 @@ impl BufferAlloc {
 #[derive(Debug)]
 pub struct TextureAlloc {
     texture: Texture,
-    memory: DeviceMemoryRegion,
+    _memory: DeviceMemoryRegion,
 }
 
 impl TextureAlloc {
     pub fn texture(&self) -> &Texture {
         &self.texture
     }
-}
-
-pub struct MappedMemory<'a> {
-    region: DeviceMemoryRegion,
-    memory: &'a mut [u8],
-}
-
-impl<'a> Deref for MappedMemory<'a> {
-    type Target = [u8];
-
-    fn deref(&self) -> &Self::Target {
-        self.memory
-    }
-}
-
-impl<'a> DerefMut for MappedMemory<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.memory
-    }
-}
-
-impl<'a> Drop for MappedMemory<'a> {
-    fn drop(&mut self) {}
 }

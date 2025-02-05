@@ -3,13 +3,11 @@
 pub mod executor;
 mod scheduler;
 
-use std::collections::{HashMap, VecDeque};
-use std::mem::ManuallyDrop;
+use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::ops::Range;
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 
-use ash::vk::version_minor;
 use executor::TemporaryResources;
 use game_common::collections::arena::{Arena, Key};
 use game_common::components::Color;
@@ -22,15 +20,13 @@ use crate::backend::allocator::{
     BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
 };
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::shader::{BindingLocation, ShaderAccess, ShaderBinding};
+use crate::backend::shader::{BindingLocation, ShaderAccess};
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
-    self, AccessFlags, AdapterMemoryProperties, BufferBarrier, BufferUsage, CopyBuffer,
-    DepthStencilState, DescriptorType, Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp,
-    PipelineBarriers, PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor,
-    ShaderModule, ShaderSource, ShaderStage, ShaderStages, StoreOp, TextureBarrier,
-    TextureDescriptor, TextureFormat, TextureUsage, WriteDescriptorBinding,
-    WriteDescriptorResource, WriteDescriptorResources,
+    self, AccessFlags, AdapterMemoryProperties, BufferUsage, DepthStencilState, Face, FrontFace,
+    ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
+    SamplerDescriptor, ShaderModule, ShaderSource, ShaderStage, ShaderStages, StoreOp,
+    TextureDescriptor, TextureFormat, TextureUsage,
 };
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
@@ -700,15 +696,11 @@ impl<'a> CommandQueue<'a> {
         for stage in descriptor.stages {
             match stage {
                 PipelineStage::Vertex(stage) => {
-                    let instance =
-                        stage
-                            .shader
-                            .shader
-                            .instantiate(&crate::backend::shader::Options {
-                                bindings: HashMap::new(),
-                                stage: ShaderStage::Vertex,
-                                entry_point: &stage.entry,
-                            });
+                    let instance = stage.shader.shader.instantiate(&backend::shader::Options {
+                        bindings: HashMap::new(),
+                        stage: ShaderStage::Vertex,
+                        entry_point: &stage.entry,
+                    });
 
                     for binding in instance.bindings() {
                         let mut access = AccessFlags::empty();
@@ -723,15 +715,11 @@ impl<'a> CommandQueue<'a> {
                     }
                 }
                 PipelineStage::Fragment(stage) => {
-                    let instance =
-                        stage
-                            .shader
-                            .shader
-                            .instantiate(&crate::backend::shader::Options {
-                                bindings: HashMap::new(),
-                                stage: ShaderStage::Fragment,
-                                entry_point: &stage.entry,
-                            });
+                    let instance = stage.shader.shader.instantiate(&backend::shader::Options {
+                        bindings: HashMap::new(),
+                        stage: ShaderStage::Fragment,
+                        entry_point: &stage.entry,
+                    });
 
                     for binding in instance.bindings() {
                         let mut access = AccessFlags::empty();
@@ -844,7 +832,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub fn create_shader_module(&mut self, src: ShaderSource<'_>) -> ShaderModule {
-        ShaderModule::new(&src, &self.executor.device)
+        ShaderModule::new(&src)
     }
 
     /// Manually force a transition of the [`TextureRegion`] to the specified [`AccessFlags`].
