@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
 use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
+use std::ptr::NonNull;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -303,7 +304,8 @@ impl GeneralPurposeAllocator {
         }
 
         for &mem_typ in &req.memory_types {
-            let host_visible = self.manager.properties().types[mem_typ as usize]
+            let props = self.manager.properties();
+            let host_visible = props.types[mem_typ as usize]
                 .flags
                 .contains(MemoryTypeFlags::HOST_VISIBLE);
 
@@ -318,8 +320,9 @@ impl GeneralPurposeAllocator {
                 memory: allocation.memory.clone(),
                 region: allocation.region,
                 memory_type: allocation.memory.memory_type,
-                memory_host_ptr: allocation.memory_host_ptr,
                 strategy: allocation.strategy,
+                ptr: allocation.ptr,
+                flags: props.types[mem_typ as usize].flags,
             };
         }
 
@@ -378,19 +381,15 @@ impl Pool {
     ) -> Result<PoolAllocation, AllocError> {
         if req.size.get() > MAX_SIZE.get() {
             let mut memory = manager.allocate(req.size, self.memory_type)?;
-            let memory_host_ptr = if host_visible {
-                unsafe { memory.map(..).as_mut_ptr() }
-            } else {
-                core::ptr::null_mut()
-            };
+            let ptr = host_visible.then(|| memory.map().unwrap());
 
             self.dedicated_allocs += 1;
 
             return Ok(PoolAllocation {
                 region: Region::new(0, memory.size.get() as usize),
                 memory: Arc::new(memory),
-                memory_host_ptr,
                 strategy: Strategy::Dedicated,
+                ptr,
             });
         }
 
@@ -399,11 +398,13 @@ impl Pool {
                 continue;
             };
 
+            let ptr = block.ptr.map(|ptr| unsafe { ptr.add(region.offset) });
+
             return Ok(PoolAllocation {
                 memory: block.memory.clone(),
                 region,
-                memory_host_ptr: block.memory_host_ptr,
                 strategy: Strategy::Block { block_index },
+                ptr,
             });
         }
 
@@ -414,11 +415,7 @@ impl Pool {
         self.next_block_size = block_size.saturating_mul(GROWTH_FACTOR).min(MAX_SIZE);
 
         let mut memory = manager.allocate(block_size, self.memory_type)?;
-        let memory_host_ptr = if host_visible {
-            unsafe { memory.map(..).as_mut_ptr() }
-        } else {
-            core::ptr::null_mut()
-        };
+        let ptr = host_visible.then(|| memory.map().unwrap());
 
         let block_index = self.blocks.insert(Block {
             memory: Arc::new(memory),
@@ -428,17 +425,18 @@ impl Pool {
             }),
             num_allocs: 0,
             size: block_size,
-            memory_host_ptr,
+            ptr,
         });
         let block = &mut self.blocks[block_index];
 
         let region = block.alloc(req.size, req.align).unwrap();
+        let ptr = block.ptr.map(|ptr| unsafe { ptr.add(region.offset) });
 
         Ok(PoolAllocation {
             memory: block.memory.clone(),
             region,
-            memory_host_ptr: block.memory_host_ptr,
             strategy: Strategy::Block { block_index },
+            ptr,
         })
     }
 
@@ -470,7 +468,7 @@ struct PoolAllocation {
     memory: Arc<MemoryAllocation>,
     region: Region,
     strategy: Strategy,
-    memory_host_ptr: *mut u8,
+    ptr: Option<NonNull<u8>>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -487,7 +485,7 @@ struct Block {
     size: NonZeroU64,
     /// Pointer to host memory if the allocation is host visible.
     /// We always use persistent mapping.
-    memory_host_ptr: *mut u8,
+    ptr: Option<NonNull<u8>>,
 }
 
 // We lose the `Send` impl because of `memory_host_ptr`, but
@@ -510,9 +508,10 @@ pub struct DeviceMemoryRegion {
     memory: Arc<MemoryAllocation>,
     region: Region,
     memory_type: u32,
-    /// Pointer to host mapped memory. This pointer starts at memory, not at this region.
-    memory_host_ptr: *mut u8,
     strategy: Strategy,
+    /// Pointer to host mapped memory of this region.
+    ptr: Option<NonNull<u8>>,
+    flags: MemoryTypeFlags,
 }
 
 // We lose the `Send` impl because of `memory_host_ptr`, but
@@ -573,14 +572,35 @@ impl BufferAlloc {
         self.buffer.slice(..)
     }
 
-    pub unsafe fn map(&mut self) -> &mut [u8] {
-        assert!(!self.memory.memory_host_ptr.is_null());
+    pub fn flags(&self) -> MemoryTypeFlags {
+        self.memory.flags
+    }
+
+    pub fn map(&mut self) -> &mut [u8] {
+        let Some(ptr) = self.memory.ptr else {
+            panic!("Cannot map non HOST_VISIBLE memory");
+        };
 
         unsafe {
-            let ptr = self.memory.memory_host_ptr.add(self.memory.region.offset);
+            let data = ptr.as_ptr();
             let len = self.size;
-            core::slice::from_raw_parts_mut(ptr, len)
+            core::slice::from_raw_parts_mut(data, len)
         }
+    }
+
+    // FIXME: This is a terrible API.
+    // The caller should only have the guarantee that its own memory
+    // is not mapped, not that all memories are not mapped.
+    // It couples the state of the buffer with all buffers.
+    /// Flushes the memory of this buffer.
+    ///
+    /// # Safety
+    ///
+    /// No memory (of any `BufferAlloc`) must currently be mapped using [`map`].
+    ///
+    /// [`map`]: Self::map
+    pub unsafe fn flush(&mut self) {
+        self.memory.memory.flush().ok();
     }
 }
 

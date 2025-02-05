@@ -4,10 +4,10 @@ use std::hash::Hash;
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
 
-use crate::backend::allocator::BufferAlloc;
+use crate::backend::allocator::{BufferAlloc, UsageFlags};
 use crate::backend::vulkan::{CommandEncoder, TextureView};
 use crate::backend::{
-    AccessFlags, BufferBarrier, CopyBuffer, DescriptorType, PipelineBarriers,
+    AccessFlags, BufferBarrier, CopyBuffer, DescriptorType, MemoryTypeFlags, PipelineBarriers,
     RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
     TextureBarrier, TextureViewDescriptor, WriteDescriptorBinding, WriteDescriptorResource,
     WriteDescriptorResources,
@@ -83,8 +83,19 @@ fn write_buffer(
 ) {
     let buffer = resources.buffers.get_mut(id).unwrap();
 
-    unsafe {
-        buffer.buffer.map().copy_from_slice(&data);
+    buffer.buffer.map().copy_from_slice(&data);
+
+    // If the memory of the buffer is not HOST_COHERENT it needs to
+    // be flushed, otherwise it may never become visible to the device.
+    // TODO: We should batch and do a single flush for all writes.
+    if !buffer
+        .buffer
+        .flags()
+        .contains(MemoryTypeFlags::HOST_COHERENT)
+    {
+        unsafe {
+            buffer.buffer.flush();
+        }
     }
 
     tmp.buffers.insert(id);

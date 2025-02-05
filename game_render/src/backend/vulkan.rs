@@ -6,7 +6,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
-use std::ptr::null_mut;
+use std::ptr::{null_mut, NonNull};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -904,8 +904,8 @@ impl Device {
                 device: self.device.clone(),
                 size,
                 flags: self.device.memory_properties.types[memory_type_index as usize].flags,
-                mapped_range: None,
                 memory_type: memory_type_index,
+                is_mapped: false,
             }),
             Err(err) => {
                 // If the allocation does not succeed it does not count
@@ -3251,8 +3251,8 @@ pub struct DeviceMemory {
     memory: vk::DeviceMemory,
     size: NonZeroU64,
     flags: MemoryTypeFlags,
-    mapped_range: Option<(u64, u64)>,
     memory_type: u32,
+    is_mapped: bool,
 }
 
 impl DeviceMemory {
@@ -3272,89 +3272,46 @@ impl DeviceMemory {
         }
     }
 
-    /// Maps the given range of `DeviceMemory` into host memory.
-    pub unsafe fn map<R>(&mut self, range: R) -> &mut [u8]
-    where
-        R: RangeBounds<u64>,
-    {
-        let start = match range.start_bound() {
-            Bound::Included(start) => *start,
-            Bound::Excluded(start) => *start + 1,
-            Bound::Unbounded => 0,
-        };
-
-        let end = match range.end_bound() {
-            Bound::Included(end) => *end + 1,
-            Bound::Excluded(end) => *end,
-            Bound::Unbounded => self.size.get(),
-        };
-
-        let offset = start;
-        let size = end - start;
-
-        // - `memory` must not be currently host mapped.
-        // - `offset` must be less than the size of `memory`.
-        // - `size` must be greater than 0.
-        // - `size` must be less than or equal to the size of `memory` minus `offset`.
-        // - `memory` must have been created with a memory type that reports `VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT`.
-        assert!(self.size.get() > offset);
-        assert!(self.size.get() - start >= size);
-        assert_ne!(size, 0);
+    /// Maps the entire `DeviceMemory` into host memory.
+    pub fn map(&mut self) -> Result<NonNull<u8>, Error> {
+        assert!(!self.is_mapped);
         assert!(self.flags.contains(MemoryTypeFlags::HOST_VISIBLE));
 
-        let res = unsafe {
+        let ptr = unsafe {
             self.device
-                .map_memory(self.memory, offset, size, vk::MemoryMapFlags::empty())
+                .map_memory(self.memory, 0, self.size.get(), vk::MemoryMapFlags::empty())?
         };
-        match res {
-            Ok(ptr) => unsafe { core::slice::from_raw_parts_mut(ptr.cast::<u8>(), size as usize) },
-            Err(err) => {
-                todo!()
-            }
-        }
+
+        self.is_mapped = true;
+
+        unsafe { Ok(NonNull::new_unchecked(ptr.cast::<u8>())) }
     }
 
-    /// Invalidates a region of host mapped memory.
-    pub fn invalidate<R>(&mut self, range: R)
-    where
-        R: RangeBounds<u64>,
-    {
-        let (offset, size) = range.into_offset_size(self.size.get());
+    /// Unmaps the `DeviceMemory` that was previously mapped.
+    ///
+    /// Note that this invalidates the pointer returned by [`map`].
+    ///
+    /// [`map`]: Self::map
+    pub fn ummap(&mut self) {
+        assert!(self.is_mapped);
+        self.is_mapped = false;
 
-        let Some((mapped_offset, mapped_size)) = self.mapped_range else {
-            panic!("cannot invalidate on non-mapped memory");
-        };
-
-        if offset < mapped_offset || mapped_offset + mapped_size < offset + size {
-            panic!(
-                "Cannot invalidate non-mapped {:?} (Mapped {:?})",
-                offset..offset + size,
-                mapped_offset..mapped_offset + mapped_size,
-            );
-        }
-
-        if cfg!(debug_assertions) {
-            if self.flags.contains(MemoryTypeFlags::HOST_COHERENT) {
-                tracing::warn!("Redundant call to vkInvalidateMappedMemoryRanges, memory is already HOST_COHERENT");
-            }
-        }
-
-        let range = vk::MappedMemoryRange::default()
-            .memory(self.memory)
-            .offset(offset)
-            .size(size);
-
+        // Safety:
+        // - `memory` must currently be host mapped.
         unsafe {
-            self.device
-                .invalidate_mapped_memory_ranges(&[range])
-                .unwrap();
+            self.device.unmap_memory(self.memory);
         }
     }
 
-    pub fn flush<R>(&mut self, range: R) -> Result<(), Error>
-    where
-        R: RangeBounds<u64>,
-    {
+    /// Flushes the `DeviceMemory`.
+    ///
+    /// Note that the pointer returned by [`map`] must not have any active reference when this
+    /// function is called.
+    ///
+    /// [`map`]: Self::map
+    pub fn flush(&self) -> Result<(), Error> {
+        assert!(self.is_mapped);
+
         // Emit an SFENCE instruction.
         // Ensure that all prior stores are made visible.
         // This step is explicitly required by the Vulkan spec and not
@@ -3364,33 +3321,10 @@ impl DeviceMemory {
             core::arch::x86_64::_mm_sfence();
         }
 
-        if self.flags.contains(MemoryTypeFlags::HOST_COHERENT) {
-            return Ok(());
-        }
-
-        let mut start = range.start(0);
-        let mut end = range.end(self.size.get());
-
-        // Round down `start` to the next multiple of `nonCoherentAtomSize`.
-        // Round up `end` to the next multiple of `nonCoherentAtomSize`.
-        let non_coherent_atom_size = self.device.limits.non_coherent_atom_size;
-        start = start & !(non_coherent_atom_size - 1);
-        end = (end + non_coherent_atom_size - 1) & !(non_coherent_atom_size - 1);
-        // Clamp at memory size.
-        end = u64::min(end, self.size.get());
-
-        let offset = start;
-        let size = end - start;
-
-        // TODO: `offset`..`size` must specify a currently mapped memory range.
-
         let range = vk::MappedMemoryRange::default()
             .memory(self.memory)
-            // - `offset` must be a multiple of `nonCoherentAtomSize`.
-            .offset(offset)
-            // - `size` must either be a multiple of `nonCoherentAtomSize` or `offset + size` must be equal
-            // to the size of the `memory`.
-            .size(size);
+            .offset(0)
+            .size(vk::WHOLE_SIZE);
 
         unsafe {
             self.device.flush_mapped_memory_ranges(&[range])?;
