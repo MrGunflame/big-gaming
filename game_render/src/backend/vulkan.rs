@@ -248,8 +248,7 @@ impl Instance {
             .message_type(
                 DebugUtilsMessageTypeFlagsEXT::GENERAL
                     | DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-                    | DebugUtilsMessageTypeFlagsEXT::DEVICE_ADDRESS_BINDING,
+                    | DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
             )
             .pfn_user_callback(Some(debug_callback));
 
