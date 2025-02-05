@@ -375,9 +375,11 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
     }
 
     let mut set = unsafe { resources.descriptor_allocator.alloc(&layout.inner).unwrap() };
-    set.raw_mut().update(&WriteDescriptorResources {
-        bindings: &bindings,
-    });
+    unsafe {
+        set.raw_mut().update(&WriteDescriptorResources {
+            bindings: &bindings,
+        });
+    }
 
     descriptor_set.physical_texture_views.extend(texture_views);
     for texture_views in texture_array_views {

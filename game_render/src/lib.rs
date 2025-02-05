@@ -163,7 +163,7 @@ impl Renderer {
             })
             .unwrap();
 
-        let mut device = adapter.create_device(&[queue_family]);
+        let mut device = adapter.create_device(&[queue_family]).unwrap();
         let queue = device.create_queue(queue_family.id).unwrap();
 
         let render_thread = RenderThreadHandle::new(instance, adapter, device, queue);

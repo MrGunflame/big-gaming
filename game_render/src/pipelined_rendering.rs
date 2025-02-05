@@ -193,7 +193,7 @@ impl RenderThread {
                 pool.reset();
             }
 
-            let mut output = surface.swapchain.acquire_next_image(image_avail);
+            let mut output = surface.swapchain.acquire_next_image(image_avail).unwrap();
 
             let mut queue = scheduler.queue();
 
@@ -244,14 +244,9 @@ impl RenderThread {
 
             self.queue
                 .submit(
-                    core::iter::once(encoder.finish()),
+                    core::iter::once(encoder.finish().unwrap()),
                     QueueSubmit {
                         wait: core::slice::from_mut(image_avail),
-                        // To relaxed this to COLOR_ATTACHMENT_OUTPUT stage we need
-                        // to insert a barrier from COLOR_ATTACHMENT_OUTPUT->COLOR_ATTACHMENT_OUTPUT
-                        // when doing the UNDEFINED->COLOR_ATTACHMENT_OPTIMAL transition.
-                        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7193#issuecomment-1875960974
-                        wait_stage: PipelineStageFlags::TOP_OF_PIPE,
                         signal: core::slice::from_mut(render_done),
                         signal_fence: ready,
                     },
@@ -259,7 +254,13 @@ impl RenderThread {
                 .unwrap();
 
             surface.window.pre_present_notify();
-            output.present(&mut self.queue, render_done);
+
+            // SAFETY:
+            // We have manually inserted a barrier to transition the texture
+            // to the `PRESENT` flag.
+            unsafe {
+                output.present(&mut self.queue, render_done).unwrap();
+            }
 
             drop(output);
         }

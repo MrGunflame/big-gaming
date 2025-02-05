@@ -1,23 +1,22 @@
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::{c_void, CStr, CString};
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
-use std::mem::ManuallyDrop;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
-use std::ptr::{null_mut, NonNull};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::ptr::null_mut;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{self, Duration};
+use std::time::Duration;
 
 use ash::ext::debug_utils;
 use ash::vk::{
     self, ApplicationInfo, AttachmentLoadOp, AttachmentStoreOp, BindBufferMemoryInfo, BlendFactor,
     BlendOp, Bool32, BufferCreateInfo, BufferUsageFlags, ClearColorValue, ClearValue,
-    ColorComponentFlags, ColorSpaceKHR, CommandBufferAllocateInfo, CommandBufferBeginInfo,
+    ColorComponentFlags, CommandBufferAllocateInfo, CommandBufferBeginInfo,
     CommandBufferInheritanceInfo, CommandBufferLevel, CommandBufferUsageFlags,
     CommandPoolCreateFlags, CommandPoolCreateInfo, CommandPoolResetFlags, ComponentMapping,
     ComponentSwizzle, CompositeAlphaFlagsKHR, CullModeFlags, DebugUtilsMessageSeverityFlagsEXT,
@@ -26,43 +25,40 @@ use ash::vk::{
     DescriptorPoolCreateInfo, DescriptorPoolResetFlags, DescriptorPoolSize,
     DescriptorSetAllocateInfo, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
     DeviceCreateInfo, DeviceQueueCreateInfo, DeviceQueueInfo2, DynamicState, Extent2D,
-    FenceCreateInfo, Format, FrontFace, GraphicsPipelineCreateInfo, ImageAspectFlags, ImageLayout,
-    ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType, InstanceCreateInfo,
-    LayerSettingEXT, LayerSettingsCreateInfoEXT, LogicOp, MemoryAllocateInfo, MemoryPropertyFlags,
-    Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures, PhysicalDeviceFeatures,
-    PhysicalDeviceType, PipelineBindPoint, PipelineCache, PipelineColorBlendAttachmentState,
-    PipelineColorBlendStateCreateInfo, PipelineDynamicStateCreateInfo,
-    PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
+    FenceCreateInfo, Format, FrontFace, GraphicsPipelineCreateInfo, Handle, ImageAspectFlags,
+    ImageLayout, ImageSubresourceRange, ImageUsageFlags, ImageViewCreateInfo, ImageViewType,
+    InstanceCreateInfo, LayerSettingEXT, LayerSettingsCreateInfoEXT, LogicOp, MemoryAllocateInfo,
+    MemoryPropertyFlags, Offset2D, PhysicalDevice, PhysicalDeviceDynamicRenderingFeatures,
+    PhysicalDeviceFeatures, PhysicalDeviceType, PipelineBindPoint, PipelineCache,
+    PipelineColorBlendAttachmentState, PipelineColorBlendStateCreateInfo,
+    PipelineDynamicStateCreateInfo, PipelineInputAssemblyStateCreateInfo, PipelineLayoutCreateInfo,
     PipelineMultisampleStateCreateInfo, PipelineRasterizationStateCreateInfo,
-    PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineStageFlags,
-    PipelineVertexInputStateCreateInfo, PipelineViewportStateCreateInfo, PolygonMode,
-    PresentInfoKHR, PresentModeKHR, PrimitiveTopology, QueueFlags, Rect2D, RenderingAttachmentInfo,
-    RenderingFlags, RenderingInfo, ResolveModeFlags, SampleCountFlags, SemaphoreCreateInfo,
-    ShaderModuleCreateInfo, ShaderStageFlags, SharingMode, SubmitInfo, SubpassDependency,
-    SubpassDescription, SurfaceKHR, SurfaceTransformFlagsKHR, SwapchainCreateInfoKHR, SwapchainKHR,
-    Viewport, WriteDescriptorSet, FALSE, WHOLE_SIZE,
+    PipelineRenderingCreateInfo, PipelineShaderStageCreateInfo, PipelineVertexInputStateCreateInfo,
+    PipelineViewportStateCreateInfo, PolygonMode, PresentInfoKHR, PresentModeKHR,
+    PrimitiveTopology, QueueFlags, Rect2D, RenderingAttachmentInfo, RenderingFlags, RenderingInfo,
+    ResolveModeFlags, SampleCountFlags, SemaphoreCreateInfo, ShaderModuleCreateInfo,
+    ShaderStageFlags, SharingMode, SubmitInfo, SurfaceKHR, SwapchainCreateInfoKHR, SwapchainKHR,
+    Viewport,
 };
 use ash::Entry;
-use bitflags::bitflags;
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
-use naga::back;
 use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
 use crate::backend::{mip_level_size_2d, DescriptorType, SurfaceFormat, TextureLayout};
 
-use super::shader::{self, BindingInfo, BindingLocation, Shader};
+use super::shader::{self, BindingInfo, Shader};
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage,
     BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
     DescriptorSetDescriptor, Face, FilterMode, IndexFormat, LoadOp, MemoryHeap, MemoryHeapFlags,
     MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers, PipelineDescriptor,
     PipelineStage, PresentMode, QueueCapabilities, QueueFamily, QueueFamilyId, QueueSubmit,
-    RenderPassColorAttachment, RenderPassDescriptor, SamplerDescriptor, ShaderStage, ShaderStages,
-    StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat,
-    TextureUsage, TextureViewDescriptor, WriteDescriptorResource, WriteDescriptorResources,
+    RenderPassDescriptor, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp,
+    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat, TextureUsage,
+    TextureViewDescriptor, WriteDescriptorResource, WriteDescriptorResources,
 };
 
 /// The highest version of Vulkan that we support.
@@ -165,6 +161,10 @@ pub enum Error {
     MissingExtension(&'static CStr),
     #[error("unsupported surface")]
     UnsupportedSurface,
+    #[error("invalidated swapchain")]
+    InvalidatedSwapchain,
+    #[error("command pool exhausted")]
+    CommandPoolExhausted,
     #[error(transparent)]
     Other(vk::Result),
 }
@@ -616,8 +616,9 @@ impl Adapter {
             .collect()
     }
 
-    pub fn create_device(&self, queue_families: &[QueueFamily]) -> Device {
-        let mut valid_queue_families = self.queue_families();
+    /// Creates a new [`Device`] with the given queues.
+    pub fn create_device(&self, queue_families: &[QueueFamily]) -> Result<Device, Error> {
+        let valid_queue_families = self.queue_families();
 
         for (i1, q1) in queue_families.iter().enumerate() {
             let Some(valid_queue) = valid_queue_families
@@ -716,8 +717,7 @@ impl Adapter {
         let device = unsafe {
             self.instance
                 .instance
-                .create_device(self.physical_device, &create_info, None)
-                .unwrap()
+                .create_device(self.physical_device, &create_info, None)?
         };
 
         let queues = queue_families
@@ -733,7 +733,7 @@ impl Adapter {
             .collect::<Vec<_>>()
             .into();
 
-        Device {
+        Ok(Device {
             physical_device: self.physical_device,
             device: Arc::new(DeviceShared {
                 instance: self.instance.clone(),
@@ -743,7 +743,7 @@ impl Adapter {
                 num_allocations: Arc::new(AtomicU32::new(0)),
                 queues,
             }),
-        }
+        })
     }
 
     fn device_limits(&self) -> DeviceLimits {
@@ -868,6 +868,7 @@ impl Device {
         })
     }
 
+    /// Allocates some [`DeviceMemory`] from the memory type given by `memory_type_index`.
     pub fn allocate_memory(
         &self,
         size: NonZeroU64,
@@ -1099,7 +1100,10 @@ impl Device {
         Ok(())
     }
 
-    pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
+    /// Creates a new [`Texture`].
+    ///
+    /// The returned texture will have empty [`AccessFlags`].
+    pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Result<Texture, Error> {
         assert_ne!(descriptor.size.x, 0);
         assert_ne!(descriptor.size.y, 0);
 
@@ -1138,8 +1142,7 @@ impl Device {
                     self.physical_device,
                     &format_info,
                     &mut format_out,
-                )
-                .unwrap();
+                )?;
         }
 
         // - `extent.width` must be less than or equal to `imageCreateMaxExtent.width`.
@@ -1167,8 +1170,8 @@ impl Device {
             .samples(vk::SampleCountFlags::TYPE_1)
             .flags(vk::ImageCreateFlags::empty());
 
-        let image = unsafe { self.device.create_image(&info, None).unwrap() };
-        Texture {
+        let image = unsafe { self.device.create_image(&info, None)? };
+        Ok(Texture {
             device: self.device.clone(),
             image,
             format: descriptor.format,
@@ -1176,7 +1179,7 @@ impl Device {
             destroy_on_drop: true,
             usage: usages,
             mip_levels: descriptor.mip_levels,
-        }
+        })
     }
 
     unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule {
@@ -1192,10 +1195,11 @@ impl Device {
         }
     }
 
+    /// Creates a new [`DescriptorSetLayout`].
     pub fn create_descriptor_layout(
         &self,
         descriptor: &DescriptorSetDescriptor<'_>,
-    ) -> DescriptorSetLayout {
+    ) -> Result<DescriptorSetLayout, Error> {
         let mut bindings = Vec::new();
         let mut flags = Vec::new();
 
@@ -1215,21 +1219,19 @@ impl Device {
 
         let info = DescriptorSetLayoutCreateInfo::default()
             .bindings(&bindings)
-            .push_next(&mut flags);
-        let layout = unsafe {
-            self.device
-                .create_descriptor_set_layout(&info, None)
-                .unwrap()
-        };
+            .push_next(&mut flags)
+            .flags(vk::DescriptorSetLayoutCreateFlags::empty());
+        let layout = unsafe { self.device.create_descriptor_set_layout(&info, None)? };
 
-        DescriptorSetLayout {
+        Ok(DescriptorSetLayout {
             device: self.device.clone(),
             layout,
             bindings: descriptor.bindings.to_vec(),
-        }
+        })
     }
 
-    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
+    /// Creates a new [`Pipeline`].
+    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Result<Pipeline, Error> {
         let descriptors = descriptor
             .descriptors
             .iter()
@@ -1313,8 +1315,7 @@ impl Device {
             .push_constant_ranges(&push_constant_ranges);
         let pipeline_layout = unsafe {
             self.device
-                .create_pipeline_layout(&pipeline_layout_info, None)
-                .unwrap()
+                .create_pipeline_layout(&pipeline_layout_info, None)?
         };
 
         let mut stages = Vec::new();
@@ -1476,16 +1477,26 @@ impl Device {
             info = info.depth_stencil_state(&state);
         }
 
-        let pipelines = unsafe {
+        let pipelines = match unsafe {
             self.device
                 .create_graphics_pipelines(PipelineCache::null(), &[info], None)
-                .unwrap()
+        } {
+            Ok(pipeline) => pipeline,
+            Err((pipelines, err)) => {
+                debug_assert!(pipelines.is_empty());
+
+                unsafe {
+                    self.device.destroy_pipeline_layout(pipeline_layout, None);
+                }
+
+                return Err(err.into());
+            }
         };
 
         // Shaders can be destroyed after the pipeline was created.
         drop(shader_modules);
 
-        Pipeline {
+        Ok(Pipeline {
             device: self.device.clone(),
             pipeline: pipelines[0],
             pipeline_layout,
@@ -1494,7 +1505,7 @@ impl Device {
                 .iter()
                 .map(|descriptor| descriptor.bindings.clone())
                 .collect(),
-        }
+        })
     }
 
     /// Creates a new [`CommandPool`].
@@ -1549,21 +1560,23 @@ impl Device {
         })
     }
 
-    pub fn create_semaphore(&self) -> Semaphore {
+    /// Creates a new [`Semaphore`].
+    pub fn create_semaphore(&self) -> Result<Semaphore, Error> {
         let info = SemaphoreCreateInfo::default();
 
-        let semaphore = unsafe { self.device.create_semaphore(&info, None).unwrap() };
+        let semaphore = unsafe { self.device.create_semaphore(&info, None)? };
 
-        Semaphore {
+        Ok(Semaphore {
             device: self.device.clone(),
             semaphore,
-        }
+        })
     }
 
+    /// Creates a new [`DescriptorPool`].
     pub fn create_descriptor_pool(
         &self,
         descriptor: &DescriptorPoolDescriptor,
-    ) -> DescriptorPool<'_> {
+    ) -> Result<DescriptorPool, Error> {
         let mut sizes = Vec::new();
 
         for (ty, count) in [
@@ -1596,26 +1609,28 @@ impl Device {
             // - `maxSets` must be greater than 0.
             .max_sets(descriptor.max_sets.get());
 
-        let pool = unsafe { self.device.create_descriptor_pool(&info, None).unwrap() };
+        let pool = unsafe { self.device.create_descriptor_pool(&info, None)? };
 
-        DescriptorPool {
-            device: &self.device,
+        Ok(DescriptorPool {
+            device: self.device.clone(),
             pool,
-        }
+        })
     }
 
-    pub fn create_fence(&self) -> Fence {
+    /// Creates a new [`Fence`].
+    pub fn create_fence(&self) -> Result<Fence, Error> {
         let info = FenceCreateInfo::default();
 
-        let fence = unsafe { self.device.create_fence(&info, None).unwrap() };
-        Fence {
+        let fence = unsafe { self.device.create_fence(&info, None)? };
+        Ok(Fence {
             device: self.device.clone(),
             fence,
             state: FenceState::Idle,
-        }
+        })
     }
 
-    pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Sampler {
+    /// Creates a new [`Sampler`].
+    pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Result<Sampler, Error> {
         let info = vk::SamplerCreateInfo::default()
             .min_filter(descriptor.min_filter.into())
             .mag_filter(descriptor.mag_filter.into())
@@ -1630,11 +1645,11 @@ impl Device {
             .anisotropy_enable(false)
             .max_anisotropy(1.0);
 
-        let sampler = unsafe { self.device.create_sampler(&info, None).unwrap() };
-        Sampler {
+        let sampler = unsafe { self.device.create_sampler(&info, None)? };
+        Ok(Sampler {
             device: self.device.clone(),
             sampler,
-        }
+        })
     }
 }
 
@@ -1647,10 +1662,12 @@ pub struct Queue {
 }
 
 impl Queue {
+    /// Returns the [`QueueFamily`] ID that was used to create this `Queue`.
     pub fn family(&self) -> QueueFamilyId {
         self.queue_family
     }
 
+    /// Submits a list of [`CommandBuffer`]s to this `Queue`.
     pub fn submit<'a, T>(&mut self, buffers: T, cmd: QueueSubmit<'_>) -> Result<(), Error>
     where
         T: IntoIterator<Item = CommandBuffer<'a>>,
@@ -1668,12 +1685,19 @@ impl Queue {
             })
             .collect();
 
+        // TODO: Give the caller control of this.
+        // To relaxed this to COLOR_ATTACHMENT_OUTPUT stage we need
+        // to insert a barrier from COLOR_ATTACHMENT_OUTPUT->COLOR_ATTACHMENT_OUTPUT
+        // when doing the UNDEFINED->COLOR_ATTACHMENT_OPTIMAL transition.
+        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/7193#issuecomment-1875960974
+        let wait_stage = vk::PipelineStageFlags::TOP_OF_PIPE;
+
         let wait_semaphores: Vec<_> = cmd
             .wait
             .iter()
             .map(|semaphore| semaphore.semaphore)
             .collect();
-        let wait_stages: Vec<_> = std::iter::repeat_n(cmd.wait_stage, cmd.wait.len()).collect();
+        let wait_stages: Vec<_> = std::iter::repeat_n(wait_stage, cmd.wait.len()).collect();
         let signal_semaphores: Vec<_> = cmd
             .signal
             .iter()
@@ -1740,16 +1764,28 @@ struct SurfaceShared {
 impl SurfaceShared {
     /// Creates a new [`SwapchainKHR`] and returns its images.
     ///
+    /// If `old_swapchain` is not [`null`], it will be invalidated and cannot be used anymore. It
+    /// must still be destroyed however.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error`] if creating the new swapchain fails.
+    ///
+    /// If this function returns an [`Error`], the passed `old_swapchain` will still become
+    /// invalidated and must be destroyed as mentioned above.
+    ///
     /// # Safety
     ///
     /// `old_swapchain` must be either null or a non-retired swapchain created by this `Surface`.
+    ///
+    /// [`null`]: SwapchainKHR::null
     unsafe fn create_swapchain_inner(
         &self,
         device: &Device,
         config: &SwapchainConfig,
         caps: &SwapchainCapabilities,
         old_swapchain: SwapchainKHR,
-    ) -> (SwapchainKHR, Vec<vk::Image>) {
+    ) -> Result<(SwapchainKHR, Vec<vk::Image>), Error> {
         // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkSwapchainCreateInfoKHR.html
         // `imageExtent` members `width` and `height` must both be non-zero.
         assert_ne!(config.extent.x, 0);
@@ -1815,11 +1851,23 @@ impl SurfaceShared {
             .old_swapchain(old_swapchain);
 
         let khr_device = ash::khr::swapchain::Device::new(&self.instance.instance, &device.device);
-        let swapchain = unsafe { khr_device.create_swapchain(&info, None).unwrap() };
+        let swapchain = unsafe { khr_device.create_swapchain(&info, None)? };
 
-        let images = unsafe { khr_device.get_swapchain_images(swapchain).unwrap() };
+        let images = match unsafe { khr_device.get_swapchain_images(swapchain) } {
+            Ok(images) => images,
+            Err(err) => {
+                // We will not return the new swapchain object from this function
+                // on error. This means the newly created swapchain needs to be
+                // destroyed manually, otherwise it will leak.
+                unsafe {
+                    khr_device.destroy_swapchain(swapchain, None);
+                }
 
-        (swapchain, images)
+                return Err(err.into());
+            }
+        };
+
+        Ok((swapchain, images))
     }
 }
 
@@ -1939,21 +1987,21 @@ impl Surface {
         device: &Device,
         config: SwapchainConfig,
         caps: &SwapchainCapabilities,
-    ) -> Swapchain {
+    ) -> Result<Swapchain, Error> {
         // SAFETY: `old_swapchain` is null.
         let (swapchain, images) = unsafe {
             self.shared
-                .create_swapchain_inner(device, &config, &caps, SwapchainKHR::null())
+                .create_swapchain_inner(device, &config, &caps, SwapchainKHR::null())?
         };
 
-        Swapchain {
+        Ok(Swapchain {
             surface: self.shared.clone(),
             device: device.clone(),
             swapchain,
             images,
             format: config.format,
             extent: config.extent,
-        }
+        })
     }
 }
 
@@ -1969,30 +2017,81 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub unsafe fn recreate(&mut self, config: SwapchainConfig, caps: &SwapchainCapabilities) {
+    /// Recreates the `Swapchain` using the new [`SwapchainConfig`].
+    ///
+    /// # Safety
+    ///
+    /// - All of the swapchain textures acquired from [`acquire_next_image`] must not be in use
+    /// currently.
+    pub unsafe fn recreate(
+        &mut self,
+        config: SwapchainConfig,
+        caps: &SwapchainCapabilities,
+    ) -> Result<(), Error> {
         // SAFETY: `self.swapchain` is a valid swapchain created by `self.surface`.
         // Since this function accepts a mutable reference this swapchain is not used.
-        let (swapchain, images) = unsafe {
+        let (swapchain, images) = match unsafe {
             self.surface
                 .create_swapchain_inner(&self.device, &config, caps, self.swapchain)
+        } {
+            Ok((swapchain, images)) => (swapchain, images),
+            Err(err) => {
+                // The `old_swapchain` still becomes invalidated if an error is returned.
+                // Note that if this function returned an error prior, the swapchain was
+                // already destroyed and is null.
+                if !self.swapchain.is_null() {
+                    unsafe {
+                        let device = ash::khr::swapchain::Device::new(
+                            &self.surface.instance.instance,
+                            &self.device.device,
+                        );
+                        device.destroy_swapchain(self.swapchain, None);
+                    }
+                }
+
+                self.swapchain = vk::SwapchainKHR::null();
+                return Err(err.into());
+            }
         };
 
         // The swapchain still needs to be destroyed after it has been invalidated.
-        unsafe {
-            let device = ash::khr::swapchain::Device::new(
-                &self.surface.instance.instance,
-                &self.device.device,
-            );
-            device.destroy_swapchain(self.swapchain, None);
+        // Note that if this function returned an error prior, the swapchain was
+        // already destroyed and is null.
+        if !self.swapchain.is_null() {
+            unsafe {
+                let device = ash::khr::swapchain::Device::new(
+                    &self.surface.instance.instance,
+                    &self.device.device,
+                );
+                device.destroy_swapchain(self.swapchain, None);
+            }
         }
 
         self.swapchain = swapchain;
         self.images = images;
         self.format = config.format;
         self.extent = config.extent;
+        Ok(())
     }
 
-    pub fn acquire_next_image(&mut self, semaphore: &mut Semaphore) -> SwapchainTexture<'_> {
+    /// Acquires a new texture.
+    ///
+    /// # Errors
+    ///
+    /// Note that this function will always return an [`Error`] if [`recreate`] was and returned
+    /// an error prior to calling thus function.
+    ///
+    /// [`recreate`]: Self::recreate
+    pub fn acquire_next_image(
+        &mut self,
+        semaphore: &mut Semaphore,
+    ) -> Result<SwapchainTexture<'_>, Error> {
+        // If `recreate` was called an returned an error the swapchain
+        // was invalidated and cannot be used.
+        if self.swapchain.is_null() {
+            return Err(Error::InvalidatedSwapchain);
+        }
+
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
@@ -2007,7 +2106,7 @@ impl Swapchain {
                 .unwrap()
         };
 
-        SwapchainTexture {
+        Ok(SwapchainTexture {
             texture: Some(Texture {
                 device: self.device.device.clone(),
                 image: self.images[image_index as usize],
@@ -2021,31 +2120,19 @@ impl Swapchain {
             index: image_index,
             device: &self.device,
             swapchain: self,
-        }
-    }
-
-    pub fn present(&self, queue: &Queue, img: u32, wait_semaphore: &Semaphore) {
-        let device =
-            ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
-
-        let wait_semaphores = &[wait_semaphore.semaphore];
-
-        let swapchains = &[self.swapchain];
-        let image_indices = &[img];
-        let info = PresentInfoKHR::default()
-            .wait_semaphores(wait_semaphores)
-            .swapchains(swapchains)
-            .image_indices(image_indices);
-
-        unsafe {
-            device.queue_present(queue.queue, &info).unwrap();
-        }
+        })
     }
 }
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
         if thread::panicking() {
+            return;
+        }
+
+        // The swapchain may already be dropped, in case `recreate`
+        // failed.
+        if self.swapchain.is_null() {
             return;
         }
 
@@ -2324,15 +2411,16 @@ pub struct CommandPool {
 
 impl CommandPool {
     /// Acquires a new [`CommandEncoder`] from this `CommandPool`.
-    pub fn create_encoder(&mut self) -> Option<CommandEncoder<'_>> {
+    pub fn create_encoder(&mut self) -> Result<CommandEncoder<'_>, Error> {
         let inheritance = CommandBufferInheritanceInfo::default();
 
         let info = CommandBufferBeginInfo::default()
             .flags(CommandBufferUsageFlags::empty())
             .inheritance_info(&inheritance);
 
-        let buffer = *self.buffers.get(self.next_buffer)?;
-        self.next_buffer += 1;
+        let Some(buffer) = self.buffers.get(self.next_buffer).copied() else {
+            return Err(Error::CommandPoolExhausted);
+        };
 
         // Move the buffer into the recording state.
         // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#vkBeginCommandBuffer
@@ -2341,13 +2429,15 @@ impl CommandPool {
         // - Access to command buffer and command pool must be externally synchronized. (Asserted by
         // exclusive access.)
         unsafe {
-            self.device
-                .device
-                .begin_command_buffer(buffer, &info)
-                .unwrap();
+            self.device.device.begin_command_buffer(buffer, &info)?;
         }
 
-        Some(CommandEncoder {
+        // This should happen after `begin_command_buffer` was called.
+        // In case it returns an error we should retry the same buffer
+        // in the next call.
+        self.next_buffer += 1;
+
+        Ok(CommandEncoder {
             device: &self.device,
             pool: self,
             buffer,
@@ -2362,7 +2452,7 @@ impl CommandPool {
     ///
     /// This operation invalidates all buffers created by [`create_encoder`]. All submissions using
     /// buffers from this `CommandPool` must have completed.
-    pub unsafe fn reset(&mut self) {
+    pub unsafe fn reset(&mut self) -> Result<(), Error> {
         // Reset the pool and all buffers.
         // https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#vkResetCommandPool
         // Safety:
@@ -2371,11 +2461,11 @@ impl CommandPool {
         unsafe {
             self.device
                 .device
-                .reset_command_pool(self.pool, CommandPoolResetFlags::empty())
-                .unwrap();
+                .reset_command_pool(self.pool, CommandPoolResetFlags::empty())?
         }
 
         self.next_buffer = 0;
+        Ok(())
     }
 }
 
@@ -2745,16 +2835,16 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
-    pub fn finish(self) -> CommandBuffer<'a> {
+    pub fn finish(self) -> Result<CommandBuffer<'a>, Error> {
         unsafe {
-            self.device.device.end_command_buffer(self.buffer).unwrap();
+            self.device.device.end_command_buffer(self.buffer)?;
         }
 
-        CommandBuffer {
+        Ok(CommandBuffer {
             device: self.device,
             buffer: self.buffer,
             queue_family: self.queue_family,
-        }
+        })
     }
 }
 
@@ -2889,8 +2979,6 @@ pub struct Semaphore {
     semaphore: vk::Semaphore,
 }
 
-impl Semaphore {}
-
 impl Drop for Semaphore {
     fn drop(&mut self) {
         if thread::panicking() {
@@ -2921,11 +3009,26 @@ impl<'a> SwapchainTexture<'a> {
         self.texture.take().unwrap()
     }
 
+    /// Returns `true` if the [`Swapchain`] used to acquire this texture is suboptimal, i.e. could
+    /// benefit from recreation even if no properties changed.
     pub fn is_suboptimal(&self) -> bool {
         self.suboptimal
     }
 
-    pub fn present(&self, queue: &mut Queue, wait_semaphore: &mut Semaphore) {
+    /// Schedules this tecture for presentation on the swapchain.
+    ///
+    /// The operation will happen on the given [`Queue`] when the given [`Semaphore`] is signaled.
+    ///
+    /// # Safety
+    ///
+    /// When the operation occurs the texture must have the [`PRESENT`] set.
+    ///
+    /// [`PRESENT`]: AccessFlags::PRESENT
+    pub unsafe fn present(
+        &mut self,
+        queue: &mut Queue,
+        wait_semaphore: &mut Semaphore,
+    ) -> Result<(), Error> {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
@@ -2935,12 +3038,20 @@ impl<'a> SwapchainTexture<'a> {
         let image_indices = &[self.index];
         let info = PresentInfoKHR::default()
             .wait_semaphores(wait_semaphores)
+            // - Every element must be unique.
             .swapchains(swapchains)
+            // - Every image must be in `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` once this is executed.
             .image_indices(image_indices);
 
+        // Safety:
+        // - `queue` must be externally synchronized.
+        // - `semaphore` must be externally synchronized.
+        // - `swapchain` must be externally synchronized.
         unsafe {
-            device.queue_present(queue.queue, &info).unwrap();
+            device.queue_present(queue.queue, &info)?;
         }
+
+        Ok(())
     }
 }
 
@@ -3295,12 +3406,12 @@ impl Drop for DescriptorSetLayout {
 }
 
 #[derive(Debug)]
-pub struct DescriptorPool<'a> {
-    device: &'a DeviceShared,
+pub struct DescriptorPool {
+    device: Arc<DeviceShared>,
     pool: vk::DescriptorPool,
 }
 
-impl<'a> DescriptorPool<'a> {
+impl DescriptorPool {
     pub fn create_descriptor_set(
         &mut self,
         layout: &DescriptorSetLayout,
@@ -3330,7 +3441,7 @@ impl<'a> DescriptorPool<'a> {
     }
 }
 
-impl<'a> Drop for DescriptorPool<'a> {
+impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
             self.device.destroy_descriptor_pool(self.pool, None);
@@ -3340,13 +3451,19 @@ impl<'a> Drop for DescriptorPool<'a> {
 
 #[derive(Debug)]
 pub struct DescriptorSet<'a> {
-    pool: &'a DescriptorPool<'a>,
+    pool: &'a DescriptorPool,
     set: vk::DescriptorSet,
     bindings: Vec<super::DescriptorBinding>,
 }
 
 impl<'a> DescriptorSet<'a> {
-    pub fn update(&mut self, op: &WriteDescriptorResources<'_>) {
+    /// Updates the resources in this `DescriptorSet`.
+    ///
+    /// # Safety
+    ///
+    /// - This `DescriptorSet` must not currently be in use by any submitted command, i.e. it must
+    /// not be in any command buffer that is in the pending state.
+    pub unsafe fn update(&mut self, op: &WriteDescriptorResources<'_>) {
         #[derive(Copy, Clone, Debug)]
         struct Header {
             binding: u32,

@@ -557,7 +557,6 @@ pub struct ImageDataLayout {
 pub struct QueueSubmit<'a> {
     /// Semaphores which will all be waited upon before the submit happens.
     pub wait: &'a mut [Semaphore],
-    pub wait_stage: PipelineStageFlags,
     /// Semaphores which will be signaled once all commands in this submission have completed.
     ///
     /// All resources that have been used by commands in the submit command will no longer be

@@ -128,7 +128,7 @@ fn create_surface(
 
     let caps = surface.get_capabilities(device, queue).unwrap();
     let config = create_swapchain_config(&caps, size);
-    let swapchain = surface.create_swapchain(device, config, &caps);
+    let swapchain = surface.create_swapchain(device, config, &caps).unwrap();
 
     Ok(SurfaceData {
         swapchain,
@@ -136,13 +136,13 @@ fn create_surface(
         config,
         window,
         image_avail: (0..config.image_count)
-            .map(|_| device.create_semaphore())
+            .map(|_| device.create_semaphore().unwrap())
             .collect(),
         render_done: (0..config.image_count)
-            .map(|_| device.create_semaphore())
+            .map(|_| device.create_semaphore().unwrap())
             .collect(),
         ready: (0..config.image_count)
-            .map(|_| (device.create_fence(), false))
+            .map(|_| (device.create_fence().unwrap(), false))
             .collect(),
         next_frame: 0,
         resources: (0..config.image_count)
@@ -169,13 +169,13 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, siz
         let len = config.image_count as usize;
         surface
             .image_avail
-            .resize_with(len, || device.create_semaphore());
+            .resize_with(len, || device.create_semaphore().unwrap());
         surface
             .render_done
-            .resize_with(len, || device.create_semaphore());
+            .resize_with(len, || device.create_semaphore().unwrap());
         surface
             .ready
-            .resize_with(len, || (device.create_fence(), false));
+            .resize_with(len, || (device.create_fence().unwrap(), false));
         for (_, used) in &mut surface.ready {
             *used = false;
         }

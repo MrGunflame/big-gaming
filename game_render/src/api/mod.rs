@@ -661,7 +661,11 @@ impl<'a> CommandQueue<'a> {
         &mut self,
         descriptor: &DescriptorSetLayoutDescriptor<'_>,
     ) -> DescriptorSetLayout {
-        let inner = self.executor.device.create_descriptor_layout(descriptor);
+        let inner = self
+            .executor
+            .device
+            .create_descriptor_layout(descriptor)
+            .unwrap();
         let id = self
             .executor
             .resources
@@ -755,7 +759,8 @@ impl<'a> CommandQueue<'a> {
                 depth_stencil_state: descriptor.depth_stencil_state,
                 stages: descriptor.stages,
                 push_constant_ranges: descriptor.push_constant_ranges,
-            });
+            })
+            .unwrap();
         let id = self.executor.resources.pipelines.insert(PipelineInner {
             inner,
             ref_count: 1,
@@ -769,7 +774,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub fn create_sampler(&mut self, descriptor: &SamplerDescriptor) -> Sampler {
-        let inner = self.executor.device.create_sampler(descriptor);
+        let inner = self.executor.device.create_sampler(descriptor).unwrap();
         let id = self.executor.resources.samplers.insert(SamplerInner {
             inner,
             ref_count: 1,

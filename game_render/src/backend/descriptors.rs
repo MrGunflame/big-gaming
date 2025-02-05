@@ -154,16 +154,17 @@ impl DescriptorPoolBucket {
         let pool_size = self.next_pool_size;
         self.next_pool_size =
             (self.next_pool_size.saturating_mul(GROWTH_FACTOR)).min(MAX_POOL_SIZE);
-        let pool = device.create_descriptor_pool(&DescriptorPoolDescriptor {
-            max_sets: pool_size,
-            max_uniform_buffers: count.uniform_buffers * pool_size.get(),
-            max_storage_buffers: count.storage_buffers * pool_size.get(),
-            max_samplers: count.samplers * pool_size.get(),
-            max_sampled_images: count.textures * pool_size.get(),
-        });
+        let pool = device
+            .create_descriptor_pool(&DescriptorPoolDescriptor {
+                max_sets: pool_size,
+                max_uniform_buffers: count.uniform_buffers * pool_size.get(),
+                max_storage_buffers: count.storage_buffers * pool_size.get(),
+                max_samplers: count.samplers * pool_size.get(),
+                max_sampled_images: count.textures * pool_size.get(),
+            })
+            .unwrap();
         // Drop the lifetime of the pool. The caller guarantees that `self` outlives
         // the passed `device` handle.
-        let pool = unsafe { transmute::<DescriptorPool<'_>, DescriptorPool<'static>>(pool) };
         let pool = Pool {
             pool,
             // We are immediately allocating a set from the pool.
@@ -201,7 +202,7 @@ struct DescriptorSetResourceCount {
 
 #[derive(Debug)]
 struct Pool {
-    pool: DescriptorPool<'static>,
+    pool: DescriptorPool,
     free: u32,
     allocated: u32,
 }

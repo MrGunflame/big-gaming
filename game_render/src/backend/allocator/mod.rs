@@ -243,7 +243,7 @@ impl GeneralPurposeAllocator {
         descriptor: &TextureDescriptor,
         flags: UsageFlags,
     ) -> TextureAlloc {
-        let mut texture = self.device.create_texture(descriptor);
+        let mut texture = self.device.create_texture(descriptor).unwrap();
         let req = self.device.image_memory_requirements(&texture);
         let memory = self.alloc(req, flags);
         unsafe {
