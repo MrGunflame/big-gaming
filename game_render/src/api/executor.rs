@@ -467,40 +467,40 @@ impl TemporaryResources {
         for (id, count) in self.buffers.drain() {
             for _ in 0..count {
                 resources
-                    .lifecycle_events_tx
-                    .send(LifecycleEvent::DestroyBufferHandle(id));
+                    .lifecycle_events
+                    .push(LifecycleEvent::DestroyBufferHandle(id));
             }
         }
 
         for (id, count) in self.textures.drain() {
             for _ in 0..count {
                 resources
-                    .lifecycle_events_tx
-                    .send(LifecycleEvent::DestroyTextureHandle(id));
+                    .lifecycle_events
+                    .push(LifecycleEvent::DestroyTextureHandle(id));
             }
         }
 
         for (id, count) in self.descriptor_sets.drain() {
             for _ in 0..count {
                 resources
-                    .lifecycle_events_tx
-                    .send(LifecycleEvent::DestroyDescriptorSetHandle(id));
+                    .lifecycle_events
+                    .push(LifecycleEvent::DestroyDescriptorSetHandle(id));
             }
         }
 
         for (id, count) in self.samplers.drain() {
             for _ in 0..count {
                 resources
-                    .lifecycle_events_tx
-                    .send(LifecycleEvent::DestroySamplerHandle(id));
+                    .lifecycle_events
+                    .push(LifecycleEvent::DestroySamplerHandle(id));
             }
         }
 
         for (id, count) in self.pipelines.drain() {
             for _ in 0..count {
                 resources
-                    .lifecycle_events_tx
-                    .send(LifecycleEvent::DestroyPipelineHandle(id));
+                    .lifecycle_events
+                    .push(LifecycleEvent::DestroyPipelineHandle(id));
             }
         }
     }

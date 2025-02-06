@@ -6,14 +6,14 @@ mod scheduler;
 use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::ops::Range;
-use std::sync::mpsc;
+use std::sync::Arc;
 
+use crossbeam_queue::SegQueue;
 use executor::TemporaryResources;
 use game_common::collections::arena::{Arena, Key};
 use game_common::components::Color;
 use game_tracing::trace_span;
 use glam::UVec2;
-use parking_lot::Mutex;
 use scheduler::{Node, Resource, ResourceMap};
 
 use crate::backend::allocator::{
@@ -47,7 +47,6 @@ pub struct CommandExecutor {
 
 impl CommandExecutor {
     pub fn new(device: Device, memory_props: AdapterMemoryProperties) -> Self {
-        let (lifecycle_events_tx, lifecycle_events_rx) = mpsc::channel();
         Self {
             resources: Resources {
                 pipelines: Arena::new(),
@@ -61,8 +60,7 @@ impl CommandExecutor {
                 ),
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
                 samplers: Arena::new(),
-                lifecycle_events_tx,
-                lifecycle_events_rx: Mutex::new(lifecycle_events_rx),
+                lifecycle_events: Arc::new(SegQueue::new()),
             },
             cmds: Vec::new(),
             device,
@@ -91,8 +89,7 @@ impl CommandExecutor {
     fn cleanup(&mut self) {
         let _span = trace_span!("CommandExecutor::cleanup").entered();
 
-        let rx = self.resources.lifecycle_events_rx.lock();
-        while let Ok(cmd) = rx.try_recv() {
+        while let Some(cmd) = self.resources.lifecycle_events.pop() {
             match cmd {
                 LifecycleEvent::DestroyBufferHandle(id) => {
                     let buffer = self.resources.buffers.get_mut(id).unwrap();
@@ -124,31 +121,27 @@ impl CommandExecutor {
 
                     for (_, id) in &set.buffers {
                         self.resources
-                            .lifecycle_events_tx
-                            .send(LifecycleEvent::DestroyBufferHandle(*id))
-                            .unwrap();
+                            .lifecycle_events
+                            .push(LifecycleEvent::DestroyBufferHandle(*id));
                     }
 
                     for (_, view) in &set.textures {
                         self.resources
-                            .lifecycle_events_tx
-                            .send(LifecycleEvent::DestroyTextureHandle(view.texture))
-                            .unwrap();
+                            .lifecycle_events
+                            .push(LifecycleEvent::DestroyTextureHandle(view.texture));
                     }
 
                     for (_, views) in &set.texture_arrays {
                         for view in views {
                             self.resources
-                                .lifecycle_events_tx
-                                .send(LifecycleEvent::DestroyTextureHandle(view.texture))
-                                .unwrap();
+                                .lifecycle_events
+                                .push(LifecycleEvent::DestroyTextureHandle(view.texture));
                         }
                     }
 
                     self.resources
-                        .lifecycle_events_tx
-                        .send(LifecycleEvent::DestroyDescriptorSetLayoutHandle(set.layout))
-                        .unwrap();
+                        .lifecycle_events
+                        .push(LifecycleEvent::DestroyDescriptorSetLayoutHandle(set.layout));
 
                     self.resources.descriptor_sets.remove(id);
                 }
@@ -205,8 +198,7 @@ struct Resources {
     pipelines: Arena<PipelineInner>,
     allocator: GeneralPurposeAllocator,
     descriptor_allocator: DescriptorSetAllocator,
-    lifecycle_events_tx: mpsc::Sender<LifecycleEvent>,
-    lifecycle_events_rx: Mutex<mpsc::Receiver<LifecycleEvent>>,
+    lifecycle_events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -263,7 +255,7 @@ impl<'a> CommandQueue<'a> {
             size: descriptor.size,
             usage: descriptor.usage,
             flags: descriptor.flags,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
         }
     }
 
@@ -358,7 +350,7 @@ impl<'a> CommandQueue<'a> {
             size: descriptor.size,
             format: descriptor.format,
             usage: descriptor.usage,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
             auto_destroy: true,
             mip_levels: descriptor.mip_levels,
         }
@@ -386,7 +378,7 @@ impl<'a> CommandQueue<'a> {
             size,
             format,
             usage,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
             auto_destroy: false,
             mip_levels,
         }
@@ -649,7 +641,7 @@ impl<'a> CommandQueue<'a> {
 
         DescriptorSet {
             id,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
         }
     }
 
@@ -673,7 +665,7 @@ impl<'a> CommandQueue<'a> {
 
         DescriptorSetLayout {
             id,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
         }
     }
 
@@ -757,7 +749,7 @@ impl<'a> CommandQueue<'a> {
 
         Pipeline {
             id,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
         }
     }
 
@@ -770,7 +762,7 @@ impl<'a> CommandQueue<'a> {
 
         Sampler {
             id,
-            events: self.executor.resources.lifecycle_events_tx.clone(),
+            events: self.executor.resources.lifecycle_events.clone(),
         }
     }
 
@@ -863,14 +855,13 @@ pub struct TextureRegion<'a> {
 #[derive(Debug)]
 pub struct DescriptorSet {
     id: DescriptorSetId,
-    events: mpsc::Sender<LifecycleEvent>,
+    events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 impl Clone for DescriptorSet {
     fn clone(&self) -> Self {
         self.events
-            .send(LifecycleEvent::CloneDescriptorSetHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::CloneDescriptorSetHandle(self.id));
 
         Self {
             id: self.id,
@@ -882,27 +873,32 @@ impl Clone for DescriptorSet {
 impl Drop for DescriptorSet {
     fn drop(&mut self) {
         self.events
-            .send(LifecycleEvent::DestroyDescriptorSetHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::DestroyDescriptorSetHandle(self.id));
     }
 }
 
 #[derive(Debug)]
 pub struct Sampler {
     id: SamplerId,
-    events: mpsc::Sender<LifecycleEvent>,
+    events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 impl Clone for Sampler {
     fn clone(&self) -> Self {
         self.events
-            .send(LifecycleEvent::CloneSamplerHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::CloneSamplerHandle(self.id));
 
         Self {
             id: self.id,
             events: self.events.clone(),
         }
+    }
+}
+
+impl Drop for Sampler {
+    fn drop(&mut self) {
+        self.events
+            .push(LifecycleEvent::DestroySamplerHandle(self.id));
     }
 }
 
@@ -925,14 +921,13 @@ pub struct PipelineDescriptor<'a> {
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
     id: DescriptorSetLayoutId,
-    events: mpsc::Sender<LifecycleEvent>,
+    events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 impl Clone for DescriptorSetLayout {
     fn clone(&self) -> Self {
         self.events
-            .send(LifecycleEvent::CloneDescriptorSetLayoutHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::CloneDescriptorSetLayoutHandle(self.id));
 
         Self {
             id: self.id,
@@ -944,8 +939,7 @@ impl Clone for DescriptorSetLayout {
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         self.events
-            .send(LifecycleEvent::DestroyDescriptorSetLayoutHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::DestroyDescriptorSetLayoutHandle(self.id));
     }
 }
 
@@ -958,14 +952,13 @@ struct DescriptorSetLayoutInner {
 #[derive(Debug)]
 pub struct Pipeline {
     id: PipelineId,
-    events: mpsc::Sender<LifecycleEvent>,
+    events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 impl Clone for Pipeline {
     fn clone(&self) -> Self {
         self.events
-            .send(LifecycleEvent::ClonePipelineHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::ClonePipelineHandle(self.id));
 
         Self {
             id: self.id,
@@ -977,8 +970,7 @@ impl Clone for Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         self.events
-            .send(LifecycleEvent::DestroyPipelineHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::DestroyPipelineHandle(self.id));
     }
 }
 
@@ -995,14 +987,12 @@ pub struct Buffer {
     size: u64,
     usage: BufferUsage,
     flags: UsageFlags,
-    events: mpsc::Sender<LifecycleEvent>,
+    events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 impl Clone for Buffer {
     fn clone(&self) -> Self {
-        self.events
-            .send(LifecycleEvent::CloneBufferHandle(self.id))
-            .ok();
+        self.events.push(LifecycleEvent::CloneBufferHandle(self.id));
 
         Self {
             id: self.id,
@@ -1017,8 +1007,7 @@ impl Clone for Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         self.events
-            .send(LifecycleEvent::DestroyBufferHandle(self.id))
-            .ok();
+            .push(LifecycleEvent::DestroyBufferHandle(self.id));
     }
 }
 
@@ -1303,7 +1292,7 @@ pub struct Texture {
     size: UVec2,
     format: TextureFormat,
     usage: TextureUsage,
-    events: mpsc::Sender<LifecycleEvent>,
+    events: Arc<SegQueue<LifecycleEvent>>,
     auto_destroy: bool,
     mip_levels: u32,
 }
@@ -1342,8 +1331,7 @@ impl Clone for Texture {
     fn clone(&self) -> Self {
         if self.auto_destroy {
             self.events
-                .send(LifecycleEvent::CloneTextureHandle(self.id))
-                .ok();
+                .push(LifecycleEvent::CloneTextureHandle(self.id));
         }
 
         Self {
@@ -1362,8 +1350,7 @@ impl Drop for Texture {
     fn drop(&mut self) {
         if self.auto_destroy {
             self.events
-                .send(LifecycleEvent::DestroyTextureHandle(self.id))
-                .ok();
+                .push(LifecycleEvent::DestroyTextureHandle(self.id));
         }
     }
 }
