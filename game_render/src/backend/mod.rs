@@ -470,7 +470,7 @@ impl AccessFlags {
     /// [`QueueCapabilities`].
     fn is_allowed_for_queue(&self, caps: &QueueCapabilities) -> bool {
         // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#VUID-vkCmdPipelineBarrier2-dstStageMask-09676
-        let graphics_flags = AccessFlags::COLOR_ATTACHMENT_WRITE
+        let graphics_flags = AccessFlags::COLOR_ATTACHMENT_READ
             | AccessFlags::COLOR_ATTACHMENT_WRITE
             | AccessFlags::INDEX
             | AccessFlags::INDIRECT

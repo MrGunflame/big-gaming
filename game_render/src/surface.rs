@@ -6,7 +6,7 @@ use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crate::api::executor::TemporaryResources;
 use crate::backend::vulkan::{
-    Adapter, CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
+    CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
 };
 use crate::backend::{
     ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
@@ -186,7 +186,7 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, siz
     }
 
     unsafe {
-        surface.swapchain.recreate(config, &caps);
+        surface.swapchain.recreate(config, &caps).unwrap();
     }
 
     surface.config = config;

@@ -60,7 +60,6 @@ impl Image {
             TextureFormat::Bgra8UnormSrgb => 4,
             TextureFormat::Rgba16Float => 8,
             TextureFormat::Depth32Float => 4,
-            _ => panic!("unsupported texture format: {:?}", self.format),
         };
 
         assert_eq!(
