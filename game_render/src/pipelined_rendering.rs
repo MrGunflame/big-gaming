@@ -219,8 +219,6 @@ impl RenderThread {
                     queue: &mut queue,
                     resources: &mut resources,
                     resource_permissions: &node.permissions,
-                    size: swapchain_texture.size(),
-                    format: swapchain_texture.format(),
                 };
                 node.node.render(&mut ctx);
             }

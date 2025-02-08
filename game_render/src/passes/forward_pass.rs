@@ -76,12 +76,14 @@ impl Node for ForwardPass {
             );
         }
 
+        let size = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().size();
+
         for camera in state.cameras.values() {
             if camera.target == ctx.render_target {
-                self.update_depth_stencil(ctx.render_target, ctx.size, &mut ctx.queue);
+                self.update_depth_stencil(ctx.render_target, size, &mut ctx.queue);
 
                 let scene = state.scenes.get(&camera.scene).unwrap();
-                self.render_camera_target(&state, &scene, camera, ctx);
+                self.render_camera_target(&state, &scene, camera, ctx, size);
                 return;
             }
         }
@@ -124,6 +126,7 @@ impl ForwardPass {
         scene: &Scene,
         camera: &Camera,
         ctx: &mut RenderContext<'_, '_>,
+        size: UVec2,
     ) {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
@@ -151,7 +154,7 @@ impl ForwardPass {
         let depth_stencil = depth_stencils.get(&ctx.render_target).unwrap();
 
         let render_target = ctx.queue.create_texture(&TextureDescriptor {
-            size: ctx.size,
+            size,
             mip_levels: 1,
             format: TextureFormat::Rgba16Float,
             usage: TextureUsage::TEXTURE_BINDING | TextureUsage::RENDER_ATTACHMENT,

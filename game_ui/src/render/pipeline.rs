@@ -212,7 +212,9 @@ impl Node for UiPass {
     fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("UiPass::render").entered();
 
-        self.update_buffers(ctx.render_target, ctx.queue, ctx.size);
+        let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).cloned().unwrap();
+
+        self.update_buffers(ctx.render_target, ctx.queue, surface_texture.size());
 
         let mut pipeline = self.pipeline.lock();
         let vertex_buffer = self.vertex_buffer.lock();
@@ -287,16 +289,15 @@ impl Node for UiPass {
         //     usage: BufferUsage::INDIRECT,
         // });
 
-        let render_pipeline = match pipeline.pipelines.get(&ctx.format) {
+        let render_pipeline = match pipeline.pipelines.get(&surface_texture.format()) {
             Some(pl) => pl,
             None => {
-                let pl = pipeline.build_pipeline(ctx.format, ctx.queue);
-                pipeline.pipelines.insert(ctx.format, pl);
-                pipeline.pipelines.get(&ctx.format).unwrap()
+                let pl = pipeline.build_pipeline(surface_texture.format(), ctx.queue);
+                pipeline.pipelines.insert(surface_texture.format(), pl);
+                pipeline.pipelines.get(&surface_texture.format()).unwrap()
             }
         };
 
-        let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
                 target: &surface_texture.create_view(&TextureViewDescriptor::default()),
