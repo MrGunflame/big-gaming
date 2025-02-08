@@ -2,12 +2,14 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use parking_lot::{RwLock, RwLockReadGuard};
-use wgpu::{Device, RenderPipeline, TextureFormat};
+
+use crate::api::{CommandQueue, Pipeline};
+use crate::backend::TextureFormat;
 
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]
 pub struct PipelineCache<T> {
-    pipelines: RwLock<HashMap<TextureFormat, RenderPipeline>>,
+    pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
 }
 
@@ -29,7 +31,11 @@ where
     ///
     /// If the pipeline with the requested for [`TextureFormat`] does not exist a new pipeline will
     /// be created using the [`PipelineBuilder`].
-    pub fn get(&self, device: &Device, format: TextureFormat) -> PipelineRef<'_> {
+    pub fn get<'a, 'b>(
+        &'a self,
+        queue: &'b mut CommandQueue<'_>,
+        format: TextureFormat,
+    ) -> PipelineRef<'a> {
         let mut pipelines = self.pipelines.read();
 
         // Note that this case will likely happen very rarely under normal
@@ -41,7 +47,7 @@ where
 
             {
                 let mut pipelines = self.pipelines.write();
-                let pipeline = self.builder.build(device, format);
+                let pipeline = self.builder.build(queue, format);
                 pipelines.insert(format, pipeline);
             }
 
@@ -54,7 +60,7 @@ where
                 // as the mutex is locked.
                 // To guarantee this the mutex guard is attached to the
                 // returned struct.
-                let pipeline = unsafe { &*(pipeline as *const RenderPipeline) };
+                let pipeline = unsafe { core::mem::transmute::<&'_ _, &'a _>(pipeline) };
                 PipelineRef {
                     pipeline,
                     _pipelines: pipelines,
@@ -73,14 +79,14 @@ pub struct PipelineRef<'a> {
     // The reference to the `pipeline` is attached to the read guard
     // of the cache.
     // The reference must not be acessed after the read guard was dropped.
-    pipeline: &'a RenderPipeline,
+    pipeline: &'a Pipeline,
     // This must come at the end of the struct and guarantees that the
     // reference to the `pipeline` is invalidated once the struct is dropped.
-    _pipelines: RwLockReadGuard<'a, HashMap<TextureFormat, RenderPipeline>>,
+    _pipelines: RwLockReadGuard<'a, HashMap<TextureFormat, Pipeline>>,
 }
 
 impl<'a> Deref for PipelineRef<'a> {
-    type Target = RenderPipeline;
+    type Target = Pipeline;
 
     fn deref(&self) -> &Self::Target {
         self.pipeline
@@ -89,5 +95,5 @@ impl<'a> Deref for PipelineRef<'a> {
 
 pub trait PipelineBuilder {
     /// Returns a new pipeline with the requested [`TextureFormat`].
-    fn build(&self, device: &Device, format: TextureFormat) -> RenderPipeline;
+    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline;
 }

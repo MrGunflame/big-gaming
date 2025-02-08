@@ -1,4 +1,5 @@
 pub mod aabb;
+pub mod api;
 pub mod buffer;
 pub mod camera;
 pub mod entities;
@@ -14,18 +15,22 @@ pub mod shape;
 pub mod surface;
 pub mod texture;
 
+pub mod backend;
 mod debug;
-mod depth_stencil;
 mod fps_limiter;
 mod passes;
 mod pipeline_cache;
 mod pipelined_rendering;
 
+use api::CommandQueue;
+use backend::vulkan::{Config, Instance};
+use backend::{AdapterKind, MemoryHeapFlags, QueueCapabilities};
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
-use game_common::cell::RefMut;
+use game_tasks::park::Parker;
+use surface::SurfaceConfig;
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -40,14 +45,10 @@ use forward::ForwardPipeline;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
-use pipelined_rendering::{Pipeline, RenderImageGpu};
-use texture::{RenderImageId, RenderTexture, RenderTextureEvent, RenderTextures};
+use pipelined_rendering::{Command, RenderThreadHandle};
+use texture::{RenderImageId, RenderTexture, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
-use wgpu::{
-    Backends, Device, DeviceDescriptor, Features, Gles3MinorVersion, Instance, InstanceDescriptor,
-    InstanceFlags, Limits, PowerPreference, Queue, RequestAdapterOptions, RequestDeviceError,
-};
 
 pub use passes::FINAL_RENDER_PASS;
 
@@ -55,14 +56,12 @@ pub use passes::FINAL_RENDER_PASS;
 pub enum Error {
     #[error("no adapter")]
     NoAdapter,
-    #[error("failed to request device: {}", 0)]
-    NoDevice(RequestDeviceError),
+    // #[error("failed to request device: {}", 0)]
+    // NoDevice(RequestDeviceError),
 }
 
 pub struct Renderer {
-    pipeline: Pipeline,
-
-    backlog: VecDeque<SurfaceEvent>,
+    render_thread: RenderThreadHandle,
 
     forward: Arc<ForwardPipeline>,
     resources: Arc<Resources>,
@@ -70,74 +69,126 @@ pub struct Renderer {
 
     render_textures: RenderTextures,
     jobs: VecDeque<Job>,
+
+    parker: Option<Arc<Parker>>,
+
+    surface_sizes: HashMap<WindowId, UVec2>,
 }
 
 impl Renderer {
     pub fn new() -> Result<Self, Error> {
-        let flags = if debug::debug_layers_enabled() {
-            InstanceFlags::DEBUG | InstanceFlags::VALIDATION
-        } else {
-            InstanceFlags::empty()
+        let mut config = Config::default();
+        if debug::debug_layers_enabled() {
+            config.validation = true;
+        }
+
+        let instance = Instance::new(config).unwrap();
+
+        let preferred_adapter_name = std::env::var("RENDER_ADAPTER").ok();
+
+        let mut adapter = None;
+        for a in instance.adapters().unwrap() {
+            let Some(current_adapter) = &adapter else {
+                adapter = Some(a);
+                continue;
+            };
+
+            if let Some(preferred_adapter_name) = &preferred_adapter_name {
+                if a.properties().name.contains(preferred_adapter_name) {
+                    adapter = Some(a);
+                    continue;
+                }
+            }
+
+            let new_kind = match a.properties().kind {
+                AdapterKind::DiscreteGpu => 0,
+                AdapterKind::IntegratedGpu => 1,
+                AdapterKind::Cpu => 2,
+                AdapterKind::Other => 3,
+            };
+            let cur_kind = match current_adapter.properties().kind {
+                AdapterKind::DiscreteGpu => 0,
+                AdapterKind::IntegratedGpu => 1,
+                AdapterKind::Cpu => 2,
+                AdapterKind::Other => 3,
+            };
+
+            // New adapter is a less powerful class than the current one.
+            // Alaways ignore the new adapter.
+            if new_kind > cur_kind {
+                continue;
+            }
+
+            // New adapter is a more powerful class than the current one.
+            // Always prefer the new adapter.
+            if new_kind < cur_kind {
+                adapter = Some(a);
+                continue;
+            }
+
+            // Both adapters have the same class.
+            // Choose the adapter with more device local memory, which
+            // is usually the more powerful one.
+            let mut new_device_local = 0;
+            for heap in a.memory_properties().heaps {
+                if heap.flags.contains(MemoryHeapFlags::DEVICE_LOCAL) {
+                    new_device_local += heap.size;
+                }
+            }
+
+            let mut cur_device_local = 0;
+            for heap in current_adapter.memory_properties().heaps {
+                if heap.flags.contains(MemoryHeapFlags::DEVICE_LOCAL) {
+                    cur_device_local += heap.size;
+                }
+            }
+
+            if new_device_local > cur_device_local {
+                adapter = Some(a);
+            }
+        }
+
+        let Some(adapter) = adapter else {
+            return Err(Error::NoAdapter);
         };
 
-        let instance = Instance::new(InstanceDescriptor {
-            backends: Backends::VULKAN,
-            dx12_shader_compiler: Default::default(),
-            flags,
-            gles_minor_version: Gles3MinorVersion::Automatic,
-        });
+        tracing::info!("Using graphics adapter {}", adapter.properties().name);
 
-        let adapter =
-            futures_lite::future::block_on(instance.request_adapter(&RequestAdapterOptions {
-                power_preference: PowerPreference::HighPerformance,
-                compatible_surface: None,
-                force_fallback_adapter: false,
-            }))
-            .ok_or(Error::NoAdapter)?;
+        let queue_family = *adapter
+            .queue_families()
+            .iter()
+            .find(|q| {
+                q.capabilities.contains(QueueCapabilities::GRAPHICS)
+                    && q.capabilities.contains(QueueCapabilities::TRANSFER)
+            })
+            .unwrap();
 
-        let features = Features::TEXTURE_BINDING_ARRAY
-            | Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING
-            | Features::PARTIALLY_BOUND_BINDING_ARRAY
-            | Features::PUSH_CONSTANTS;
+        let mut device = adapter.create_device(&[queue_family]).unwrap();
+        let queue = device.create_queue(queue_family.id).unwrap();
 
-        let mut limits = Limits::default();
-        limits.max_sampled_textures_per_shader_stage = 2048;
-        limits.max_push_constant_size = 128;
+        let render_thread = RenderThreadHandle::new(instance, adapter, device, queue);
 
-        let (device, queue) = futures_lite::future::block_on(adapter.request_device(
-            &DeviceDescriptor {
-                required_features: features,
-                required_limits: limits,
-                label: None,
-            },
-            None,
-        ))
-        .map_err(Error::NoDevice)?;
+        let mut scheduler = unsafe { render_thread.shared.scheduler.borrow_mut() };
+        let mut graph = unsafe { render_thread.shared.graph.borrow_mut() };
+        let mut queue = scheduler.queue();
 
         let resources = Arc::new(Resources::default());
 
-        let forward = Arc::new(ForwardPipeline::new(&device, resources.clone()));
+        let forward = Arc::new(ForwardPipeline::new(&mut queue, resources.clone()));
+        passes::init(&mut graph, forward.clone(), &mut queue);
 
-        let pipeline = Pipeline::new(instance, adapter, device, queue);
-
-        {
-            let mut graph = unsafe { pipeline.shared.graph.borrow_mut() };
-            passes::init(
-                &mut graph,
-                forward.clone(),
-                &pipeline.shared.device,
-                &pipeline.shared.queue,
-            );
-        }
+        drop(graph);
+        drop(scheduler);
 
         Ok(Self {
-            backlog: VecDeque::new(),
-            pipeline,
+            render_thread,
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
             forward,
             resources,
             events: Vec::new(),
+            surface_sizes: HashMap::new(),
+            parker: None,
         })
     }
 
@@ -151,17 +202,20 @@ impl Renderer {
         ReadTexture { rx }
     }
 
-    pub fn device(&self) -> &Device {
-        &self.pipeline.shared.device
-    }
+    pub fn with_command_queue_and_graph<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce(&mut RenderGraph, &mut CommandQueue<'_>) -> R,
+    {
+        if let Some(parker) = self.parker.take() {
+            parker.park();
+        }
 
-    pub fn queue(&self) -> &Queue {
-        &self.pipeline.shared.queue
-    }
-
-    pub fn graph_mut(&mut self) -> RefMut<'_, RenderGraph> {
-        self.pipeline.wait_idle();
-        unsafe { self.pipeline.shared.graph.borrow_mut() }
+        // SAFETY: We have waited until the render thread is idle.
+        // This means we are allowed to access all shared resources.
+        let mut scheduler = unsafe { self.render_thread.shared.scheduler.borrow_mut() };
+        let mut graph = unsafe { self.render_thread.shared.graph.borrow_mut() };
+        let mut queue = scheduler.queue();
+        f(&mut graph, &mut queue)
     }
 
     pub fn create_render_texture(&mut self, texture: RenderTexture) -> RenderImageId {
@@ -173,44 +227,67 @@ impl Renderer {
 
     /// Create a new renderer for the window.
     pub fn create(&mut self, id: WindowId, window: WindowState) {
-        self.backlog.push_back(SurfaceEvent::Create(id, window));
+        self.surface_sizes.insert(id, window.inner_size());
+        self.render_thread.send(Command::CreateSurface(window));
     }
 
     pub fn resize(&mut self, id: WindowId, size: UVec2) {
-        self.backlog.push_back(SurfaceEvent::Resize(id, size));
+        self.surface_sizes.insert(id, size);
+        self.render_thread
+            .send(Command::UpdateSurface(id, SurfaceConfig { size }));
+
+        if let Some(parker) = self.parker.take() {
+            parker.park();
+        }
+
+        // Resize all cameras that are linked to the surface handle.
+        // Technically this will happend before the actual surface is resized,
+        // but this should be considered a rare case anyway, so we can afford
+        // the aspect ratio to be slightly off during that time.
+        let mut cameras = unsafe { self.resources.cameras.viewer() };
+        for camera in cameras.iter_mut() {
+            if camera.target == RenderTarget::Window(id) {
+                camera.update_aspect_ratio(size);
+            }
+        }
     }
 
     pub fn destroy(&mut self, id: WindowId) {
-        self.backlog.push_back(SurfaceEvent::Destroy(id));
+        self.render_thread.send(Command::DestroySurface(id));
     }
 
     // TODO: Get rid of this shit.
     pub fn get_surface_size(&self, target: RenderTarget) -> Option<UVec2> {
         match target {
-            RenderTarget::Window(id) => {
-                let surfaces = unsafe { self.pipeline.shared.surfaces.borrow() };
-                surfaces
-                    .get(id)
-                    .map(|s| UVec2::new(s.config.width, s.config.height))
+            RenderTarget::Window(id) => self.surface_sizes.get(&id).copied(),
+            RenderTarget::Image(id) => {
+                todo!();
             }
-            RenderTarget::Image(id) => self.render_textures.get(id).map(|v| v.size),
         }
     }
 
     /// Waits until a new frame can be queued.
     pub fn wait_until_ready(&mut self) {
         let _span = trace_span!("Renderer::wait_until_ready").entered();
-        self.pipeline.wait_idle();
+
+        if let Some(parker) = self.parker.take() {
+            parker.park();
+        }
     }
 
     pub fn render(&mut self, pool: &TaskPool) {
         let _span = trace_span!("Renderer::render").entered();
 
-        self.pipeline.wait_idle();
+        // Park until the previous rendering command has finished.
+        // Once the `park()` call completes the renderer will no longer
+        // access its shared resources.
+        // If the parker is `None`, no rendering command was submitted yet,
+        // so the renderer is also idle.
+        if let Some(parker) = &self.parker {
+            parker.park();
+        }
 
         unsafe {
-            self.update_surfaces();
-
             // Commit all new resources.
             // This is safe since the renderer is idle.
             self.resources.commit();
@@ -218,92 +295,22 @@ impl Renderer {
             self.events.clear();
         }
 
-        {
-            let mut render_textures = unsafe { self.pipeline.shared.render_textures.borrow_mut() };
-
-            for event in self.render_textures.events.drain(..) {
-                match event {
-                    RenderTextureEvent::Create(id, texture) => {
-                        render_textures.insert(
-                            id,
-                            RenderImageGpu {
-                                size: texture.size,
-                                texture: None,
-                            },
-                        );
-                    }
-                    RenderTextureEvent::Destroy(id) => {
-                        render_textures.remove(&id);
-                    }
-                }
-            }
-        }
-
-        {
-            let mut jobs = unsafe { self.pipeline.shared.jobs.borrow_mut() };
-            std::mem::swap(&mut self.jobs, &mut jobs);
-        }
-
-        // SAFETY: We just waited for the renderer to be idle.
-        unsafe {
-            self.pipeline.render_unchecked();
-        }
-    }
-
-    /// # Safety
-    ///
-    ///  Caller guarantees that the renderer is idle.
-    unsafe fn update_surfaces(&mut self) {
-        let mut surfaces = unsafe { self.pipeline.shared.surfaces.borrow_mut() };
-        let instance = &self.pipeline.shared.instance;
-        let adapter = &self.pipeline.shared.adapter;
-        let device = &self.pipeline.shared.device;
-
-        while let Some(event) = self.backlog.pop_front() {
-            match event {
-                SurfaceEvent::Create(id, state) => {
-                    surfaces.create(instance, adapter, device, state, id);
-                }
-                SurfaceEvent::Resize(id, size) => {
-                    surfaces.resize(id, device, size);
-
-                    // Resize all cameras that are linked to the surface handle.
-                    let mut cameras = unsafe { self.resources.cameras.viewer() };
-                    for camera in cameras.iter_mut() {
-                        if camera.target == RenderTarget::Window(id) {
-                            camera.update_aspect_ratio(size);
-                        }
-                    }
-                }
-                SurfaceEvent::Destroy(id) => {
-                    surfaces.destroy(id);
-                }
-            }
-        }
+        // Submit a new render command with the parker used in the next call.
+        let parker = self.parker.get_or_insert_with(|| Arc::new(Parker::new()));
+        self.render_thread.send(Command::Render(parker.clone()));
     }
 
     pub fn set_fps_limit(&mut self, limit: FpsLimit) {
-        self.jobs.push_back(Job::SetFpsLimit(limit));
+        for id in self.surface_sizes.keys() {
+            self.render_thread
+                .send(Command::UpdateSurfaceFpsLimit(*id, limit));
+        }
     }
-}
-
-impl Drop for Renderer {
-    fn drop(&mut self) {
-        self.pipeline.shutdown();
-    }
-}
-
-#[derive(Debug)]
-enum SurfaceEvent {
-    Create(WindowId, WindowState),
-    Resize(WindowId, UVec2),
-    Destroy(WindowId),
 }
 
 #[derive(Debug)]
 enum Job {
     TextureToBuffer(RenderImageId, tokio::sync::oneshot::Sender<Vec<u8>>),
-    SetFpsLimit(FpsLimit),
 }
 
 pub struct ReadTexture {

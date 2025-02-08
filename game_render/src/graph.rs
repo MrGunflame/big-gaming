@@ -22,16 +22,18 @@
 //! [`add_node_dependency`]: RenderGraph::add_node_dependency
 //! [`add_slot_dependency`]: RenderGraph::add_slot_dependency
 
+pub mod ctx;
+pub(crate) mod executor;
 pub(crate) mod scheduler;
 
 use std::collections::HashMap;
 
 use glam::UVec2;
 use thiserror::Error;
-use wgpu::{Buffer, CommandEncoder, Device, Queue, Texture, TextureFormat, TextureView};
 
+use crate::api::{Buffer, CommandQueue, Texture};
+use crate::backend::TextureFormat;
 use crate::camera::RenderTarget;
-use crate::mipmap::MipMapGenerator;
 
 pub trait Node: Send + Sync + 'static {
     /// Renders the node.
@@ -41,13 +43,12 @@ pub trait Node: Send + Sync + 'static {
 /// Context provided to render a [`Node`].
 pub struct RenderContext<'a, 'b> {
     pub render_target: RenderTarget,
-    pub encoder: &'b mut CommandEncoder,
-    pub target: &'a TextureView,
+    pub queue: &'b mut CommandQueue<'a>,
+    // TODO: Remove
+    #[deprecated = "Get the size from SlatLabel::SURFACE instead"]
     pub size: UVec2,
+    #[deprecated = "Get the format from SlatLabel::SURFACE instead"]
     pub format: TextureFormat,
-    pub device: &'a Device,
-    pub queue: &'a Queue,
-    pub mipmap: &'b mut MipMapGenerator,
     pub(crate) resource_permissions: &'a HashMap<SlotLabel, SlotFlags>,
     pub(crate) resources: &'b mut HashMap<SlotLabel, SlotValueInner<'a>>,
 }

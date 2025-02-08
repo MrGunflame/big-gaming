@@ -14,7 +14,7 @@ pub fn debug_layers_enabled() -> bool {
         static DEBUG_LAYERS_ENABLED: OnceLock<bool> = OnceLock::new();
 
         *DEBUG_LAYERS_ENABLED.get_or_init(|| {
-            if let Ok(val) = std::env::var("RENDER_DEGUG_LAYERS") {
+            if let Ok(val) = std::env::var("RENDER_DEBUG_LAYERS") {
                 match val.as_str() {
                     "true" | "1" => true,
                     "false" | "0" => false,

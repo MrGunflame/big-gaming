@@ -1,9 +1,10 @@
 use game_common::components::Color;
 use game_model::material::Material;
 use game_model::Model;
+use game_render::backend::TextureFormat;
 use game_render::mesh::{Indices, Mesh};
 use game_render::pbr::AlphaMode;
-use game_render::texture::{Image, TextureFormat};
+use game_render::texture::Image;
 use game_tracing::trace_span;
 use glam::UVec2;
 

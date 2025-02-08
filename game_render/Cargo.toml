@@ -9,7 +9,13 @@ license = "GPL-3.0-or-later"
 workspace = true
 
 [features]
-default = []
+default = ["wayland", "x11"]
+
+# Enable Wayland on unix targets.
+wayland = []
+
+# Enable X11 on unix targets.
+x11 = []
 
 [dependencies]
 game_window = { version = "0.1.0", path = "../game_window" }
@@ -22,7 +28,6 @@ bytemuck = { version = "1.16.1", features = ["derive", "must_cast"] }
 futures-lite = "2.3.0"
 glam = { version = "0.28.0", features = ["bytemuck"] }
 tracing = { version = "0.1.40", features = ["log-always"] }
-wgpu = "0.19.1"
 image = "0.25.1"
 parking_lot = "0.12.3"
 bitflags = { version = "2.6.0", features = ["bytemuck"] }
@@ -31,6 +36,9 @@ mikktspace = "0.3.0"
 tokio = { version = "1.38.0", default-features = false, features = ["sync"] }
 thiserror = "1.0.61"
 
-# Used by wgpu.
-# Convert spans direclty to tracing, which we use for profiling.
-profiling = { version = "1.0.15", features = ["profile-with-tracing"] }
+ash = "0.38.0+1.3.281"
+raw-window-handle = "0.6.2"
+slab = "0.4.9"
+crossbeam-queue = "0.3.12"
+
+naga = { version = "23.1.0", features = ["wgsl-in", "spv-out"] }

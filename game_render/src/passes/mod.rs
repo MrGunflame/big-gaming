@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use forward_pass::ForwardPass;
 use post_process::PostProcessPass;
-use wgpu::{Device, Queue};
 
+use crate::api::CommandQueue;
 use crate::forward::ForwardPipeline;
 use crate::graph::{Node, NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 
@@ -21,14 +21,9 @@ const POST_PROCESS_PASS: NodeLabel = NodeLabel::new("POST_PROCESS_PASS");
 /// surface texture.
 pub const FINAL_RENDER_PASS: NodeLabel = POST_PROCESS_PASS;
 
-pub fn init(
-    graph: &mut RenderGraph,
-    forward: Arc<ForwardPipeline>,
-    device: &Device,
-    queue: &Queue,
-) {
-    let forward_pass = ForwardPass::new(device, queue, forward, HDR_TEXTURE);
-    let post_process = PostProcessPass::new(device, HDR_TEXTURE, SlotLabel::SURFACE);
+pub fn init(graph: &mut RenderGraph, forward: Arc<ForwardPipeline>, queue: &mut CommandQueue<'_>) {
+    let forward_pass = ForwardPass::new(queue, forward, HDR_TEXTURE);
+    let post_process = PostProcessPass::new(queue, HDR_TEXTURE, SlotLabel::SURFACE);
 
     // `SurfaceInjector` is dummy node that only exists to
     // "inject" the surface texture into the pipeline.

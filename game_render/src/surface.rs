@@ -2,21 +2,34 @@ use std::collections::HashMap;
 
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
-use wgpu::{
-    Adapter, CompositeAlphaMode, Device, Instance, PresentMode, Surface, SurfaceConfiguration,
-    SurfaceTargetUnsafe, TextureFormat, TextureUsages,
-};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
-#[allow(deprecated)]
-use wgpu::rwh::{HasRawDisplayHandle, HasRawWindowHandle};
+use crate::api::executor::TemporaryResources;
+use crate::backend::vulkan::{
+    CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
+};
+use crate::backend::{
+    ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
+};
+use crate::fps_limiter::FpsLimiter;
+use crate::FpsLimit;
+
+// TODO: Make this configurable.
+// Note that this value still bounded by the maxImageCount of the swapchain.
+const MAX_FRAMES_IN_FLIGHT: u32 = 3;
+
+#[derive(Copy, Clone, Debug)]
+pub struct SurfaceConfig {
+    pub size: UVec2,
+}
 
 #[derive(Debug, Default)]
-pub struct RenderSurfaces {
+pub(crate) struct RenderSurfaces {
     windows: HashMap<WindowId, SurfaceData>,
 }
 
 impl RenderSurfaces {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             windows: HashMap::new(),
         }
@@ -25,28 +38,44 @@ impl RenderSurfaces {
     pub fn create(
         &mut self,
         instance: &Instance,
-        adapter: &Adapter,
         device: &Device,
+        queue: &Queue,
         window: WindowState,
         id: WindowId,
     ) {
-        let surfce = create_surface(window, instance, adapter, device).unwrap();
+        let surfce = create_surface(window, instance, device, queue).unwrap();
         self.windows.insert(id, surfce);
     }
 
-    pub fn resize(&mut self, id: WindowId, device: &Device, size: UVec2) {
+    /// Resizes and reconfigure a surface.
+    ///
+    /// # Safety
+    ///
+    /// This will invalidate the current swapchain and commands accessing it must have been
+    /// completed.
+    pub unsafe fn resize(&mut self, id: WindowId, device: &Device, queue: &Queue, size: UVec2) {
         let Some(surface) = self.windows.get_mut(&id) else {
             return;
         };
 
-        resize_surface(surface, device, size);
+        resize_surface(surface, device, queue, size);
     }
 
     pub fn get(&self, id: WindowId) -> Option<&SurfaceData> {
         self.windows.get(&id)
     }
 
-    pub fn destroy(&mut self, id: WindowId) {
+    pub fn get_mut(&mut self, id: WindowId) -> Option<&mut SurfaceData> {
+        self.windows.get_mut(&id)
+    }
+
+    /// Destroys a surface.
+    ///
+    /// # Safety
+    ///
+    /// This will invalidate the current swapchain and commands accessing it must have been
+    /// completed.
+    pub unsafe fn destroy(&mut self, id: WindowId) {
         self.windows.remove(&id);
     }
 
@@ -60,101 +89,129 @@ impl RenderSurfaces {
 }
 
 #[derive(Debug)]
-pub struct SurfaceData {
-    pub surface: Surface<'static>,
-    pub config: SurfaceConfiguration,
+pub(crate) struct SurfaceData {
+    pub surface: Surface,
+    pub swapchain: Swapchain,
+    pub config: SwapchainConfig,
+    pub next_frame: usize,
+    pub image_avail: Vec<Semaphore>,
+    pub render_done: Vec<Semaphore>,
+    pub ready: Vec<(Fence, bool)>,
+    pub resources: Vec<TemporaryResources>,
+    pub swapchain_textures: Vec<Option<crate::api::Texture>>,
+    pub command_pools: Vec<CommandPool>,
+    pub limiter: FpsLimiter,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
-    window: WindowState,
-}
-
-impl SurfaceData {
-    /// Returns a handle to the window of the surface.
-    // Note: It is important that the `self.window` value that never changes
-    // after the `SurfaceData` is created.
-    // To prevent acidental moving out of `self.window` we only return a reference
-    // to the `WindowState` and keep the field itself as private.
-    #[inline]
-    pub fn window(&self) -> &WindowState {
-        &self.window
-    }
+    pub window: WindowState,
 }
 
 fn create_surface(
     window: WindowState,
     instance: &Instance,
-    adapter: &Adapter,
     device: &Device,
+    queue: &Queue,
 ) -> Result<SurfaceData, ()> {
     let size = window.inner_size();
 
-    let surface: Surface<'static> = match unsafe {
-        instance.create_surface_unsafe(SurfaceTargetUnsafe::RawHandle {
-            #[allow(deprecated)]
-            raw_display_handle: window.raw_display_handle().unwrap(),
-            #[allow(deprecated)]
-            raw_window_handle: window.raw_window_handle().unwrap(),
-        })
-    } {
-        Ok(surface) => surface,
-        Err(err) => {
-            tracing::error!("failed to create surface: {}", err);
-            return Err(());
-        }
+    let surface = unsafe {
+        instance
+            .create_surface(
+                window.raw_display_handle().unwrap(),
+                window.raw_window_handle().unwrap(),
+            )
+            .unwrap()
     };
 
-    let caps = surface.get_capabilities(adapter);
-
-    let Some(format) = get_surface_format(&caps.formats) else {
-        tracing::error!("failed to select format for render suface");
-        return Err(());
-    };
-
-    let Some(present_mode) = get_surface_present_mode(&caps.present_modes) else {
-        tracing::error!("failed to select present mode for render surface");
-        return Err(());
-    };
-
-    let Some(alpha_mode) = get_surface_alpha_mode(&caps.alpha_modes) else {
-        tracing::error!("failed to select alpha mode for render surface");
-        return Err(());
-    };
-
-    let config = SurfaceConfiguration {
-        usage: TextureUsages::RENDER_ATTACHMENT,
-        format,
-        width: size.x,
-        height: size.y,
-        present_mode,
-        alpha_mode,
-        view_formats: vec![],
-        // Double buffering
-        desired_maximum_frame_latency: 2,
-    };
-
-    surface.configure(device, &config);
+    let caps = surface.get_capabilities(device, queue).unwrap();
+    let config = create_swapchain_config(&caps, size);
+    let swapchain = surface.create_swapchain(device, config, &caps).unwrap();
 
     Ok(SurfaceData {
+        swapchain,
         surface,
         config,
         window,
+        image_avail: (0..config.image_count)
+            .map(|_| device.create_semaphore().unwrap())
+            .collect(),
+        render_done: (0..config.image_count)
+            .map(|_| device.create_semaphore().unwrap())
+            .collect(),
+        ready: (0..config.image_count)
+            .map(|_| (device.create_fence().unwrap(), false))
+            .collect(),
+        next_frame: 0,
+        resources: (0..config.image_count)
+            .map(|_| TemporaryResources::default())
+            .collect(),
+        swapchain_textures: vec![(const { None }); config.image_count as usize],
+        command_pools: (0..config.image_count)
+            .map(|_| device.create_command_pool(queue.family()).unwrap())
+            .collect(),
+        limiter: FpsLimiter::new(FpsLimit::UNLIMITED),
     })
 }
 
-fn resize_surface(surface: &mut SurfaceData, device: &Device, size: UVec2) {
+fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, size: UVec2) {
     if size.x == 0 || size.y == 0 {
         return;
     }
 
-    surface.config.width = size.x;
-    surface.config.height = size.y;
-    surface.surface.configure(device, &surface.config);
+    let caps = surface.surface.get_capabilities(device, queue).unwrap();
+    let config = create_swapchain_config(&caps, size);
+
+    if surface.config.image_count != config.image_count {
+        surface.next_frame = 0;
+        let len = config.image_count as usize;
+        surface
+            .image_avail
+            .resize_with(len, || device.create_semaphore().unwrap());
+        surface
+            .render_done
+            .resize_with(len, || device.create_semaphore().unwrap());
+        surface
+            .ready
+            .resize_with(len, || (device.create_fence().unwrap(), false));
+        for (_, used) in &mut surface.ready {
+            *used = false;
+        }
+
+        surface.resources.resize_with(len, Default::default);
+        surface.swapchain_textures.resize_with(len, || None);
+        surface
+            .command_pools
+            .resize_with(len, || device.create_command_pool(queue.family()).unwrap());
+    }
+
+    unsafe {
+        surface.swapchain.recreate(config, &caps).unwrap();
+    }
+
+    surface.config = config;
 }
 
-fn get_surface_format(formats: &[TextureFormat]) -> Option<TextureFormat> {
+fn create_swapchain_config(caps: &SwapchainCapabilities, surface_size: UVec2) -> SwapchainConfig {
+    let image_count = MAX_FRAMES_IN_FLIGHT.clamp(
+        caps.min_images,
+        caps.max_images.map(|v| v.get()).unwrap_or(u32::MAX),
+    );
+    let extent = surface_size.clamp(caps.min_extent, caps.max_extent);
+    let format = get_surface_format(&caps.formats).unwrap();
+    let present_mode = get_surface_present_mode(&caps.present_modes).unwrap();
+
+    SwapchainConfig {
+        image_count,
+        extent,
+        format,
+        present_mode,
+    }
+}
+
+fn get_surface_format(formats: &[SurfaceFormat]) -> Option<SurfaceFormat> {
     for format in formats {
-        if !format.is_srgb() {
+        if format.color_space == ColorSpace::SrgbNonLinear && !format.format.is_srgb() {
             return Some(*format);
         }
     }
@@ -175,8 +232,4 @@ fn get_surface_present_mode(modes: &[PresentMode]) -> Option<PresentMode> {
     }
 
     None
-}
-
-fn get_surface_alpha_mode(modes: &[CompositeAlphaMode]) -> Option<CompositeAlphaMode> {
-    modes.get(0).copied()
 }
