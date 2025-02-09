@@ -181,17 +181,20 @@ impl Node for GizmoPass {
         //     usage: BufferUsage::INDIRECT,
         // });
 
+        let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
+
         let mut pipelines = self.pipeline.pipelines.lock();
-        let render_pipeline = match pipelines.get(&ctx.format) {
+        let render_pipeline = match pipelines.get(&surface_texture.format()) {
             Some(pl) => pl,
             None => {
-                let pl = self.pipeline.build_pipeline(ctx.format, ctx.queue);
-                pipelines.insert(ctx.format, pl);
-                pipelines.get(&ctx.format).unwrap()
+                let pl = self
+                    .pipeline
+                    .build_pipeline(surface_texture.format(), ctx.queue);
+                pipelines.insert(surface_texture.format(), pl);
+                pipelines.get(&surface_texture.format()).unwrap()
             }
         };
 
-        let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
                 target: &surface_texture.create_view(&TextureViewDescriptor::default()),

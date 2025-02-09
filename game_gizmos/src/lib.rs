@@ -9,6 +9,9 @@ use std::sync::Arc;
 use game_common::components::Color;
 use game_render::camera::Camera;
 use game_render::graph::NodeLabel;
+use game_render::graph::SlotFlags;
+use game_render::graph::SlotKind;
+use game_render::graph::SlotLabel;
 use game_render::Renderer;
 use game_render::FINAL_RENDER_PASS;
 use game_tracing::trace_span;
@@ -41,6 +44,12 @@ impl Gizmos {
             let node = GizmoPass::new(queue, elements.clone(), camera.clone());
             graph.add_node(GIZMO_PASS, node);
             graph.add_node_dependency(GIZMO_PASS, FINAL_RENDER_PASS);
+            graph.add_slot_dependency(
+                GIZMO_PASS,
+                SlotLabel::SURFACE,
+                SlotKind::Texture,
+                SlotFlags::READ | SlotFlags::WRITE,
+            );
         });
 
         Self {

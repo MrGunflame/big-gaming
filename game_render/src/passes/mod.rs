@@ -43,6 +43,12 @@ pub fn init(graph: &mut RenderGraph, forward: Arc<ForwardPipeline>, queue: &mut 
         SlotKind::Texture,
         SlotFlags::WRITE,
     );
+    graph.add_slot_dependency(
+        FORWARD_PASS,
+        SlotLabel::SURFACE,
+        SlotKind::Texture,
+        SlotFlags::READ,
+    );
 
     graph.add_node(POST_PROCESS_PASS, post_process);
     graph.add_slot_dependency(
