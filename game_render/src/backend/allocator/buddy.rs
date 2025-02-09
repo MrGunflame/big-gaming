@@ -9,6 +9,7 @@ use super::{Allocator, Region};
 pub struct BuddyAllocator {
     blocks: Slab<Block>,
     root: usize,
+    stack: Vec<usize>,
 }
 
 impl BuddyAllocator {
@@ -25,7 +26,22 @@ impl BuddyAllocator {
             parent: None,
         });
 
-        Self { blocks, root }
+        Self {
+            blocks,
+            root,
+            // To walk down the tree we start at the root node and in
+            // every step:
+            // 1. Pop a node from the stack
+            // 2. Push the left node
+            // 3. Push the right node if needed
+            // This means while traversing the tree we will have at most
+            // "depth" right nodes in the stack, i.e. log2(size).
+            // One extra slot is needed for the left node, right before it is
+            // popped again.
+            // This is the worst-case size of the stack and it never needs to grow.
+            // Note that is stack is relatively small (e.g. 520 bytes for a 2**64 byte region).
+            stack: Vec::with_capacity((region.size.ilog2() + 1) as usize),
+        }
     }
 }
 
@@ -41,10 +57,11 @@ impl Allocator for BuddyAllocator {
         let align = layout.align();
         debug_assert!(align.is_power_of_two());
 
-        let mut stack = Vec::new();
-        stack.push(self.root);
+        self.stack.clear();
+        debug_assert!(self.stack.spare_capacity_mut().len() > 0);
+        self.stack.push(self.root);
 
-        while let Some(index) = stack.pop() {
+        while let Some(index) = self.stack.pop() {
             let block = &mut self.blocks[index];
 
             if size > block.size {
@@ -64,10 +81,12 @@ impl Allocator for BuddyAllocator {
                     // we can only allocate in the right block if the alignment
                     // is small enough.
                     if (block.offset + block.size / 2) % align == 0 {
-                        stack.push(right);
+                        debug_assert!(self.stack.spare_capacity_mut().len() > 0);
+                        self.stack.push(right);
                     }
 
-                    stack.push(left);
+                    debug_assert!(self.stack.spare_capacity_mut().len() > 0);
+                    self.stack.push(left);
 
                     continue;
                 }
@@ -113,7 +132,9 @@ impl Allocator for BuddyAllocator {
             // will be big enough for `size`.
             // This means we only need to walk down the left side.
             debug_assert!(block.size >= size);
-            stack.push(left);
+
+            debug_assert!(self.stack.spare_capacity_mut().len() > 0);
+            self.stack.push(left);
         }
 
         None
