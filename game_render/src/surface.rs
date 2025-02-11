@@ -96,7 +96,10 @@ pub(crate) struct SurfaceData {
     pub next_frame: usize,
     pub image_avail: Vec<Semaphore>,
     pub render_done: Vec<Semaphore>,
-    pub ready: Vec<(Fence, bool)>,
+    /// Fence that becomes ready once the submission is done.
+    pub submit_done: Vec<(Fence, bool)>,
+    /// Fence that becomes ready once the presentation is done.
+    pub present_done: Vec<(Fence, bool)>,
     pub resources: Vec<TemporaryResources>,
     pub swapchain_textures: Vec<Option<crate::api::Texture>>,
     pub command_pools: Vec<CommandPool>,
@@ -139,7 +142,10 @@ fn create_surface(
         render_done: (0..config.image_count)
             .map(|_| device.create_semaphore().unwrap())
             .collect(),
-        ready: (0..config.image_count)
+        submit_done: (0..config.image_count)
+            .map(|_| (device.create_fence().unwrap(), false))
+            .collect(),
+        present_done: (0..config.image_count)
             .map(|_| (device.create_fence().unwrap(), false))
             .collect(),
         next_frame: 0,
@@ -172,9 +178,16 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, siz
             .render_done
             .resize_with(len, || device.create_semaphore().unwrap());
         surface
-            .ready
+            .submit_done
             .resize_with(len, || (device.create_fence().unwrap(), false));
-        for (_, used) in &mut surface.ready {
+        for (_, used) in &mut surface.submit_done {
+            *used = false;
+        }
+
+        surface
+            .present_done
+            .resize_with(len, || (device.create_fence().unwrap(), false));
+        for (_, used) in &mut surface.present_done {
             *used = false;
         }
 
