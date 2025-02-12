@@ -555,6 +555,14 @@ pub struct QueueSubmit<'a> {
     pub signal_fence: &'a mut Fence,
 }
 
+#[derive(Debug)]
+pub struct QueuePresent<'a> {
+    /// Semaphore that will be awaited before the presentation happens.
+    pub wait: &'a mut Semaphore,
+    /// Fence to signal once the presentation has been completed.
+    pub signal: Option<&'a mut Fence>,
+}
+
 pub struct SamplerDescriptor {
     pub min_filter: FilterMode,
     pub mag_filter: FilterMode,

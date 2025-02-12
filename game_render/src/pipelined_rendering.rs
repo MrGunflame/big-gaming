@@ -9,7 +9,7 @@ use game_window::windows::{WindowId, WindowState};
 
 use crate::api::{CommandExecutor, TextureRegion};
 use crate::backend::vulkan::{Adapter, Device, Instance, Queue};
-use crate::backend::{AccessFlags, QueueSubmit, TextureUsage};
+use crate::backend::{AccessFlags, QueuePresent, QueueSubmit, TextureUsage};
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::scheduler::RenderGraphScheduler;
@@ -144,7 +144,17 @@ impl RenderThread {
     fn wait_idle(&mut self, id: WindowId) {
         let surface = self.surfaces.get_mut(id).unwrap();
 
-        for (fence, used) in &mut surface.ready {
+        // Wait until all queue submissions have completed.
+        for (fence, used) in &mut surface.submit_done {
+            if *used {
+                fence.wait(None).unwrap();
+                *used = false;
+            }
+        }
+
+        // Wait until all presentations have completed.
+        // Only then is it safe to destroy the swapchain.
+        for (fence, used) in &mut surface.present_done {
             if *used {
                 fence.wait(None).unwrap();
                 *used = false;
@@ -167,7 +177,8 @@ impl RenderThread {
         for (window, surface) in self.surfaces.iter_mut() {
             let res = &mut surface.resources[surface.next_frame];
             let swapchain_texture_slot = &mut surface.swapchain_textures[surface.next_frame];
-            let (ready, ready_used) = &mut surface.ready[surface.next_frame];
+            let (submit_done, submit_done_used) = &mut surface.submit_done[surface.next_frame];
+            let (present_done, present_done_used) = &mut surface.present_done[surface.next_frame];
             let image_avail = &mut surface.image_avail[surface.next_frame];
             let render_done = &mut surface.render_done[surface.next_frame];
             let pool = &mut surface.command_pools[surface.next_frame];
@@ -176,8 +187,8 @@ impl RenderThread {
             surface.limiter.block_until_ready();
 
             // Wait until all commands are done in this "frame slot".
-            if *ready_used {
-                ready.wait(None).unwrap();
+            if *submit_done_used {
+                submit_done.wait(None).unwrap();
             }
 
             // Destroy all resources that were required for the commands.
@@ -193,7 +204,7 @@ impl RenderThread {
 
             let mut queue = scheduler.queue();
 
-            let access = if *ready_used {
+            let access = if *submit_done_used {
                 AccessFlags::PRESENT
             } else {
                 AccessFlags::empty()
@@ -234,7 +245,7 @@ impl RenderThread {
             let mut encoder = pool.create_encoder().unwrap();
             *res = scheduler.execute(&mut encoder);
             *swapchain_texture_slot = Some(swapchain_texture);
-            *ready_used = true;
+            *submit_done_used = true;
 
             self.queue
                 .submit(
@@ -242,18 +253,31 @@ impl RenderThread {
                     QueueSubmit {
                         wait: core::slice::from_mut(image_avail),
                         signal: core::slice::from_mut(render_done),
-                        signal_fence: ready,
+                        signal_fence: submit_done,
                     },
                 )
                 .unwrap();
 
             surface.window.pre_present_notify();
 
+            if *present_done_used {
+                present_done.wait(None).unwrap();
+            }
+            *present_done_used = true;
+
             // SAFETY:
             // We have manually inserted a barrier to transition the texture
             // to the `PRESENT` flag.
             unsafe {
-                output.present(&mut self.queue, render_done).unwrap();
+                output
+                    .present(
+                        &mut self.queue,
+                        QueuePresent {
+                            wait: render_done,
+                            signal: Some(present_done),
+                        },
+                    )
+                    .unwrap();
             }
 
             drop(output);

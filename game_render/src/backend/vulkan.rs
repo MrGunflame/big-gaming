@@ -30,8 +30,8 @@ use super::{
     DescriptorSetDescriptor, Face, FilterMode, FrontFace, IndexFormat, LoadOp, MemoryHeap,
     MemoryHeapFlags, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
     PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology, QueueCapabilities,
-    QueueFamily, QueueFamilyId, QueueSubmit, RenderPassDescriptor, SamplerDescriptor, ShaderStage,
-    ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
+    QueueFamily, QueueFamilyId, QueuePresent, QueueSubmit, RenderPassDescriptor, SamplerDescriptor,
+    ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
     TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
     WriteDescriptorResources,
 };
@@ -77,6 +77,16 @@ struct InstanceExtensions {
     surface_win32: bool,
     /// `VK_EXT_debug_utils`
     debug_utils: bool,
+    /// `VK_EXT_surface_maintenance1`
+    ///
+    /// Provides the ability to attach a fence to a `vkQueuePresent`, which is needed to legally
+    /// destroy a swapchain.
+    /// See <https://github.com/KhronosGroup/Vulkan-Docs/issues/1678>
+    surface_maintenance1: bool,
+    /// `VK_KHR_get_surface_capabilities2`
+    ///
+    /// Dependency for `surface_maintenance1`.
+    get_surface_capabilities2: bool,
 }
 
 impl InstanceExtensions {
@@ -91,6 +101,11 @@ impl InstanceExtensions {
             (self.surface_xlib, vk::KHR_XLIB_SURFACE_NAME),
             (self.surface_win32, vk::KHR_WIN32_SURFACE_NAME),
             (self.debug_utils, vk::EXT_DEBUG_UTILS_NAME),
+            (self.surface_maintenance1, vk::EXT_SURFACE_MAINTENANCE1_NAME),
+            (
+                self.get_surface_capabilities2,
+                vk::KHR_GET_SURFACE_CAPABILITIES2_NAME,
+            ),
         ] {
             if enabled {
                 names.push(name);
@@ -98,6 +113,33 @@ impl InstanceExtensions {
         }
 
         names
+    }
+}
+
+impl<'a> FromIterator<&'a CStr> for InstanceExtensions {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = &'a CStr>,
+    {
+        let mut extensions = Self::default();
+        for name in iter {
+            match name {
+                name if name == vk::KHR_SURFACE_NAME => extensions.surface = true,
+                name if name == vk::KHR_WAYLAND_SURFACE_NAME => extensions.surface_wayland = true,
+                name if name == vk::KHR_XCB_SURFACE_NAME => extensions.surface_xcb = true,
+                name if name == vk::KHR_XLIB_SURFACE_NAME => extensions.surface_xlib = true,
+                name if name == vk::KHR_WIN32_SURFACE_NAME => extensions.surface_win32 = true,
+                name if name == vk::EXT_DEBUG_UTILS_NAME => extensions.debug_utils = true,
+                name if name == vk::EXT_SURFACE_MAINTENANCE1_NAME => {
+                    extensions.surface_maintenance1 = true
+                }
+                name if name == vk::KHR_GET_SURFACE_CAPABILITIES2_NAME => {
+                    extensions.get_surface_capabilities2 = true
+                }
+                _ => (),
+            }
+        }
+        extensions
     }
 }
 
@@ -110,6 +152,7 @@ const DEVICE_EXTENSIONS: &[&CStr] = &[
     // `VK_KHR_synchronization2`
     // Core in Vulkan 1.3
     ash::khr::synchronization2::NAME,
+    ash::ext::swapchain_maintenance1::NAME,
 ];
 
 const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
@@ -318,23 +361,32 @@ impl Instance {
     /// Returns an [`Error`] if `display` or `window` reference an unsupported handle type or
     /// creation of the [`Surface`] fails.
     ///
+    /// - If an extension to create the surface is missing, [`MissingExtension`] is returned.
+    /// - If the handle is not recognised, [`UnsupportedSurface`] is returned.
+    ///
     /// # Safety
     ///
     /// - The passed `display` and `window` handles must be valid until the [`Surface`] is dropped.
+    ///
+    /// [`MissingExtension`]: Error::MissingExtension
+    /// [`UnsupportedSurface`]: Error::UnsupportedSurface
     pub unsafe fn create_surface(
         &self,
         display: RawDisplayHandle,
         window: RawWindowHandle,
     ) -> Result<Surface, Error> {
         if !self.extensions.surface {
-            return Err(Error::UnsupportedSurface);
+            return Err(Error::MissingExtension(vk::KHR_SURFACE_NAME));
+        }
+        if !self.extensions.surface_maintenance1 {
+            return Err(Error::MissingExtension(vk::EXT_SURFACE_MAINTENANCE1_NAME));
         }
 
         let surface = match (display, window) {
             #[cfg(all(unix, feature = "wayland"))]
             (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(window)) => {
                 if !self.extensions.surface_wayland {
-                    return Err(Error::UnsupportedSurface);
+                    return Err(Error::MissingExtension(vk::KHR_WAYLAND_SURFACE_NAME));
                 }
 
                 let info = vk::WaylandSurfaceCreateInfoKHR::default()
@@ -352,7 +404,7 @@ impl Instance {
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
                 if !self.extensions.surface_xcb {
-                    return Err(Error::UnsupportedSurface);
+                    return Err(Error::MissingExtension(vk::KHR_XCB_SURFACE_NAME));
                 }
 
                 let info = vk::XcbSurfaceCreateInfoKHR::default()
@@ -370,7 +422,7 @@ impl Instance {
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
                 if !self.extensions.surface_xlib {
-                    return Err(Error::UnsupportedSurface);
+                    return Err(Error::MissingExtension(vk::KHR_XLIB_SURFACE_NAME));
                 }
 
                 let info = vk::XlibSurfaceCreateInfoKHR::default()
@@ -388,7 +440,7 @@ impl Instance {
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
                 if !self.extensions.surface_win32 {
-                    return Err(Error::UnsupportedSurface);
+                    return Err(Error::MissingExtension(vk::KHR_WIN32_SURFACE_NAME));
                 }
 
                 let info = vk::Win32SurfaceCreateInfoKHR::default()
@@ -431,25 +483,13 @@ impl Instance {
     }
 
     fn get_supported_extensions(entry: &Entry) -> InstanceExtensions {
-        let mut extensions = InstanceExtensions::default();
-
         let ext_props = unsafe { entry.enumerate_instance_extension_properties(None).unwrap() };
-        for props in ext_props {
-            let name =
-                CStr::from_bytes_until_nul(bytemuck::bytes_of(&props.extension_name)).unwrap();
-
-            match name {
-                name if name == vk::KHR_SURFACE_NAME => extensions.surface = true,
-                name if name == vk::KHR_WAYLAND_SURFACE_NAME => extensions.surface_wayland = true,
-                name if name == vk::KHR_XCB_SURFACE_NAME => extensions.surface_xcb = true,
-                name if name == vk::KHR_XLIB_SURFACE_NAME => extensions.surface_xlib = true,
-                name if name == vk::KHR_WIN32_SURFACE_NAME => extensions.surface_win32 = true,
-                name if name == vk::EXT_DEBUG_UTILS_NAME => extensions.debug_utils = true,
-                _ => (),
-            }
-        }
-
-        extensions
+        ext_props
+            .iter()
+            .map(|props| {
+                CStr::from_bytes_until_nul(bytemuck::bytes_of(&props.extension_name)).unwrap()
+            })
+            .collect()
     }
 }
 
@@ -662,6 +702,10 @@ impl Adapter {
         let mut synchronization2 =
             vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
 
+        let mut swapchain_maintenance1 =
+            vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default()
+                .swapchain_maintenance1(true);
+
         let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::default()
             .shader_input_attachment_array_dynamic_indexing(true)
             .shader_uniform_texel_buffer_array_dynamic_indexing(true)
@@ -692,7 +736,8 @@ impl Adapter {
             .enabled_features(&features)
             .push_next(&mut dynamic_rendering)
             .push_next(&mut synchronization2)
-            .push_next(&mut descriptor_indexing);
+            .push_next(&mut descriptor_indexing)
+            .push_next(&mut swapchain_maintenance1);
 
         let device = unsafe {
             self.instance
@@ -1782,6 +1827,10 @@ impl SurfaceShared {
 
         assert!(caps.formats.contains(&config.format));
 
+        let present_modes = &[config.present_mode.into()];
+        let mut present_modes_info =
+            vk::SwapchainPresentModesCreateInfoEXT::default().present_modes(present_modes);
+
         let info = vk::SwapchainCreateInfoKHR::default()
             // - Surface must be supported. This is checked by the call to `get_capabilities` above.
             .surface(self.surface)
@@ -1825,7 +1874,8 @@ impl SurfaceShared {
             .clipped(true)
             // - `oldSwapchain` must be null or a non-retired swapchain.
             // This is guaranteed by the caller.
-            .old_swapchain(old_swapchain);
+            .old_swapchain(old_swapchain)
+            .push_next(&mut present_modes_info);
 
         let khr_device = ash::khr::swapchain::Device::new(&self.instance.instance, &device.device);
         let swapchain = unsafe { khr_device.create_swapchain(&info, None)? };
@@ -3066,21 +3116,33 @@ impl<'a> SwapchainTexture<'a> {
     pub unsafe fn present(
         &mut self,
         queue: &mut Queue,
-        wait_semaphore: &mut Semaphore,
+        cmd: QueuePresent<'_>,
     ) -> Result<(), Error> {
         let device =
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
-        let wait_semaphores = &[wait_semaphore.semaphore];
+        let signal_fences = cmd.signal.map(|fence| {
+            fence.register();
+            [fence.fence]
+        });
+        let mut present_fence_info = signal_fences
+            .as_ref()
+            .map(|fences| vk::SwapchainPresentFenceInfoEXT::default().fences(fences));
+
+        let wait_semaphores = &[cmd.wait.semaphore];
 
         let swapchains = &[self.swapchain.swapchain];
         let image_indices = &[self.index];
-        let info = vk::PresentInfoKHR::default()
+        let mut info = vk::PresentInfoKHR::default()
             .wait_semaphores(wait_semaphores)
             // - Every element must be unique.
             .swapchains(swapchains)
             // - Every image must be in `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` once this is executed.
             .image_indices(image_indices);
+
+        if let Some(present_fence_info) = &mut present_fence_info {
+            info = info.push_next(present_fence_info);
+        }
 
         // Safety:
         // - `queue` must be externally synchronized.
@@ -3631,15 +3693,44 @@ impl Fence {
             }
         }
 
-        self.reset();
+        // SAFETY:
+        // Since we only allow one submission to register this fence, we
+        // can be sure that after the fence was signaled it will not become
+        // signaled again.
+        unsafe {
+            self.reset();
+        }
+
         Ok(true)
     }
 
-    fn reset(&mut self) {
+    /// Returns the current status of this `Fence`.
+    ///
+    /// If the fence was signaled, this function will return `true`, it will return `false`.
+    pub fn status(&self) -> Result<bool, Error> {
+        unsafe {
+            self.device
+                .get_fence_status(self.fence)
+                .map_err(|e| e.into())
+        }
+    }
+
+    /// Resets this `Fence`.
+    ///
+    /// # Safety
+    ///
+    /// All queue operations that referenced this `Fence` must be complete.
+    pub unsafe fn reset(&mut self) {
         self.state = FenceState::Idle;
         unsafe {
             self.device.reset_fences(&[self.fence]).unwrap();
         }
+    }
+
+    #[track_caller]
+    fn register(&mut self) {
+        assert_eq!(self.state, FenceState::Idle);
+        self.state = FenceState::Waiting;
     }
 }
 
