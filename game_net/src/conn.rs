@@ -1,6 +1,8 @@
 pub mod channel;
 pub mod socket;
 
+mod loss_list;
+
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::marker::PhantomData;
@@ -14,6 +16,7 @@ use futures::future::FusedFuture;
 use futures::{Sink, SinkExt, Stream, StreamExt};
 use game_common::world::control_frame::ControlFrame;
 use game_tracing::trace_span;
+use loss_list::LossList;
 use parking_lot::Mutex;
 use rand::rngs::OsRng;
 use rand::Rng;
@@ -137,7 +140,7 @@ where
             next_local_sequence: Sequence::default(),
             next_ack_sequence: Sequence::default(),
             next_peer_sequence: Sequence::default(),
-            loss_list: LossList::new(),
+            loss_list: LossList::new(8192),
             inflight_packets: InflightPackets::new(8192),
 
             start_control_frame: control_frame,
@@ -347,7 +350,7 @@ where
 
         // We lost all segments from self.next_peer_sequence..header.sequence.
         while self.next_peer_sequence != header.sequence {
-            self.loss_list.push(self.next_peer_sequence);
+            self.loss_list.insert(self.next_peer_sequence);
             self.next_peer_sequence += 1;
         }
         self.next_peer_sequence += 1;
@@ -1024,53 +1027,6 @@ impl Default for InflightPackets {
     }
 }
 
-/// A list of lost packets.
-#[derive(Clone, Debug, Default)]
-struct LossList {
-    buffer: Vec<Sequence>,
-}
-
-impl LossList {
-    fn new() -> Self {
-        Self { buffer: Vec::new() }
-    }
-
-    fn push(&mut self, seq: Sequence) {
-        // The new sequence MUST be `> buffer.last()`.
-        if cfg!(debug_assertions) {
-            if let Some(n) = self.buffer.last() {
-                if seq <= *n {
-                    panic!(
-                        "Tried to push {:?} to LossList with last sequence {:?}",
-                        seq, n
-                    );
-                }
-            }
-        }
-
-        self.buffer.push(seq);
-    }
-
-    /// Returns `true` if `seq` was removed.
-    fn remove(&mut self, seq: Sequence) -> bool {
-        let mut index = 0;
-        while let Some(s) = self.buffer.get(index) {
-            if *s == seq {
-                self.buffer.remove(index);
-                return true;
-            }
-
-            if *s > seq {
-                return false;
-            }
-
-            index += 1;
-        }
-
-        false
-    }
-}
-
 /// Generates a new initial [`Sequence`] for the given tuple.
 fn create_initial_sequence(local_addr: SocketAddr, remote_addr: SocketAddr) -> Sequence {
     // The initial sequence number (ISN) should be imposible to predict from the outside
@@ -1353,27 +1309,7 @@ mod tests {
         Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     };
 
-    use super::{fragment_frame, InflightPackets, LossList};
-
-    #[test]
-    fn loss_list_remove() {
-        let mut input: Vec<u32> = (0..32).collect();
-
-        let mut list = LossList::new();
-
-        for seq in &input {
-            list.push(Sequence::new(*seq));
-        }
-
-        while !input.is_empty() {
-            // Always remove the middle element.
-            let index = input.len() / 2;
-            let value = input.remove(index);
-
-            let res = list.remove(Sequence::new(value));
-            assert!(res);
-        }
-    }
+    use super::{fragment_frame, InflightPackets};
 
     fn create_packet(seq: Sequence) -> Packet {
         Packet {
