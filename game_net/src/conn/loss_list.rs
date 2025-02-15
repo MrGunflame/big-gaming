@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::proto::sequence::Sequence;
 
 /// A list of lost packets.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(super) struct LossList {
     // The list is implemented as a bitmap, where bit 0
     // is `self.base` and bit index is the difference between

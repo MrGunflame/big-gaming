@@ -32,7 +32,7 @@ impl Sequence {
     }
 
     #[inline]
-    pub fn to_bits(self) -> u32 {
+    pub const fn to_bits(self) -> u32 {
         self.0
     }
 
