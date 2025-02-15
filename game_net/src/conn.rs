@@ -2,6 +2,7 @@ pub mod channel;
 pub mod socket;
 
 mod loss_list;
+mod reassembly;
 
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -20,6 +21,7 @@ use loss_list::LossList;
 use parking_lot::Mutex;
 use rand::rngs::OsRng;
 use rand::Rng;
+use reassembly::ReassemblyBuffer;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -35,6 +37,9 @@ use crate::proto::{
     Decode, Encode, Flags, Frame, Header, Packet, PacketBody, PacketPosition, PacketType,
     SequenceRange,
 };
+
+/// Max bytes that be stored for reassembly.
+const MAX_REASSEMBLY_SIZE: usize = 16777216;
 
 #[derive(Clone, Debug, Error)]
 pub enum Error<E>
@@ -150,7 +155,7 @@ where
             const_delay: const_delay.0,
 
             max_data_size: 512,
-            reassembly_buffer: ReassemblyBuffer::default(),
+            reassembly_buffer: ReassemblyBuffer::new(MAX_REASSEMBLY_SIZE),
 
             #[cfg(debug_assertions)]
             debug_validator: crate::validator::DebugValidator::new(),
@@ -358,28 +363,35 @@ where
         // Caught up to most recent packet.
         debug_assert_eq!(self.next_peer_sequence, header.sequence + 1);
 
-        self.reassembly_buffer
-            .insert(header.sequence, header.flags.packet_position(), body);
+        if let Some((seq, payload)) =
+            self.reassembly_buffer
+                .insert(header.sequence, header.flags.packet_position(), body)
+        {
+            match Frame::decode(&payload[..]) {
+                Ok(frame) => {
+                    #[cfg(debug_assertions)]
+                    self.debug_validator.push(header, &frame);
 
-        while let Some((frame, seq)) = self.reassembly_buffer.pop() {
-            #[cfg(debug_assertions)]
-            self.debug_validator.push(header, &frame);
+                    // Convert back to local control frame.
+                    let control_frame = header.control_frame + self.start_control_frame;
 
-            // Convert back to local control frame.
-            let control_frame = header.control_frame + self.start_control_frame;
+                    let id = MessageId(self.next_id);
+                    self.next_id = self.next_id.wrapping_add(1);
+                    self.messages_in.insert(id, seq);
 
-            let id = MessageId(self.next_id);
-            self.next_id = self.next_id.wrapping_add(1);
-            self.messages_in.insert(id, seq);
-
-            let body = DataMessageBody::from_frame(frame);
-            self.writer
-                .try_send(Message::Data(DataMessage {
-                    id,
-                    control_frame,
-                    body,
-                }))
-                .unwrap();
+                    let body = DataMessageBody::from_frame(frame);
+                    self.writer
+                        .try_send(Message::Data(DataMessage {
+                            id,
+                            control_frame,
+                            body,
+                        }))
+                        .unwrap();
+                }
+                Err(err) => {
+                    tracing::debug!("failed to decode frame: {}", err);
+                }
+            }
         }
 
         if let Some(nak) = nak {
@@ -1080,92 +1092,6 @@ fn create_initial_sequence(local_addr: SocketAddr, remote_addr: SocketAddr) -> S
     // in the header.
     let bits = timestamp.wrapping_add(hash) & ((1 << 31) - 1);
     Sequence::new(bits)
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct ReassemblyBuffer {
-    /// Starting sequence => Bytes
-    first_segments: HashMap<Sequence, Vec<u8>>,
-    /// Middle and Last frames.
-    other_segments: HashMap<Sequence, (Vec<u8>, PacketPosition)>,
-    ready_frames: Vec<(Frame, Sequence)>,
-}
-
-impl ReassemblyBuffer {
-    pub fn insert(&mut self, seq: Sequence, packet_position: PacketPosition, buf: Vec<u8>) {
-        match packet_position {
-            PacketPosition::Single => {
-                let frame = match Frame::decode(&buf[..]) {
-                    Ok(frame) => frame,
-                    Err(err) => {
-                        tracing::debug!("failed to decode frame: {}", err);
-                        return;
-                    }
-                };
-
-                self.ready_frames.push((frame, seq));
-            }
-            PacketPosition::First => {
-                self.first_segments.insert(seq, buf);
-            }
-            PacketPosition::Middle | PacketPosition::Last => {
-                self.other_segments.insert(seq, (buf, packet_position));
-
-                let start_seq = self.find_starting_segment(seq);
-                self.reassemble(start_seq);
-            }
-        }
-    }
-
-    fn find_starting_segment(&self, mut seq: Sequence) -> Sequence {
-        while !self.first_segments.contains_key(&seq) {
-            seq -= 1;
-        }
-
-        seq
-    }
-
-    fn reassemble(&mut self, mut start_seq: Sequence) {
-        let mut buf = self.first_segments.get(&start_seq).unwrap().clone();
-
-        let mut seq = start_seq + 1;
-        let mut is_done = false;
-        let mut end = start_seq;
-        while !is_done {
-            if let Some((next_buf, pos)) = self.other_segments.get(&seq) {
-                buf.extend(next_buf);
-
-                if pos.is_last() {
-                    is_done = true;
-                    end = start_seq;
-                }
-            } else {
-                return;
-            }
-
-            seq += 1;
-        }
-
-        self.first_segments.remove(&start_seq);
-        while start_seq != end {
-            self.other_segments.remove(&seq);
-            start_seq += 1;
-        }
-
-        let frame = match Frame::decode(&buf[..]) {
-            Ok(frame) => frame,
-            Err(err) => {
-                tracing::debug!("failed to decode frame: {}", err);
-                return;
-            }
-        };
-
-        self.ready_frames.push((frame, seq));
-    }
-
-    pub fn pop(&mut self) -> Option<(Frame, Sequence)> {
-        self.ready_frames.pop()
-    }
 }
 
 fn fragment_frame(
