@@ -90,9 +90,6 @@ where
     /// Starting control frame.
     start_control_frame: ControlFrame,
 
-    /// Local constant buffer in control frames.
-    const_delay: u16,
-
     _mode: PhantomData<fn() -> M>,
 
     #[cfg(debug_assertions)]
@@ -124,7 +121,6 @@ where
     pub fn new(
         stream: S,
         control_frame: ControlFrame,
-        const_delay: ControlFrame,
         local_addr: SocketAddr,
         remote_addr: SocketAddr,
     ) -> (Self, ConnectionHandle) {
@@ -151,8 +147,6 @@ where
             start_control_frame: control_frame,
 
             _mode: PhantomData,
-
-            const_delay: const_delay.0,
 
             max_data_size: 512,
             reassembly_buffer: ReassemblyBuffer::new(MAX_REASSEMBLY_SIZE),
@@ -437,8 +431,6 @@ where
                         mtu: 1500,
                         flow_window: 8192,
                         initial_sequence: self.next_local_sequence,
-                        const_delay: self.const_delay,
-                        resv0: 0,
                     }),
                 };
 
@@ -495,8 +487,6 @@ where
                         mtu: 1500,
                         flow_window: 8192,
                         initial_sequence,
-                        const_delay: self.const_delay,
-                        resv0: 0,
                     }),
                 };
 
@@ -535,8 +525,6 @@ where
                         mtu: 1500,
                         flow_window: 8192,
                         initial_sequence: self.next_local_sequence,
-                        const_delay: self.const_delay,
-                        resv0: 0,
                     }),
                 };
 
@@ -685,8 +673,6 @@ where
                 mtu: 1500,
                 flow_window: 8192,
                 initial_sequence,
-                const_delay: self.const_delay,
-                resv0: 0,
             }),
         };
 
@@ -766,8 +752,6 @@ where
                 mtu: 1500,
                 flow_window: 8192,
                 initial_sequence: Sequence::new(0),
-                const_delay: 0,
-                resv0: 0,
             }),
         };
 

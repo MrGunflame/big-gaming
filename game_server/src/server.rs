@@ -167,7 +167,6 @@ impl ConnectionPool {
         let (conn, handle) = Connection::<_, Listen>::new(
             stream,
             self.state.control_frame.get(),
-            ControlFrame(0),
             key.local_addr,
             key.remote_addr,
         );
