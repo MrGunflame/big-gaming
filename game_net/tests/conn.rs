@@ -29,8 +29,6 @@ async fn handshake() {
             mtu: 1500,
             flow_window: 8192,
             initial_sequence,
-            const_delay: 0,
-            resv0: 0,
         }),
     })
     .unwrap();
@@ -57,8 +55,6 @@ async fn handshake() {
             mtu: 1500,
             flow_window: 8192,
             initial_sequence,
-            const_delay: 0,
-            resv0: 0,
         }),
     })
     .unwrap();
@@ -85,7 +81,6 @@ fn create_listen_connection() -> (
 
     let (conn, handle) = Connection::<_, Listen>::new(
         stream,
-        ControlFrame(0),
         ControlFrame(0),
         SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
         SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0),
@@ -114,8 +109,6 @@ async fn do_handshake(tx: &mut mpsc::Sender<Packet>, rx: &mut mpsc::Receiver<Pac
             mtu: 1500,
             flow_window: 8192,
             initial_sequence,
-            const_delay: 0,
-            resv0: 0,
         }),
     })
     .unwrap();
@@ -142,8 +135,6 @@ async fn do_handshake(tx: &mut mpsc::Sender<Packet>, rx: &mut mpsc::Receiver<Pac
             mtu: 1500,
             flow_window: 8192,
             initial_sequence,
-            const_delay: 0,
-            resv0: 0,
         }),
     })
     .unwrap();
