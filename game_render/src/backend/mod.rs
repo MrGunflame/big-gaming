@@ -33,6 +33,8 @@ pub enum AdapterKind {
 pub struct AdapterMemoryProperties {
     pub heaps: Vec<MemoryHeap>,
     pub types: Vec<MemoryType>,
+    /// Maximum size of a single allocation.
+    pub max_allocation_size: NonZeroU64,
 }
 
 #[derive(Copy, Clone, Debug)]
