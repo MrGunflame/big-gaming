@@ -534,6 +534,8 @@ impl Adapter {
                 .get_physical_device_memory_properties(self.physical_device)
         };
 
+        let limits = self.device_limits();
+
         let heaps = props
             .memory_heaps
             .iter()
@@ -592,7 +594,13 @@ impl Adapter {
             })
             .collect();
 
-        AdapterMemoryProperties { heaps, types }
+        AdapterMemoryProperties {
+            heaps,
+            types,
+            max_allocation_size: unsafe {
+                NonZeroU64::new_unchecked(limits.max_memory_allocation_size)
+            },
+        }
     }
 
     /// Queries and returns the queue families that can be created on this `Adapter`.
@@ -772,33 +780,52 @@ impl Adapter {
     }
 
     fn device_limits(&self) -> DeviceLimits {
-        let props = unsafe {
+        let mut maintenance3 = vk::PhysicalDeviceMaintenance3Properties::default();
+        let mut props = vk::PhysicalDeviceProperties2::default().push_next(&mut maintenance3);
+
+        unsafe {
             self.instance
-                .instance
-                .get_physical_device_properties(self.physical_device)
-        };
+                .get_physical_device_properties2(self.physical_device, &mut props);
+        }
 
         DeviceLimits {
-            max_push_constants_size: props.limits.max_push_constants_size,
-            max_bound_descriptor_sets: props.limits.max_bound_descriptor_sets,
-            max_memory_allocation_count: props.limits.max_memory_allocation_count,
-            buffer_image_granularity: props.limits.buffer_image_granularity,
-            max_per_stage_descriptor_samplers: props.limits.max_per_stage_descriptor_samplers,
+            max_push_constants_size: props.properties.limits.max_push_constants_size,
+            max_bound_descriptor_sets: props.properties.limits.max_bound_descriptor_sets,
+            max_memory_allocation_count: props.properties.limits.max_memory_allocation_count,
+            buffer_image_granularity: props.properties.limits.buffer_image_granularity,
+            max_per_stage_descriptor_samplers: props
+                .properties
+                .limits
+                .max_per_stage_descriptor_samplers,
             max_per_stage_descriptor_uniform_buffers: props
+                .properties
                 .limits
                 .max_per_stage_descriptor_uniform_buffers,
             max_per_stage_descriptor_storage_buffers: props
+                .properties
                 .limits
                 .max_per_stage_descriptor_storage_buffers,
             max_per_stage_descriptor_sampled_images: props
+                .properties
                 .limits
                 .max_per_stage_descriptor_sampled_images,
-            max_per_stage_resources: props.limits.max_per_stage_resources,
-            max_descriptor_set_sampled_images: props.limits.max_descriptor_set_sampled_images,
-            max_descriptor_set_samplers: props.limits.max_descriptor_set_samplers,
-            max_descriptor_set_storage_buffers: props.limits.max_descriptor_set_storage_buffers,
-            max_descriptor_set_uniform_buffers: props.limits.max_descriptor_set_uniform_buffers,
-            max_color_attachments: props.limits.max_color_attachments,
+            max_per_stage_resources: props.properties.limits.max_per_stage_resources,
+            max_descriptor_set_sampled_images: props
+                .properties
+                .limits
+                .max_descriptor_set_sampled_images,
+            max_descriptor_set_samplers: props.properties.limits.max_descriptor_set_samplers,
+            max_descriptor_set_storage_buffers: props
+                .properties
+                .limits
+                .max_descriptor_set_storage_buffers,
+            max_descriptor_set_uniform_buffers: props
+                .properties
+                .limits
+                .max_descriptor_set_uniform_buffers,
+            max_color_attachments: props.properties.limits.max_color_attachments,
+            max_per_set_descriptors: maintenance3.max_per_set_descriptors,
+            max_memory_allocation_size: maintenance3.max_memory_allocation_size,
         }
     }
 }
@@ -918,6 +945,13 @@ impl Device {
             "attempted to allocate more than heap size: heap size = {}, allocation = {}",
             self.device.memory_properties.heaps[heap as usize].size,
             size,
+        );
+
+        assert!(
+            size.get() <= self.device.limits.max_memory_allocation_size,
+            "attempted to allocate ({}) more than max_memory_allocation_size ({})",
+            size,
+            self.device.limits.max_memory_allocation_size,
         );
 
         if let Err(_) = self.device.num_allocations.fetch_update(
@@ -3914,6 +3948,9 @@ struct DeviceLimits {
     max_descriptor_set_storage_buffers: u32,
     max_descriptor_set_sampled_images: u32,
     max_color_attachments: u32,
+    // VkPhysicalDeviceMaintenance3Properties
+    max_per_set_descriptors: u32,
+    max_memory_allocation_size: u64,
 }
 
 trait RangeBoundsExt {

@@ -28,6 +28,8 @@ use super::{
 pub enum AllocError {
     #[error("heap is full")]
     HeapFull,
+    #[error("allocation exceeds max allocation size")]
+    AllocationTooBig,
     #[error(transparent)]
     Other(vulkan::Error),
 }
@@ -68,6 +70,10 @@ impl MemoryManager {
         size: NonZeroU64,
         memory_type: u32,
     ) -> Result<MemoryAllocation, AllocError> {
+        if size > self.inner.properties.max_allocation_size {
+            return Err(AllocError::AllocationTooBig);
+        }
+
         let typ = &self.inner.properties.types[memory_type as usize];
         let heap = &self.inner.heaps[typ.heap as usize];
 
@@ -391,6 +397,11 @@ impl Pool {
         req: &MemoryRequirements,
         host_visible: bool,
     ) -> Result<PoolAllocation, AllocError> {
+        // If the allocation size exceeds the maximum size we will
+        // attempt to do a dedicated allocation.
+        // This may still fail if the allocation is greater than
+        // the reported max allocation size of the device, but this is
+        // handled by `MemoryManager::allocate`.
         if req.size.get() > MAX_SIZE.get() {
             let mut memory = manager.allocate(req.size, self.memory_type)?;
             let ptr = host_visible.then(|| memory.map().unwrap());
@@ -424,7 +435,9 @@ impl Pool {
             self.next_block_size,
             req.size.checked_next_power_of_two().unwrap(),
         );
-        self.next_block_size = block_size.saturating_mul(GROWTH_FACTOR).min(MAX_SIZE);
+        let max_alloc_size =
+            prev_power_of_two(manager.inner.properties.max_allocation_size.min(MAX_SIZE));
+        self.next_block_size = block_size.saturating_mul(GROWTH_FACTOR).min(max_alloc_size);
 
         let mut memory = manager.allocate(block_size, self.memory_type)?;
         let ptr = host_visible.then(|| memory.map().unwrap());
@@ -624,4 +637,13 @@ impl TextureAlloc {
     pub fn texture(&self) -> &Texture {
         &self.texture
     }
+}
+
+/// Returns the previous power of two value.
+fn prev_power_of_two(x: NonZeroU64) -> NonZeroU64 {
+    // Note that this can never be zero, since 1 << n is always greater
+    // than 0.
+    // The subtraction cannot overflow, since `leading_zeroes` will never
+    // return 64, since `x` is never 0. As such 63 - n where n < 64 is ok.
+    unsafe { NonZeroU64::new_unchecked(1 << (u64::BITS - 1) - x.leading_zeros()) }
 }
