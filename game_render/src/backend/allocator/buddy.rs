@@ -165,7 +165,7 @@ impl Allocator for BuddyAllocator {
                 State::Split { left, right } => (left, right),
                 // Since the caller guarantees that the region was returned
                 // from `alloc` we can be sure that the block was always split.
-                _ => unreachable!(),
+                _ => unsafe { core::hint::unreachable_unchecked() },
             };
 
             let mid = block.offset + block.size / 2;
@@ -174,7 +174,7 @@ impl Allocator for BuddyAllocator {
             } else {
                 right.get()
             };
-            block = &mut self.blocks[index];
+            block = unsafe { self.blocks.get_unchecked_mut(index) };
         }
 
         // Mark the deallocated block as free.
@@ -182,32 +182,36 @@ impl Allocator for BuddyAllocator {
         block.state = State::Free;
 
         // Attempt to merge the freed block.
-        let mut block = &self.blocks[index];
+        let mut block = unsafe { self.blocks.get_unchecked(index) };
         while let Some(parent_index) = block.parent {
-            let parent = &self.blocks[parent_index];
+            let parent = unsafe { self.blocks.get_unchecked(parent_index) };
 
             let (left, right) = match parent.state {
                 State::Split { left, right } => (left, right),
-                _ => unreachable!(),
+                // If the children block has a parent of `Some(..)` the
+                // parent block must have been split.
+                _ => unsafe { core::hint::unreachable_unchecked() },
             };
 
             let other = if index == left.get() { right } else { left };
             debug_assert_ne!(index, other.get());
 
             // If our buddy is not free we cannot merge any further.
-            if !self.blocks[other.get()].state.is_free() {
+            if unsafe { !self.blocks.get_unchecked(other.get()).state.is_free() } {
                 break;
             }
 
             // Merge left and right back into parent.
-            self.blocks.remove(left.get());
-            self.blocks.remove(right.get());
+            unsafe {
+                self.blocks.remove_unchecked(left.get());
+                self.blocks.remove_unchecked(right.get());
+            }
 
-            let parent = &mut self.blocks[parent_index];
+            let parent = unsafe { self.blocks.get_unchecked_mut(parent_index) };
             parent.state = State::Free;
 
             index = parent_index;
-            block = &self.blocks[parent_index];
+            block = unsafe { self.blocks.get_unchecked(parent_index) };
         }
     }
 }
