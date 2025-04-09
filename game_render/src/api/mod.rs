@@ -28,6 +28,7 @@ use crate::backend::{
     SamplerDescriptor, ShaderModule, ShaderSource, ShaderStage, ShaderStages, StoreOp,
     TextureDescriptor, TextureFormat, TextureUsage,
 };
+use crate::statistics::Statistics;
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
 
@@ -46,7 +47,11 @@ pub struct CommandExecutor {
 }
 
 impl CommandExecutor {
-    pub fn new(device: Device, memory_props: AdapterMemoryProperties) -> Self {
+    pub fn new(
+        device: Device,
+        memory_props: AdapterMemoryProperties,
+        statistics: Arc<Statistics>,
+    ) -> Self {
         Self {
             resources: Resources {
                 pipelines: Arena::new(),
@@ -57,6 +62,7 @@ impl CommandExecutor {
                 allocator: GeneralPurposeAllocator::new(
                     device.clone(),
                     MemoryManager::new(device.clone(), memory_props),
+                    statistics,
                 ),
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
                 samplers: Arena::new(),

@@ -18,6 +18,7 @@ use slab::Slab;
 use thiserror::Error;
 
 use crate::backend::MemoryTypeFlags;
+use crate::statistics::{AllocationKind, MemoryAlloc, MemoryBlock, Statistics};
 
 use super::vulkan::{self, Buffer, Device, DeviceMemory, DeviceMemorySlice, Texture};
 use super::{
@@ -203,16 +204,18 @@ pub struct GeneralPurposeAllocator {
     device: Device,
     manager: MemoryManager,
     inner: Arc<Mutex<GpAllocatorInner>>,
+    statistics: Arc<Statistics>,
 }
 
 impl GeneralPurposeAllocator {
-    pub fn new(device: Device, manager: MemoryManager) -> Self {
+    pub fn new(device: Device, manager: MemoryManager, statistics: Arc<Statistics>) -> Self {
         Self {
             device,
             manager,
             inner: Arc::new(Mutex::new(GpAllocatorInner {
                 pools: HashMap::new(),
             })),
+            statistics,
         }
     }
 
@@ -224,7 +227,7 @@ impl GeneralPurposeAllocator {
     ) -> BufferAlloc {
         let mut buffer = self.device.create_buffer(size, usage).unwrap();
         let req = self.device.buffer_memory_requirements(&buffer);
-        let memory = self.alloc(req, flags);
+        let memory = self.alloc(req.clone(), flags);
         unsafe {
             self.device
                 .bind_buffer_memory(&mut buffer, memory.memory())
@@ -235,6 +238,20 @@ impl GeneralPurposeAllocator {
         // In this case we simply ignore all memory exceeding the
         // requested allocation size.
         debug_assert!(memory.region.size >= size.get() as usize);
+
+        let mut stats = self.statistics.memory.write();
+        let block = stats
+            .blocks
+            .get_mut(memory.statistics_mem_block_id)
+            .unwrap();
+        block.allocs.insert(
+            memory.region.offset as u64,
+            MemoryAlloc {
+                offset: memory.region.offset as u64,
+                size: req.size.get(),
+                kind: AllocationKind::Buffer,
+            },
+        );
 
         BufferAlloc {
             buffer,
@@ -250,12 +267,26 @@ impl GeneralPurposeAllocator {
     ) -> TextureAlloc {
         let mut texture = self.device.create_texture(descriptor).unwrap();
         let req = self.device.image_memory_requirements(&texture);
-        let memory = self.alloc(req, flags);
+        let memory = self.alloc(req.clone(), flags);
         unsafe {
             self.device
                 .bind_texture_memory(&mut texture, memory.memory())
                 .unwrap();
         }
+
+        let mut stats = self.statistics.memory.write();
+        let block = stats
+            .blocks
+            .get_mut(memory.statistics_mem_block_id)
+            .unwrap();
+        block.allocs.insert(
+            memory.region.offset as u64,
+            MemoryAlloc {
+                offset: memory.region.offset as u64,
+                size: req.size.get(),
+                kind: AllocationKind::Texture,
+            },
+        );
 
         TextureAlloc {
             texture,
@@ -263,7 +294,7 @@ impl GeneralPurposeAllocator {
         }
     }
 
-    pub fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
+    fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
         let _span = trace_span!("GeneralPurposeAllocator::alloc").entered();
 
         let inner = &mut *self.inner.lock();
@@ -321,7 +352,7 @@ impl GeneralPurposeAllocator {
                 .entry(mem_typ)
                 .or_insert_with(|| Pool::new(mem_typ));
 
-            match pool.alloc(&self.manager, &req, host_visible) {
+            match pool.alloc(&self.manager, &self.statistics, &req, host_visible) {
                 Ok(allocation) => {
                     return DeviceMemoryRegion {
                         allocator: self.clone(),
@@ -331,6 +362,8 @@ impl GeneralPurposeAllocator {
                         strategy: allocation.strategy,
                         ptr: allocation.ptr,
                         flags: props.types[mem_typ as usize].flags,
+                        statistics_mem_block_id: allocation.statistics_mem_block_id,
+                        statistics_mem_alloc_id: allocation.statistics_mem_alloc_id,
                     }
                 }
                 Err(err) => {
@@ -355,7 +388,7 @@ impl GeneralPurposeAllocator {
         let pool = inner.pools.get_mut(&mem_typ).unwrap();
 
         unsafe {
-            pool.dealloc(strategy, region);
+            pool.dealloc(&self.statistics, strategy, region);
         }
 
         if pool.is_empty() {
@@ -394,6 +427,7 @@ impl Pool {
     fn alloc(
         &mut self,
         manager: &MemoryManager,
+        statistics: &Statistics,
         req: &MemoryRequirements,
         host_visible: bool,
     ) -> Result<PoolAllocation, AllocError> {
@@ -404,6 +438,11 @@ impl Pool {
         // handled by `MemoryManager::allocate`.
         if req.size.get() > MAX_SIZE.get() {
             let mut memory = manager.allocate(req.size, self.memory_type)?;
+            let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
+                size: req.size.get(),
+                allocs: HashMap::new(),
+            });
+
             let ptr = host_visible.then(|| memory.map().unwrap());
 
             self.dedicated_allocs += 1;
@@ -413,6 +452,8 @@ impl Pool {
                 memory: Arc::new(memory),
                 strategy: Strategy::Dedicated,
                 ptr,
+                statistics_mem_block_id,
+                statistics_mem_alloc_id: 0,
             });
         }
 
@@ -428,6 +469,8 @@ impl Pool {
                 region,
                 strategy: Strategy::Block { block_index },
                 ptr,
+                statistics_mem_block_id: block.statistics_mem_block_id,
+                statistics_mem_alloc_id: region.offset as u64,
             });
         }
 
@@ -440,6 +483,11 @@ impl Pool {
         self.next_block_size = block_size.saturating_mul(GROWTH_FACTOR).min(max_alloc_size);
 
         let mut memory = manager.allocate(block_size, self.memory_type)?;
+        let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
+            size: block_size.get(),
+            allocs: HashMap::new(),
+        });
+
         let ptr = host_visible.then(|| memory.map().unwrap());
 
         let block_index = self.blocks.insert(Block {
@@ -450,6 +498,7 @@ impl Pool {
             }),
             num_allocs: 0,
             ptr,
+            statistics_mem_block_id,
         });
         let block = &mut self.blocks[block_index];
 
@@ -461,10 +510,12 @@ impl Pool {
             region,
             strategy: Strategy::Block { block_index },
             ptr,
+            statistics_mem_block_id,
+            statistics_mem_alloc_id: region.offset as u64,
         })
     }
 
-    unsafe fn dealloc(&mut self, strategy: Strategy, region: Region) {
+    unsafe fn dealloc(&mut self, statistics: &Statistics, strategy: Strategy, region: Region) {
         match strategy {
             Strategy::Block { block_index } => {
                 let block = &mut self.blocks[block_index];
@@ -476,6 +527,11 @@ impl Pool {
                 block.num_allocs -= 1;
                 if block.num_allocs != 0 {
                     return;
+                }
+
+                {
+                    let mut stats = statistics.memory.write();
+                    stats.blocks.remove(block.statistics_mem_block_id);
                 }
 
                 self.blocks.remove(block_index);
@@ -493,9 +549,11 @@ struct PoolAllocation {
     region: Region,
     strategy: Strategy,
     ptr: Option<NonNull<u8>>,
+    statistics_mem_block_id: usize,
+    statistics_mem_alloc_id: u64,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum Strategy {
     Block { block_index: usize },
     Dedicated,
@@ -509,6 +567,7 @@ struct Block {
     /// Pointer to host memory if the allocation is host visible.
     /// We always use persistent mapping.
     ptr: Option<NonNull<u8>>,
+    statistics_mem_block_id: usize,
 }
 
 // We lose the `Send` impl because of `memory_host_ptr`, but
@@ -535,6 +594,8 @@ pub struct DeviceMemoryRegion {
     /// Pointer to host mapped memory of this region.
     ptr: Option<NonNull<u8>>,
     flags: MemoryTypeFlags,
+    statistics_mem_block_id: usize,
+    statistics_mem_alloc_id: u64,
 }
 
 // We lose the `Send` impl because of `memory_host_ptr`, but
@@ -551,6 +612,17 @@ impl DeviceMemoryRegion {
 
 impl Drop for DeviceMemoryRegion {
     fn drop(&mut self) {
+        // Mark the allocated region as free again.
+        {
+            let mut stats = self.allocator.statistics.memory.write();
+            if self.strategy == Strategy::Dedicated {
+                stats.blocks.remove(self.statistics_mem_block_id);
+            } else {
+                let block = stats.blocks.get_mut(self.statistics_mem_block_id).unwrap();
+                block.allocs.remove(&self.statistics_mem_alloc_id);
+            }
+        }
+
         unsafe {
             self.allocator
                 .dealloc(self.memory_type, self.strategy, self.region);

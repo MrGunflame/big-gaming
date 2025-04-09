@@ -12,6 +12,7 @@ pub mod mipmap;
 pub mod options;
 pub mod pbr;
 pub mod shape;
+pub mod statistics;
 pub mod surface;
 pub mod texture;
 
@@ -28,6 +29,7 @@ use backend::{AdapterKind, MemoryHeapFlags, QueueCapabilities};
 use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
 use game_tasks::park::Parker;
+use statistics::Statistics;
 use surface::SurfaceConfig;
 
 use std::collections::{HashMap, VecDeque};
@@ -73,6 +75,8 @@ pub struct Renderer {
     parker: Option<Arc<Parker>>,
 
     surface_sizes: HashMap<WindowId, UVec2>,
+
+    statistics: Arc<Statistics>,
 }
 
 impl Renderer {
@@ -166,7 +170,9 @@ impl Renderer {
         let mut device = adapter.create_device(&[queue_family]).unwrap();
         let queue = device.create_queue(queue_family.id).unwrap();
 
-        let render_thread = RenderThreadHandle::new(instance, adapter, device, queue);
+        let statistics = Arc::new(Statistics::default());
+        let render_thread =
+            RenderThreadHandle::new(instance, adapter, device, queue, statistics.clone());
 
         let mut scheduler = unsafe { render_thread.shared.scheduler.borrow_mut() };
         let mut graph = unsafe { render_thread.shared.graph.borrow_mut() };
@@ -189,6 +195,7 @@ impl Renderer {
             events: Vec::new(),
             surface_sizes: HashMap::new(),
             parker: None,
+            statistics,
         })
     }
 
@@ -305,6 +312,10 @@ impl Renderer {
             self.render_thread
                 .send(Command::UpdateSurfaceFpsLimit(*id, limit));
         }
+    }
+
+    pub fn statistics(&self) -> &Arc<Statistics> {
+        &self.statistics
     }
 }
 

@@ -1,5 +1,7 @@
 use std::alloc::Layout;
+use std::num::NonZeroUsize;
 
+use game_common::utils::vec_ext::VecExt;
 use game_tracing::trace_span;
 use slab::Slab;
 
@@ -58,11 +60,12 @@ impl Allocator for BuddyAllocator {
         debug_assert!(align.is_power_of_two());
 
         self.stack.clear();
-        debug_assert!(self.stack.spare_capacity_mut().len() > 0);
-        self.stack.push(self.root);
+        unsafe {
+            self.stack.push_unchecked(self.root);
+        }
 
         while let Some(index) = self.stack.pop() {
-            let block = &mut self.blocks[index];
+            let block = unsafe { self.blocks.get_unchecked_mut(index) };
 
             if size > block.size {
                 continue;
@@ -81,12 +84,14 @@ impl Allocator for BuddyAllocator {
                     // we can only allocate in the right block if the alignment
                     // is small enough.
                     if (block.offset + block.size / 2) % align == 0 {
-                        debug_assert!(self.stack.spare_capacity_mut().len() > 0);
-                        self.stack.push(right);
+                        unsafe {
+                            self.stack.push_unchecked(right.get());
+                        }
                     }
 
-                    debug_assert!(self.stack.spare_capacity_mut().len() > 0);
-                    self.stack.push(left);
+                    unsafe {
+                        self.stack.push_unchecked(left.get());
+                    }
 
                     continue;
                 }
@@ -120,12 +125,21 @@ impl Allocator for BuddyAllocator {
                 parent: Some(index),
             };
 
-            let left = self.blocks.insert(left);
-            let right = self.blocks.insert(right);
+            // Reserve capacity for both blocks then insert both
+            // without doing bounds checks.
+            // This means the branch to grow the slab only exists
+            // once. The compiler is unable to elide this otherwise.
+            self.blocks.reserve(2);
+            let left = unsafe { self.blocks.insert_unchecked(left) };
+            let right = unsafe { self.blocks.insert_unchecked(right) };
 
             // Mark the block as split.
-            let block = &mut self.blocks[index];
-            block.state = State::Split { left, right };
+            let block = unsafe { self.blocks.get_unchecked_mut(index) };
+            block.state = State::Split {
+                // Safety: The children can never be the root node which has index 0.
+                left: unsafe { NonZeroUsize::new_unchecked(left) },
+                right: unsafe { NonZeroUsize::new_unchecked(right) },
+            };
 
             // Since the parent block that we just split is bigger
             // than the requested size, either of the split blocks
@@ -133,8 +147,9 @@ impl Allocator for BuddyAllocator {
             // This means we only need to walk down the left side.
             debug_assert!(block.size >= size);
 
-            debug_assert!(self.stack.spare_capacity_mut().len() > 0);
-            self.stack.push(left);
+            unsafe {
+                self.stack.push_unchecked(left);
+            }
         }
 
         None
@@ -144,7 +159,7 @@ impl Allocator for BuddyAllocator {
         let _span = trace_span!("BuddyAllocator::dealloc").entered();
 
         let mut index = self.root;
-        let mut block = &mut self.blocks[self.root];
+        let mut block = unsafe { self.blocks.get_unchecked_mut(self.root) };
         while block.offset != region.offset || block.size != region.size {
             let (left, right) = match block.state {
                 State::Split { left, right } => (left, right),
@@ -154,7 +169,11 @@ impl Allocator for BuddyAllocator {
             };
 
             let mid = block.offset + block.size / 2;
-            index = if region.offset < mid { left } else { right };
+            index = if region.offset < mid {
+                left.get()
+            } else {
+                right.get()
+            };
             block = &mut self.blocks[index];
         }
 
@@ -172,17 +191,17 @@ impl Allocator for BuddyAllocator {
                 _ => unreachable!(),
             };
 
-            let other = if index == left { right } else { left };
-            debug_assert_ne!(index, other);
+            let other = if index == left.get() { right } else { left };
+            debug_assert_ne!(index, other.get());
 
             // If our buddy is not free we cannot merge any further.
-            if !self.blocks[other].state.is_free() {
+            if !self.blocks[other.get()].state.is_free() {
                 break;
             }
 
             // Merge left and right back into parent.
-            self.blocks.remove(left);
-            self.blocks.remove(right);
+            self.blocks.remove(left.get());
+            self.blocks.remove(right.get());
 
             let parent = &mut self.blocks[parent_index];
             parent.state = State::Free;
@@ -205,7 +224,14 @@ struct Block {
 enum State {
     Free,
     Used,
-    Split { left: usize, right: usize },
+    Split {
+        // The children of the block that was split.
+        // Note that the root block has the index 0 and
+        // no node can every have the root as a children.
+        // This means we can use the `NonZero` variant.
+        left: NonZeroUsize,
+        right: NonZeroUsize,
+    },
 }
 
 impl State {

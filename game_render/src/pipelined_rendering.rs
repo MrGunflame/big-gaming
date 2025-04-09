@@ -14,6 +14,7 @@ use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::scheduler::RenderGraphScheduler;
 use crate::graph::{NodeLabel, RenderContext, RenderGraph, SlotLabel, SlotValueInner};
+use crate::statistics::Statistics;
 use crate::surface::{RenderSurfaces, SurfaceConfig};
 
 #[derive(Clone, Debug)]
@@ -42,8 +43,15 @@ pub struct RenderThreadHandle {
 }
 
 impl RenderThreadHandle {
-    pub fn new(instance: Instance, adapter: Adapter, device: Device, queue: Queue) -> Self {
-        let executor = CommandExecutor::new(device.clone(), adapter.memory_properties());
+    pub fn new(
+        instance: Instance,
+        adapter: Adapter,
+        device: Device,
+        queue: Queue,
+        statistics: Arc<Statistics>,
+    ) -> Self {
+        let executor =
+            CommandExecutor::new(device.clone(), adapter.memory_properties(), statistics);
 
         let shared = Arc::new(SharedState {
             instance,
