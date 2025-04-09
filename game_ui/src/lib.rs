@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 mod clipboard;
+pub mod debug_widgets;
 pub mod layout;
 pub mod primitive;
 pub mod render;
