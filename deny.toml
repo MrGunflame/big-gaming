@@ -14,6 +14,11 @@ skip = []
 unknown-registry = "deny"
 unknown-git = "deny"
 
+[sources.allow-org]
+github = [
+    "MrGunflame",
+]
+
 [licenses]
 version = 2
 confidence-threshold = 0.93
