@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use game_common::collections::vec_map::VecMap;
 use game_tracing::trace_span;
+use nohash_hasher::BuildNoHashHasher;
 
 use crate::backend::AccessFlags;
+
+type UsizeMap<T> = HashMap<usize, T, BuildNoHashHasher<usize>>;
 
 pub(super) fn schedule<'a, T, M>(
     resources: &mut M,
@@ -17,8 +19,15 @@ where
 {
     let _span = trace_span!("schedule").entered();
 
-    let mut resource_accesses = HashMap::<_, Vec<_>>::new();
-    let mut predecessors = VecMap::<_, Vec<_>>::new();
+    let mut resource_accesses = HashMap::<_, Vec<_>>::with_capacity(nodes.len());
+    // We use linear indices as the key, they are already uniformly
+    // distributed so we can skip the hashing.
+    let mut predecessors =
+        UsizeMap::<Vec<_>>::with_capacity_and_hasher(nodes.len(), BuildNoHashHasher::new());
+    let mut successors =
+        UsizeMap::<Vec<_>>::with_capacity_and_hasher(nodes.len(), BuildNoHashHasher::new());
+
+    let mut queue = Vec::with_capacity(nodes.len());
 
     for (index, node) in nodes.iter().enumerate() {
         let mut node_preds = Vec::new();
@@ -43,17 +52,22 @@ where
             debug_assert_eq!(accesses.iter().filter(|v| **v == index).count(), 1);
         }
 
-        predecessors.insert(index, node_preds);
+        for succ in &node_preds {
+            successors.entry(*succ).or_default().push(index);
+        }
+
+        if node_preds.is_empty() {
+            queue.push(index);
+        } else {
+            predecessors.insert(index, node_preds);
+        }
     }
 
-    let mut steps = Vec::new();
+    let mut steps = Vec::with_capacity(nodes.len());
     loop {
         // Gather all nodes that have no more predecessors,
         // i.e. all nodes that can be executed now.
-        let indices: Vec<_> = predecessors
-            .iter_mut()
-            .filter_map(|(index, preds)| preds.is_empty().then_some(index))
-            .collect();
+        let indices: Vec<_> = queue.drain(..).collect();
 
         // Since we have no cycles in predecessors, this loop will always
         // terminate at some point.
@@ -72,9 +86,16 @@ where
         // using a single call.
 
         for &index in &indices {
-            predecessors.remove(index);
-            for preds in predecessors.values_mut() {
-                preds.retain(|pred| *pred != index);
+            if let Some(succs) = successors.get(&index) {
+                for succ in succs {
+                    if let Some(preds) = predecessors.get_mut(succ) {
+                        preds.retain(|pred| *pred != index);
+                        if preds.is_empty() {
+                            predecessors.remove(succ);
+                            queue.push(*succ);
+                        }
+                    }
+                }
             }
 
             let node = &nodes[index];
