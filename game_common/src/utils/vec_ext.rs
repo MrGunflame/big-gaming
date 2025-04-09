@@ -19,6 +19,13 @@ pub trait VecExt<T> {
     unsafe fn extend_at_unchecked(&mut self, index: usize, src: &[T])
     where
         T: Copy;
+
+    /// Pushes a new value to the back to the `Vec` assuming there is free capacity for it.
+    ///
+    /// # Safety
+    ///
+    /// The `Vec` must have a spare capacity greater than zero.
+    unsafe fn push_unchecked(&mut self, value: T);
 }
 
 impl<T> VecExt<T> for Vec<T> {
@@ -69,6 +76,17 @@ impl<T> VecExt<T> for Vec<T> {
 
             // All regions are now initialized.
             self.set_len(len + src.len());
+        }
+    }
+
+    unsafe fn push_unchecked(&mut self, value: T) {
+        debug_assert_ne!(self.spare_capacity_mut().len(), 0);
+        // Safety:
+        // The caller guarantees that the vector has enough capacity
+        // for the push to suceed.
+        unsafe {
+            self.as_mut_ptr().add(self.len()).write(value);
+            self.set_len(self.len().unchecked_add(1));
         }
     }
 }
