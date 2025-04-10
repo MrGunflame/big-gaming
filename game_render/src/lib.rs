@@ -11,6 +11,7 @@ pub mod metrics;
 pub mod mipmap;
 pub mod options;
 pub mod pbr;
+pub mod shader;
 pub mod shape;
 pub mod statistics;
 pub mod surface;

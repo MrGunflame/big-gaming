@@ -11,12 +11,13 @@ use crate::api::{
 use crate::backend::{
     AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, FilterMode,
     FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor,
-    ShaderModule, ShaderSource, ShaderStages, StoreOp, TextureFormat, VertexStage,
+    ShaderModule, ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
+use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
 
-const SHADER: &str = include_str!("../../shaders/post_process.wgsl");
+const SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/post_process.wgsl");
 
 pub struct PostProcessPass {
     sampler: Sampler,
@@ -45,8 +46,6 @@ impl PostProcessPass {
             ],
         });
 
-        let shader = queue.create_shader_module(ShaderSource::Wgsl(SHADER));
-
         let sampler = queue.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
@@ -56,10 +55,15 @@ impl PostProcessPass {
             mipmap_filter: FilterMode::Linear,
         });
 
-        let pipelines = PipelineCache::new(PostProcessPipelineBuilder {
-            shader,
-            descriptor_set_layout: bind_group_layout.clone(),
-        });
+        let pipelines = PipelineCache::new(
+            PostProcessPipelineBuilder {
+                descriptor_set_layout: bind_group_layout.clone(),
+            },
+            vec![ShaderConfig {
+                source: ShaderSource::File(SHADER.into()),
+                language: ShaderLanguage::Wgsl,
+            }],
+        );
 
         Self {
             bind_group_layout,
@@ -115,12 +119,16 @@ impl Node for PostProcessPass {
 
 #[derive(Debug)]
 struct PostProcessPipelineBuilder {
-    shader: ShaderModule,
     descriptor_set_layout: DescriptorSetLayout,
 }
 
 impl PipelineBuilder for PostProcessPipelineBuilder {
-    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline {
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline {
         let _span = trace_span!("PostProcessPipelineBuilder::build").entered();
 
         queue.create_pipeline(&PipelineDescriptor {
@@ -130,11 +138,11 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
             descriptors: &[&self.descriptor_set_layout],
             stages: &[
                 PipelineStage::Vertex(VertexStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "vs_main",
                 }),
                 PipelineStage::Fragment(FragmentStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "fs_main",
                     targets: &[format],
                 }),

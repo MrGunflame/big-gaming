@@ -4,21 +4,27 @@ use std::ops::Deref;
 use parking_lot::{RwLock, RwLockReadGuard};
 
 use crate::api::{CommandQueue, Pipeline};
-use crate::backend::TextureFormat;
+use crate::backend::{ShaderModule, TextureFormat};
+use crate::shader::{ReloadableShaderSource, ShaderConfig};
 
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]
 pub struct PipelineCache<T> {
     pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
+    shaders: Vec<ReloadableShaderSource>,
 }
 
 impl<T> PipelineCache<T> {
     /// Creates a new `PipelineCache`.
-    pub fn new(builder: T) -> Self {
+    pub fn new(builder: T, shaders: Vec<ShaderConfig>) -> Self {
         Self {
             pipelines: RwLock::new(HashMap::new()),
             builder,
+            shaders: shaders
+                .into_iter()
+                .map(|shader| ReloadableShaderSource::new(shader.source))
+                .collect(),
         }
     }
 }
@@ -38,6 +44,23 @@ where
     ) -> PipelineRef<'a> {
         let mut pipelines = self.pipelines.read();
 
+        // If any shader in the pipeline has changed drop all current
+        // pipelines and recompile shaders from the updated sources.
+        for shader in &self.shaders {
+            if shader.has_changed() {
+                tracing::info!("reloading shader");
+
+                drop(pipelines);
+                {
+                    let mut pipelines = self.pipelines.write();
+                    pipelines.clear();
+                }
+                pipelines = self.pipelines.read();
+
+                break;
+            }
+        }
+
         // Note that this case will likely happen very rarely under normal
         // operation. (Likely less than a dozen times)
         // It is therefore not a big deal to block in this function while
@@ -45,9 +68,11 @@ where
         if !pipelines.contains_key(&format) {
             drop(pipelines);
 
+            let shaders: Vec<_> = self.shaders.iter().map(|shader| shader.compile()).collect();
+
             {
                 let mut pipelines = self.pipelines.write();
-                let pipeline = self.builder.build(queue, format);
+                let pipeline = self.builder.build(queue, &shaders, format);
                 pipelines.insert(format, pipeline);
             }
 
@@ -95,5 +120,10 @@ impl<'a> Deref for PipelineRef<'a> {
 
 pub trait PipelineBuilder {
     /// Returns a new pipeline with the requested [`TextureFormat`].
-    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline;
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline;
 }

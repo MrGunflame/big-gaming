@@ -42,3 +42,5 @@ slab = { version = "0.4.9", git = "https://github.com/MrGunflame/slab", branch =
 crossbeam-queue = "0.3.12"
 
 naga = { version = "23.1.0", features = ["wgsl-in", "spv-out"] }
+
+notify = "8.0.0"

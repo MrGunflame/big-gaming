@@ -10,12 +10,13 @@ use crate::api::{
 };
 use crate::backend::{
     AddressMode, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage, FrontFace,
-    LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderSource,
-    ShaderStages, StoreOp, TextureFormat, VertexStage,
+    LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderStages,
+    StoreOp, TextureFormat, VertexStage,
 };
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
+use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
 
-const SHADER: &str = include_str!("../shaders/mipmap.wgsl");
+const SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/mipmap.wgsl");
 
 #[derive(Debug)]
 pub struct MipMapGenerator {
@@ -43,8 +44,6 @@ impl MipMapGenerator {
             ],
         });
 
-        let shader = queue.create_shader_module(ShaderSource::Wgsl(SHADER));
-
         let sampler = queue.create_sampler(&SamplerDescriptor {
             min_filter: FilterMode::Linear,
             mag_filter: FilterMode::Linear,
@@ -57,7 +56,13 @@ impl MipMapGenerator {
         Self {
             layout: layout.clone(),
             sampler,
-            pipelines: PipelineCache::new(BlitPipelineBuilder { layout, shader }),
+            pipelines: PipelineCache::new(
+                BlitPipelineBuilder { layout },
+                vec![ShaderConfig {
+                    source: ShaderSource::File(SHADER.into()),
+                    language: ShaderLanguage::Wgsl,
+                }],
+            ),
         }
     }
 
@@ -113,11 +118,15 @@ impl MipMapGenerator {
 #[derive(Debug)]
 struct BlitPipelineBuilder {
     layout: DescriptorSetLayout,
-    shader: ShaderModule,
 }
 
 impl PipelineBuilder for BlitPipelineBuilder {
-    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline {
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
             topology: PrimitiveTopology::TriangleList,
             front_face: FrontFace::Ccw,
@@ -127,11 +136,11 @@ impl PipelineBuilder for BlitPipelineBuilder {
             push_constant_ranges: &[],
             stages: &[
                 PipelineStage::Vertex(VertexStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "vs_main",
                 }),
                 PipelineStage::Fragment(FragmentStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "fs_main",
                     targets: &[format],
                 }),
