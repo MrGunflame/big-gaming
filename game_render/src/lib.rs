@@ -11,6 +11,8 @@ pub mod metrics;
 pub mod mipmap;
 pub mod options;
 pub mod pbr;
+pub mod pipeline_cache;
+pub mod shader;
 pub mod shape;
 pub mod statistics;
 pub mod surface;
@@ -20,7 +22,6 @@ pub mod backend;
 mod debug;
 mod fps_limiter;
 mod passes;
-mod pipeline_cache;
 mod pipelined_rendering;
 
 use api::CommandQueue;

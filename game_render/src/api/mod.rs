@@ -25,8 +25,8 @@ use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, BufferUsage, DepthStencilState, Face, FrontFace,
     ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
-    SamplerDescriptor, ShaderModule, ShaderSource, ShaderStage, ShaderStages, StoreOp,
-    TextureDescriptor, TextureFormat, TextureUsage,
+    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage,
 };
 use crate::statistics::Statistics;
 
@@ -827,10 +827,6 @@ impl<'a> CommandQueue<'a> {
             last_pipeline: None,
             last_index_buffer: None,
         }
-    }
-
-    pub fn create_shader_module(&mut self, src: ShaderSource<'_>) -> ShaderModule {
-        ShaderModule::new(&src)
     }
 
     /// Manually force a transition of the [`TextureRegion`] to the specified [`AccessFlags`].

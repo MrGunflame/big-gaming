@@ -1,24 +1,32 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 
 use crate::api::{CommandQueue, Pipeline};
-use crate::backend::TextureFormat;
+use crate::backend::{ShaderModule, TextureFormat};
+use crate::shader::{ReloadableShaderSource, ShaderConfig};
 
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]
 pub struct PipelineCache<T> {
     pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
+    shaders: Vec<ReloadableShaderSource>,
+    compiled_shaders: Mutex<Vec<ShaderModule>>,
 }
 
 impl<T> PipelineCache<T> {
     /// Creates a new `PipelineCache`.
-    pub fn new(builder: T) -> Self {
+    pub fn new(builder: T, shaders: Vec<ShaderConfig>) -> Self {
         Self {
             pipelines: RwLock::new(HashMap::new()),
             builder,
+            compiled_shaders: Mutex::new(Vec::with_capacity(shaders.len())),
+            shaders: shaders
+                .into_iter()
+                .map(|shader| ReloadableShaderSource::new(shader.source))
+                .collect(),
         }
     }
 }
@@ -38,6 +46,23 @@ where
     ) -> PipelineRef<'a> {
         let mut pipelines = self.pipelines.read();
 
+        // If any shader in the pipeline has changed drop all current
+        // pipelines and recompile shaders from the updated sources.
+        for shader in &self.shaders {
+            if shader.has_changed() {
+                tracing::info!("reloading shader");
+
+                drop(pipelines);
+                {
+                    let mut pipelines = self.pipelines.write();
+                    pipelines.clear();
+                }
+                pipelines = self.pipelines.read();
+
+                break;
+            }
+        }
+
         // Note that this case will likely happen very rarely under normal
         // operation. (Likely less than a dozen times)
         // It is therefore not a big deal to block in this function while
@@ -45,9 +70,33 @@ where
         if !pipelines.contains_key(&format) {
             drop(pipelines);
 
+            let mut compiled_shaders = self.compiled_shaders.lock();
+            if compiled_shaders.is_empty() {
+                for shader in &self.shaders {
+                    match shader.compile() {
+                        Ok(module) => compiled_shaders.push(module),
+                        Err(err) => {
+                            tracing::error!("failed to compile shader: {}", err);
+                            panic!("failed to compile inital shader");
+                        }
+                    }
+                }
+            } else {
+                for (shader, compiled) in self.shaders.iter().zip(&mut *compiled_shaders) {
+                    match shader.compile() {
+                        Ok(module) => *compiled = module,
+                        Err(err) => {
+                            tracing::error!("failed to compile shader: {}", err);
+                        }
+                    }
+                }
+            }
+
+            debug_assert_eq!(compiled_shaders.len(), self.shaders.len());
+
             {
                 let mut pipelines = self.pipelines.write();
-                let pipeline = self.builder.build(queue, format);
+                let pipeline = self.builder.build(queue, &compiled_shaders, format);
                 pipelines.insert(format, pipeline);
             }
 
@@ -95,5 +144,10 @@ impl<'a> Deref for PipelineRef<'a> {
 
 pub trait PipelineBuilder {
     /// Returns a new pipeline with the requested [`TextureFormat`].
-    fn build(&self, queue: &mut CommandQueue<'_>, format: TextureFormat) -> Pipeline;
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline;
 }

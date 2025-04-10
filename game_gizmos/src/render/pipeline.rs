@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -12,22 +11,23 @@ use game_render::api::{
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorType, Face, FragmentStage, FrontFace, LoadOp,
-    PipelineStage, PrimitiveTopology, ShaderModule, ShaderSource, ShaderStages, StoreOp,
-    TextureFormat, VertexStage,
+    PipelineStage, PrimitiveTopology, ShaderModule, ShaderStages, StoreOp, TextureFormat,
+    VertexStage,
 };
 use game_render::camera::{Camera, CameraUniform};
 use game_render::graph::{Node, RenderContext, SlotLabel};
+use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
+use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 use parking_lot::{Mutex, RwLock};
 
 use super::DrawCommand;
 
-const SHADER: &str = include_str!("../../shaders/line.wgsl");
+const SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR", "/shaders/line.wgsl"));
 
 pub struct GizmoPipeline {
     descriptor_set_layout: DescriptorSetLayout,
-    pipelines: Mutex<HashMap<TextureFormat, Pipeline>>,
-    shader: ShaderModule,
+    pipeline: PipelineCache<GizmoPipelineBuilder>,
 }
 
 impl GizmoPipeline {
@@ -50,16 +50,35 @@ impl GizmoPipeline {
                 ],
             });
 
-        let shader = queue.create_shader_module(ShaderSource::Wgsl(SHADER));
+        let pipeline = PipelineCache::new(
+            GizmoPipelineBuilder {
+                descriptor_set_layout: bind_group_layout.clone(),
+            },
+            vec![ShaderConfig {
+                source: ShaderSource::File(SHADER.into()),
+                language: ShaderLanguage::Wgsl,
+            }],
+        );
 
         Self {
             descriptor_set_layout: bind_group_layout,
-            pipelines: Mutex::new(HashMap::new()),
-            shader,
+            pipeline,
         }
     }
+}
 
-    fn build_pipeline(&self, format: TextureFormat, queue: &mut CommandQueue<'_>) -> Pipeline {
+#[derive(Debug)]
+struct GizmoPipelineBuilder {
+    descriptor_set_layout: DescriptorSetLayout,
+}
+
+impl PipelineBuilder for GizmoPipelineBuilder {
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
             topology: PrimitiveTopology::LineList,
             front_face: FrontFace::Ccw,
@@ -67,11 +86,11 @@ impl GizmoPipeline {
             descriptors: &[&self.descriptor_set_layout],
             stages: &[
                 PipelineStage::Vertex(VertexStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "vs_main",
                 }),
                 PipelineStage::Fragment(FragmentStage {
-                    shader: &self.shader,
+                    shader: &shaders[1],
                     entry: "fs_main",
                     targets: &[format],
                 }),
@@ -183,17 +202,10 @@ impl Node for GizmoPass {
 
         let surface_texture = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().clone();
 
-        let mut pipelines = self.pipeline.pipelines.lock();
-        let render_pipeline = match pipelines.get(&surface_texture.format()) {
-            Some(pl) => pl,
-            None => {
-                let pl = self
-                    .pipeline
-                    .build_pipeline(surface_texture.format(), ctx.queue);
-                pipelines.insert(surface_texture.format(), pl);
-                pipelines.get(&surface_texture.format()).unwrap()
-            }
-        };
+        let render_pipeline = self
+            .pipeline
+            .pipeline
+            .get(&mut ctx.queue, surface_texture.format());
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {
@@ -204,7 +216,7 @@ impl Node for GizmoPass {
             depth_stencil_attachment: None,
         });
 
-        render_pass.set_pipeline(render_pipeline);
+        render_pass.set_pipeline(&render_pipeline);
 
         render_pass.set_descriptor_set(0, &bg);
         // render_pass.draw_indirect(&indirect_buffer, 0);

@@ -43,3 +43,5 @@ crossbeam-queue = "0.3.12"
 nohash-hasher = "0.2.0"
 
 naga = { version = "23.1.0", features = ["wgsl-in", "spv-out"] }
+
+notify = "8.0.0"
