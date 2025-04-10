@@ -4,20 +4,22 @@ use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use game_render::api::{
-    BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
-    DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
-    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
-    RenderPassDescriptor, Sampler, Texture, TextureRegion, TextureView, TextureViewDescriptor,
+    BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DescriptorSetDescriptor,
+    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
+    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
+    TextureRegion, TextureView, TextureViewDescriptor,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     AddressMode, BufferUsage, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage,
     FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
-    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStage,
-    ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
+    SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage, VertexStage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
+use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
+use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::{Mutex, RwLock};
@@ -25,7 +27,7 @@ use parking_lot::{Mutex, RwLock};
 use super::remap::remap;
 use super::{DrawCommand, GpuDrawCommandState, SurfaceDrawCommands};
 
-const UI_SHADER: &str = include_str!("../../shaders/ui.wgsl");
+const UI_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/ui.wgsl");
 
 /// The default texture array capacity.
 const DEFAULT_TEXTURE_CAPACITY: NonZeroU32 = unsafe { NonZeroU32::new_unchecked(8) };
@@ -38,8 +40,7 @@ struct UiPipeline {
     descriptor_set_layout: DescriptorSetLayout,
     sampler: Sampler,
     capacity: NonZeroU32,
-    pipelines: HashMap<TextureFormat, Pipeline>,
-    shader: ShaderModule,
+    pipeline: PipelineCache<UiPipelineBuilder>,
 }
 
 impl UiPipeline {
@@ -72,8 +73,6 @@ impl UiPipeline {
                 ],
             });
 
-        let shader = queue.create_shader_module(ShaderSource::Wgsl(UI_SHADER));
-
         let sampler = queue.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::ClampToEdge,
             address_mode_v: AddressMode::ClampToEdge,
@@ -83,27 +82,48 @@ impl UiPipeline {
             mipmap_filter: FilterMode::Nearest,
         });
 
+        let pipeline = PipelineCache::new(
+            UiPipelineBuilder {
+                descriptor_set_layout: descriptor_set_layout.clone(),
+            },
+            vec![ShaderConfig {
+                source: ShaderSource::File(UI_SHADER.into()),
+                language: ShaderLanguage::Wgsl,
+            }],
+        );
+
         Self {
             descriptor_set_layout,
-            pipelines: HashMap::new(),
             sampler,
             capacity,
-            shader,
+            pipeline,
         }
     }
+}
 
-    fn build_pipeline(&self, format: TextureFormat, queue: &mut CommandQueue<'_>) -> Pipeline {
+#[derive(Debug)]
+struct UiPipelineBuilder {
+    descriptor_set_layout: DescriptorSetLayout,
+}
+
+impl PipelineBuilder for UiPipelineBuilder {
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
             topology: PrimitiveTopology::TriangleList,
             front_face: FrontFace::Ccw,
             cull_mode: Some(Face::Back),
             stages: &[
                 PipelineStage::Vertex(VertexStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "vs_main",
                 }),
                 PipelineStage::Fragment(FragmentStage {
-                    shader: &self.shader,
+                    shader: &shaders[0],
                     entry: "fs_main",
                     targets: &[format],
                 }),
@@ -289,14 +309,9 @@ impl Node for UiPass {
         //     usage: BufferUsage::INDIRECT,
         // });
 
-        let render_pipeline = match pipeline.pipelines.get(&surface_texture.format()) {
-            Some(pl) => pl,
-            None => {
-                let pl = pipeline.build_pipeline(surface_texture.format(), ctx.queue);
-                pipeline.pipelines.insert(surface_texture.format(), pl);
-                pipeline.pipelines.get(&surface_texture.format()).unwrap()
-            }
-        };
+        let render_pipeline = pipeline
+            .pipeline
+            .get(&mut ctx.queue, surface_texture.format());
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
             color_attachments: &[RenderPassColorAttachment {

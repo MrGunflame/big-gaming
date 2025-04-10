@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 
 use crate::api::{CommandQueue, Pipeline};
 use crate::backend::{ShaderModule, TextureFormat};
@@ -13,6 +13,7 @@ pub struct PipelineCache<T> {
     pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
     shaders: Vec<ReloadableShaderSource>,
+    compiled_shaders: Mutex<Vec<ShaderModule>>,
 }
 
 impl<T> PipelineCache<T> {
@@ -21,6 +22,7 @@ impl<T> PipelineCache<T> {
         Self {
             pipelines: RwLock::new(HashMap::new()),
             builder,
+            compiled_shaders: Mutex::new(Vec::with_capacity(shaders.len())),
             shaders: shaders
                 .into_iter()
                 .map(|shader| ReloadableShaderSource::new(shader.source))
@@ -68,11 +70,33 @@ where
         if !pipelines.contains_key(&format) {
             drop(pipelines);
 
-            let shaders: Vec<_> = self.shaders.iter().map(|shader| shader.compile()).collect();
+            let mut compiled_shaders = self.compiled_shaders.lock();
+            if compiled_shaders.is_empty() {
+                for shader in &self.shaders {
+                    match shader.compile() {
+                        Ok(module) => compiled_shaders.push(module),
+                        Err(err) => {
+                            tracing::error!("failed to compile shader: {}", err);
+                            panic!("failed to compile inital shader");
+                        }
+                    }
+                }
+            } else {
+                for (shader, compiled) in self.shaders.iter().zip(&mut *compiled_shaders) {
+                    match shader.compile() {
+                        Ok(module) => *compiled = module,
+                        Err(err) => {
+                            tracing::error!("failed to compile shader: {}", err);
+                        }
+                    }
+                }
+            }
+
+            debug_assert_eq!(compiled_shaders.len(), self.shaders.len());
 
             {
                 let mut pipelines = self.pipelines.write();
-                let pipeline = self.builder.build(queue, &shaders, format);
+                let pipeline = self.builder.build(queue, &compiled_shaders, format);
                 pipelines.insert(format, pipeline);
             }
 

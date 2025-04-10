@@ -6,8 +6,17 @@ use naga::back::spv::{self, PipelineOptions};
 use naga::front::wgsl;
 use naga::valid::{Capabilities, GlobalUse, ModuleInfo, ValidationFlags, Validator};
 use naga::{AddressSpace, ArraySize, Module, TypeInner};
+use thiserror::Error;
 
 use super::{DescriptorType, ShaderStage};
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Parse(wgsl::ParseError),
+    #[error(transparent)]
+    Validation(naga::WithSpan<naga::valid::ValidationError>),
+}
 
 #[derive(Clone, Debug)]
 pub struct Shader {
@@ -16,13 +25,15 @@ pub struct Shader {
 }
 
 impl Shader {
-    pub fn from_wgsl(s: &str) -> Self {
-        let module = wgsl::parse_str(s).unwrap();
+    pub fn from_wgsl(s: &str) -> Result<Self, Error> {
+        let module = wgsl::parse_str(s).map_err(Error::Parse)?;
 
         let mut validator = Validator::new(ValidationFlags::default(), Capabilities::all());
-        let info = validator.validate_no_overrides(&module).unwrap();
+        let info = validator
+            .validate_no_overrides(&module)
+            .map_err(Error::Validation)?;
 
-        Self { module, info }
+        Ok(Self { module, info })
     }
 
     // TODO: Create this when self is created.

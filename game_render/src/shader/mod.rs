@@ -6,7 +6,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, OnceLock};
 
 use notify::{RecursiveMode, Watcher};
+use thiserror::Error;
 
+use crate::backend::shader::{self, Shader};
 use crate::backend::ShaderModule;
 
 #[derive(Clone, Debug)]
@@ -35,6 +37,14 @@ pub enum ShaderLanguage {
     Wgsl,
 }
 
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(io::Error),
+    #[error(transparent)]
+    Compilation(shader::Error),
+}
+
 #[derive(Debug)]
 pub struct ReloadableShaderSource {
     source: ShaderSource,
@@ -61,10 +71,11 @@ impl ReloadableShaderSource {
         self.cell.swap(false, Ordering::SeqCst)
     }
 
-    pub fn compile(&self) -> ShaderModule {
-        ShaderModule::new(&crate::backend::ShaderSource::Wgsl(
-            &self.source.load().unwrap(),
-        ))
+    pub fn compile(&self) -> Result<ShaderModule, Error> {
+        let source = self.source.load().map_err(Error::Io)?;
+        let shader = Shader::from_wgsl(&source).map_err(Error::Compilation)?;
+
+        Ok(ShaderModule { shader })
     }
 }
 

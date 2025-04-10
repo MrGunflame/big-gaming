@@ -131,6 +131,9 @@ impl ForwardPass {
         let _span = trace_span!("ForwardPass::render_camera_target").entered();
 
         let pipeline = &self.forward;
+        let pipeline_ref = pipeline
+            .pipeline
+            .get(&mut ctx.queue, TextureFormat::Rgba16Float);
         let depth_stencils = self.depth_stencils.lock();
 
         let light_bind_group = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
@@ -205,7 +208,7 @@ impl ForwardPass {
             &state.options,
         )));
 
-        render_pass.set_pipeline(&pipeline.pipeline);
+        render_pass.set_pipeline(&pipeline_ref);
         render_pass.set_push_constants(
             ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             0,

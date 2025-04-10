@@ -7,13 +7,18 @@ use crate::api::{CommandQueue, DescriptorSetLayout, Pipeline, PipelineDescriptor
 use crate::backend::{
     AddressMode, CompareOp, DepthStencilState, DescriptorBinding, DescriptorSetDescriptor,
     DescriptorType, FilterMode, FragmentStage, FrontFace, PipelineStage, PrimitiveTopology,
-    PushConstantRange, SamplerDescriptor, ShaderSource, ShaderStages, TextureFormat, VertexStage,
+    PushConstantRange, SamplerDescriptor, ShaderModule, ShaderStages, TextureFormat, VertexStage,
 };
 use crate::entities::{Event, Resources};
+use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
+use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+
+const VS_SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs.wgsl");
+const FS_SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_fs.wgsl");
 
 #[derive(Debug)]
 pub struct ForwardPipeline {
-    pub pipeline: Pipeline,
+    pub pipeline: PipelineCache<ForwardPipelineBuilder>,
     pub vs_bind_group_layout: DescriptorSetLayout,
     pub mesh_bind_group_layout: DescriptorSetLayout,
     pub material_bind_group_layout: DescriptorSetLayout,
@@ -110,14 +115,6 @@ impl ForwardPipeline {
                 ],
             });
 
-        let vs_shader = queue.create_shader_module(ShaderSource::Wgsl(include_str!(
-            "../shaders/forward_vs.wgsl"
-        )));
-
-        let fs_shader = queue.create_shader_module(ShaderSource::Wgsl(include_str!(
-            "../shaders/forward_fs.wgsl"
-        )));
-
         let lights_bind_group_layout =
             queue.create_descriptor_set_layout(&&DescriptorSetDescriptor {
                 bindings: &[
@@ -145,92 +142,24 @@ impl ForwardPipeline {
                 ],
             });
 
-        // let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-        //     label: Some("foward_pipeline_layout"),
-        //     bind_group_layouts: &[
-        //         &vs_bind_group_layout,
-        //         &mesh_bind_group_layout,
-        //         &material_bind_group_layout,
-        //         &lights_bind_group_layout,
-        //     ],
-        //     push_constant_ranges: &[PushConstantRange {
-        //         stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-        //         range: 0..128,
-        //     }],
-        // });
-
-        let pipeline = queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            cull_mode: None,
-            front_face: FrontFace::Ccw,
-            descriptors: &[
-                &vs_bind_group_layout,
-                &mesh_bind_group_layout,
-                &material_bind_group_layout,
-                &lights_bind_group_layout,
+        let pipeline = PipelineCache::new(
+            ForwardPipelineBuilder {
+                vs_bind_group_layout: vs_bind_group_layout.clone(),
+                material_bind_group_layout: material_bind_group_layout.clone(),
+                mesh_bind_group_layout: mesh_bind_group_layout.clone(),
+                lights_bind_group_layout: lights_bind_group_layout.clone(),
+            },
+            vec![
+                ShaderConfig {
+                    source: ShaderSource::File(VS_SHADER.into()),
+                    language: ShaderLanguage::Wgsl,
+                },
+                ShaderConfig {
+                    source: ShaderSource::File(FS_SHADER.into()),
+                    language: ShaderLanguage::Wgsl,
+                },
             ],
-            stages: &[
-                PipelineStage::Vertex(VertexStage {
-                    shader: &vs_shader,
-                    entry: "vs_main",
-                }),
-                PipelineStage::Fragment(FragmentStage {
-                    shader: &fs_shader,
-                    entry: "fs_main",
-                    targets: &[TextureFormat::Rgba16Float],
-                }),
-            ],
-            depth_stencil_state: Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare_op: CompareOp::Less,
-            }),
-            push_constant_ranges: &[PushConstantRange {
-                range: 0..128,
-                stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
-            }],
-        });
-
-        // let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-        //     label: Some("forward_pipeline"),
-        //     layout: Some(&pipeline_layout),
-        //     vertex: VertexState {
-        //         module: &vs_shader,
-        //         entry_point: "vs_main",
-        //         buffers: &[],
-        //     },
-        //     fragment: Some(FragmentState {
-        //         module: &fs_shader,
-        //         entry_point: "fs_main",
-        //         targets: &[Some(ColorTargetState {
-        //             format: TextureFormat::Rgba16Float,
-        //             blend: Some(BlendState::ALPHA_BLENDING),
-        //             write_mask: ColorWrites::ALL,
-        //         })],
-        //     }),
-        //     primitive: PrimitiveState {
-        //         topology: PrimitiveTopology::TriangleList,
-        //         strip_index_format: None,
-        //         front_face: FrontFace::Ccw,
-        //         cull_mode: None,
-        //         polygon_mode: PolygonMode::Fill,
-        //         unclipped_depth: false,
-        //         conservative: false,
-        //     },
-        //     depth_stencil: Some(DepthStencilState {
-        //         format: DEPTH_TEXTURE_FORMAT,
-        //         depth_write_enabled: true,
-        //         depth_compare: CompareFunction::Less,
-        //         stencil: StencilState::default(),
-        //         bias: DepthBiasState::default(),
-        //     }),
-        //     multisample: MultisampleState {
-        //         count: 1,
-        //         mask: !0,
-        //         alpha_to_coverage_enabled: false,
-        //     },
-        //     multiview: None,
-        // });
+        );
 
         let sampler = queue.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::Repeat,
@@ -242,7 +171,7 @@ impl ForwardPipeline {
         });
 
         Self {
-            pipeline: pipeline,
+            pipeline,
             vs_bind_group_layout: vs_bind_group_layout,
             mesh_bind_group_layout: mesh_bind_group_layout,
             material_bind_group_layout: material_bind_group_layout,
@@ -251,5 +180,54 @@ impl ForwardPipeline {
             resources,
             events: UnsafeRefCell::new(Vec::new()),
         }
+    }
+}
+
+#[derive(Debug)]
+pub struct ForwardPipelineBuilder {
+    vs_bind_group_layout: DescriptorSetLayout,
+    mesh_bind_group_layout: DescriptorSetLayout,
+    material_bind_group_layout: DescriptorSetLayout,
+    lights_bind_group_layout: DescriptorSetLayout,
+}
+
+impl PipelineBuilder for ForwardPipelineBuilder {
+    fn build(
+        &self,
+        queue: &mut CommandQueue<'_>,
+        shaders: &[ShaderModule],
+        format: TextureFormat,
+    ) -> Pipeline {
+        queue.create_pipeline(&PipelineDescriptor {
+            topology: PrimitiveTopology::TriangleList,
+            cull_mode: None,
+            front_face: FrontFace::Ccw,
+            descriptors: &[
+                &self.vs_bind_group_layout,
+                &self.mesh_bind_group_layout,
+                &self.material_bind_group_layout,
+                &self.lights_bind_group_layout,
+            ],
+            stages: &[
+                PipelineStage::Vertex(VertexStage {
+                    shader: &shaders[0],
+                    entry: "vs_main",
+                }),
+                PipelineStage::Fragment(FragmentStage {
+                    shader: &shaders[1],
+                    entry: "fs_main",
+                    targets: &[format],
+                }),
+            ],
+            depth_stencil_state: Some(DepthStencilState {
+                format: TextureFormat::Depth32Float,
+                depth_write_enabled: true,
+                depth_compare_op: CompareOp::Less,
+            }),
+            push_constant_ranges: &[PushConstantRange {
+                range: 0..128,
+                stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+            }],
+        })
     }
 }

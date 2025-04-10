@@ -609,23 +609,7 @@ pub struct ShaderModule {
     pub shader: Shader,
 }
 
-impl ShaderModule {
-    pub fn new(source: &ShaderSource<'_>) -> Self {
-        match source {
-            ShaderSource::Wgsl(src) => {
-                let shader = Shader::from_wgsl(&src);
-                Self { shader }
-            }
-        }
-    }
-}
-
 pub struct ShaderModuleDescriptor {}
-
-#[derive(Clone, Debug)]
-pub enum ShaderSource<'a> {
-    Wgsl(&'a str),
-}
 
 #[derive(Copy, Clone, Debug, Zeroable, Pod)]
 #[repr(C)]
