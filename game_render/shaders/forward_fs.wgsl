@@ -71,119 +71,66 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
         return vec4<f32>(in.world_tangent.xyz, 1.0);
     }
 
+    // BRDF parameters
+    let view_dir = normalize(push_constants.camera.position - in.world_position);
+    var material: Material;
+    material.base_color = get_base_color(in);
+    material.normal = get_normal(in);
+    material.metallic = get_metallic(in);
+    material.roughness = get_roughness(in);
+    material.reflectance = constants.reflectance;
+    material.specular_color = vec3(1.0);
+    material.specular_strength = 1.0;
+
     var luminance: vec3<f32> = vec3(0.0, 0.0, 0.0);
 
     for (var i: u32 = 0u; i < directional_lights.count; i++) {
-        luminance += compute_directional_light(in, directional_lights.lights[i]);
+        let light = compute_directional_light(in, directional_lights.lights[i]);
+        luminance += surface_shading(material, view_dir, light);
     }
 
     for (var i: u32 = 0u; i < point_lights.count; i++) {
-        luminance += compute_point_light(in, point_lights.lights[i]);
+        let light = compute_point_light(in, point_lights.lights[i]);
+        luminance += surface_shading(material, view_dir, light);
     }
 
     for (var i: u32 = 0u; i < spot_lights.count; i++) {
-        luminance += compute_spot_light(in, spot_lights.lights[i]);
+        let light = compute_spot_light(in, spot_lights.lights[i]);
+        luminance += surface_shading(material, view_dir, light);
     }
 
     return vec4<f32>(luminance.r, luminance.g, luminance.b, color.a);
 }
 
-fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32> {
-    let normal = get_normal(in);
-
+fn compute_directional_light(in: FragInput, light: DirectionalLight) -> Light {
     let light_dir = normalize(-light.direction);
 
-    let ambient = 0.05;
-
-    let diffuse = max(dot(normal, light_dir), 0.0);
-
-    let view_dir = normalize(push_constants.camera.position - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
-
-    let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
-
-    //return (ambient + diffuse + specular) * light.intensity * light.color;
-    //let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
-    //let illuminance = light.intensity * NoL;
-
-    //return brdf(in, light_dir) * light.color * illuminance;
-
     var l: Light;
-    l.color = light.color;
-    l.color.r *= light.intensity;
-    l.color.g *= light.intensity;
-    l.color.b *= light.intensity;
+    l.color = light.color * light.intensity;
     l.attenuation = 1.0;
     l.direction = light_dir;
-
-    var material: Material;
-    material.base_color = get_base_color(in);
-    material.normal = get_normal(in);
-    material.metallic = get_metallic(in);
-    material.roughness = get_roughness(in);
-    material.reflectance = constants.reflectance;
-    material.specular_color = vec3(1.0);
-    material.specular_strength = 1.0;
-
-    return surface_shading(material, view_dir, l);
+    return l;
 }
 
-fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
-    let normal = get_normal(in);
-
+fn compute_point_light(in: FragInput, light: PointLight) -> Light {
     let distance = length(light.position - in.world_position);
     let pos_to_light = light.position - in.world_position;
-
     let attenuation = get_distance_attenuation(dot(pos_to_light, pos_to_light), (1.0 / light.radius) * (1.0 / light.radius));
 
     let light_dir = normalize(light.position - in.world_position);
 
-    let ambient = 0.00;
-
-    let diffuse = max(dot(normal, light_dir), 0.0);
-
-    let view_dir = normalize(push_constants.camera.position - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
-    let specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
-
-    //let NoL = clamp(dot(normal, light_dir), 0.0, 1.0);
-    //return (brdf(in, light_dir) * light.intensity * attenuation * NoL) * light.color;
-
     var l: Light;
-    l.color = light.color;
-    l.color.r *= light.intensity;
-    l.color.g *= light.intensity;
-    l.color.b *= light.intensity;
+    l.color = light.color * light.intensity;
     l.attenuation = attenuation;
     l.direction = light_dir;
-
-    var material: Material;
-    material.base_color = get_base_color(in);
-    material.normal = get_normal(in);
-    material.metallic = get_metallic(in);
-    material.roughness = get_roughness(in);
-    material.reflectance = constants.reflectance;
-    material.specular_color = vec3(1.0);
-    material.specular_strength = 1.0;
-
-    return surface_shading(material, view_dir, l);
+    return l;
 }
 
-fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
-    let normal = get_normal(in);
-
+fn compute_spot_light(in: FragInput, light: SpotLight) -> Light {
     let pos_to_light = light.position - in.world_position;
     let attenuation = get_distance_attenuation(dot(pos_to_light, pos_to_light), (1.0 / light.radius) * (1.0 / light.radius));
 
     let light_dir = normalize(light.position - in.world_position);
-
-    let ambient = 0.00;
-
-    var diffuse = max(dot(normal, light_dir), 0.0);
-
-    let view_dir = normalize(push_constants.camera.position - in.world_position);
-    let half_dir = normalize(view_dir + light_dir);
-    var specular = pow(max(dot(normal, half_dir), 0.0), 32.0);
 
     // Falloff
     // TODO: cosine can be precomputed on CPU side.
@@ -196,23 +143,10 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
     let intensity = clamp((theta - cos_outer) / epsilon, 0.0, 1.0);
 
     var l: Light;
-    l.color = light.color;
-    l.color.r *= light.intensity;
-    l.color.g *= light.intensity;
-    l.color.b *= light.intensity;
+    l.color = light.color * light.intensity;
     l.attenuation = attenuation;
     l.direction = light_dir;
-
-    var material: Material;
-    material.base_color = get_base_color(in);
-    material.normal = get_normal(in);
-    material.metallic = get_metallic(in);
-    material.roughness = get_roughness(in);
-    material.reflectance = constants.reflectance;
-    material.specular_color = vec3(1.0);
-    material.specular_strength = 1.0;
-
-    return surface_shading(material, view_dir, l);
+    return l;
 }
 
 struct DirectionalLights {
