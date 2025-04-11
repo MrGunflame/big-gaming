@@ -12,7 +12,7 @@ use crate::shader::{ReloadableShaderSource, ShaderConfig};
 pub struct PipelineCache<T> {
     pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
-    shaders: Vec<ReloadableShaderSource>,
+    shaders: RwLock<Vec<ReloadableShaderSource>>,
     compiled_shaders: Mutex<Vec<ShaderModule>>,
 }
 
@@ -23,10 +23,12 @@ impl<T> PipelineCache<T> {
             pipelines: RwLock::new(HashMap::new()),
             builder,
             compiled_shaders: Mutex::new(Vec::with_capacity(shaders.len())),
-            shaders: shaders
-                .into_iter()
-                .map(|shader| ReloadableShaderSource::new(shader.source))
-                .collect(),
+            shaders: RwLock::new(
+                shaders
+                    .into_iter()
+                    .map(|shader| ReloadableShaderSource::new(shader.source))
+                    .collect(),
+            ),
         }
     }
 }
@@ -48,18 +50,21 @@ where
 
         // If any shader in the pipeline has changed drop all current
         // pipelines and recompile shaders from the updated sources.
-        for shader in &self.shaders {
-            if shader.has_changed() {
-                tracing::info!("reloading shader");
+        {
+            let shaders = self.shaders.read();
+            for shader in &*shaders {
+                if shader.has_changed() {
+                    tracing::info!("reloading shader");
 
-                drop(pipelines);
-                {
-                    let mut pipelines = self.pipelines.write();
-                    pipelines.clear();
+                    drop(pipelines);
+                    {
+                        let mut pipelines = self.pipelines.write();
+                        pipelines.clear();
+                    }
+                    pipelines = self.pipelines.read();
+
+                    break;
                 }
-                pipelines = self.pipelines.read();
-
-                break;
             }
         }
 
@@ -70,9 +75,10 @@ where
         if !pipelines.contains_key(&format) {
             drop(pipelines);
 
+            let mut shaders = self.shaders.write();
             let mut compiled_shaders = self.compiled_shaders.lock();
             if compiled_shaders.is_empty() {
-                for shader in &self.shaders {
+                for shader in &mut *shaders {
                     match shader.compile() {
                         Ok(module) => compiled_shaders.push(module),
                         Err(err) => {
@@ -82,7 +88,7 @@ where
                     }
                 }
             } else {
-                for (shader, compiled) in self.shaders.iter().zip(&mut *compiled_shaders) {
+                for (shader, compiled) in shaders.iter_mut().zip(&mut *compiled_shaders) {
                     match shader.compile() {
                         Ok(module) => *compiled = module,
                         Err(err) => {
@@ -92,7 +98,7 @@ where
                 }
             }
 
-            debug_assert_eq!(compiled_shaders.len(), self.shaders.len());
+            debug_assert_eq!(compiled_shaders.len(), shaders.len());
 
             {
                 let mut pipelines = self.pipelines.write();

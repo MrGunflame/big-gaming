@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, OnceLock};
 
@@ -48,22 +49,16 @@ pub enum Error {
 #[derive(Debug)]
 pub struct ReloadableShaderSource {
     source: ShaderSource,
-    has_changed: bool,
     cell: Arc<AtomicBool>,
+    sources: Vec<ShaderSource>,
 }
 
 impl ReloadableShaderSource {
     pub fn new(source: ShaderSource) -> Self {
-        let cell = Arc::new(AtomicBool::new(false));
-        match &source {
-            ShaderSource::File(path) => FileWatcher::register(path.clone(), cell.clone()),
-            _ => (),
-        }
-
         Self {
             source,
-            has_changed: false,
-            cell,
+            cell: Arc::new(AtomicBool::new(false)),
+            sources: Vec::new(),
         }
     }
 
@@ -71,9 +66,40 @@ impl ReloadableShaderSource {
         self.cell.swap(false, Ordering::SeqCst)
     }
 
-    pub fn compile(&self) -> Result<ShaderModule, Error> {
-        let source = self.source.load().map_err(Error::Io)?;
-        let shader = Shader::from_wgsl(&source).map_err(Error::Compilation)?;
+    pub fn compile(&mut self) -> Result<ShaderModule, Error> {
+        for source in self.sources.drain(..) {
+            match source {
+                ShaderSource::File(path) => {
+                    FileWatcher::unregister(path, self.cell.clone());
+                }
+                _ => (),
+            }
+        }
+
+        let sources = load_files(self.source.clone()).map_err(Error::Io)?;
+        for source in sources.sources {
+            match source {
+                ShaderSource::File(path) => {
+                    FileWatcher::register(path, self.cell.clone());
+                }
+                _ => (),
+            }
+        }
+
+        let mut combined = String::new();
+        for data in sources.data {
+            for line in data.lines() {
+                // Preprocessor macros start with #
+                if line.starts_with("#") {
+                    continue;
+                }
+
+                combined.push_str(line);
+                combined.push('\n');
+            }
+        }
+
+        let shader = Shader::from_wgsl(&combined).map_err(Error::Compilation)?;
 
         Ok(ShaderModule { shader })
     }
@@ -86,9 +112,14 @@ enum WatchEvent {
 }
 
 fn load_files(root: ShaderSource) -> io::Result<ShaderSources> {
+    let root_dir = match &root {
+        ShaderSource::File(path) => path.parent().map(|s| s.as_os_str()).unwrap_or_default(),
+        _ => <&OsStr>::default(),
+    };
+
     let mut files = Vec::new();
     let mut sources = Vec::new();
-    let mut queue = vec![root];
+    let mut queue = vec![root.clone()];
 
     while let Some(src) = queue.pop() {
         let data = src.load()?;
@@ -103,9 +134,10 @@ fn load_files(root: ShaderSource) -> io::Result<ShaderSources> {
                 continue;
             };
 
-            let path = path.trim();
+            let mut file_path = PathBuf::from(root_dir);
+            file_path.push(PathBuf::from(path.trim()));
             if !path.is_empty() {
-                queue.push(ShaderSource::File(path.into()));
+                queue.push(ShaderSource::File(file_path));
             }
         }
 
