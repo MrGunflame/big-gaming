@@ -1,4 +1,4 @@
-const PI: f32 = 3.14159265358979323846264338327950288;
+#include pbr.wgsl
 
 struct MaterialConstants {
     base_color: vec4<f32>,
@@ -115,7 +115,17 @@ fn compute_directional_light(in: FragInput, light: DirectionalLight) -> vec3<f32
     l.color.b *= light.intensity;
     l.attenuation = 1.0;
     l.direction = light_dir;
-    return surface_shading(in, l);
+
+    var material: Material;
+    material.base_color = get_base_color(in);
+    material.normal = get_normal(in);
+    material.metallic = get_metallic(in);
+    material.roughness = get_roughness(in);
+    material.reflectance = constants.reflectance;
+    material.specular_color = vec3(1.0);
+    material.specular_strength = 1.0;
+
+    return surface_shading(material, view_dir, l);
 }
 
 fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
@@ -147,8 +157,16 @@ fn compute_point_light(in: FragInput, light: PointLight) -> vec3<f32> {
     l.attenuation = attenuation;
     l.direction = light_dir;
 
-    //return ((ambient + diffuse + specular) * light.intensity * attenuation) * light.color;
-    return surface_shading(in, l);
+    var material: Material;
+    material.base_color = get_base_color(in);
+    material.normal = get_normal(in);
+    material.metallic = get_metallic(in);
+    material.roughness = get_roughness(in);
+    material.reflectance = constants.reflectance;
+    material.specular_color = vec3(1.0);
+    material.specular_strength = 1.0;
+
+    return surface_shading(material, view_dir, l);
 }
 
 fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
@@ -185,7 +203,16 @@ fn compute_spot_light(in: FragInput, light: SpotLight) -> vec3<f32> {
     l.attenuation = attenuation;
     l.direction = light_dir;
 
-    return surface_shading(in, l);
+    var material: Material;
+    material.base_color = get_base_color(in);
+    material.normal = get_normal(in);
+    material.metallic = get_metallic(in);
+    material.roughness = get_roughness(in);
+    material.reflectance = constants.reflectance;
+    material.specular_color = vec3(1.0);
+    material.specular_strength = 1.0;
+
+    return surface_shading(material, view_dir, l);
 }
 
 struct DirectionalLights {
@@ -226,6 +253,10 @@ struct SpotLight {
     outer_cutoff: f32,
 }
 
+fn get_base_color(in: FragInput) -> vec4<f32> {
+    return constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+}
+
 fn get_albedo(in: FragInput) -> vec3<f32> {
     return constants.base_color.rgb * textureSample(base_color_texture, linear_sampler, in.uv).rgb;
 }
@@ -263,132 +294,4 @@ fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32
     let smooth_factor = saturate(1.0 - factor * factor);
     let attenuation = smooth_factor * smooth_factor;
     return attenuation / max(distance_square, 0.0001);
-}
-
-// PBR implementation based on
-// https://google.github.io/filament/Filament.html
-
-fn surface_shading(in: FragInput, light: Light) -> vec3<f32> {
-    let view_dir = normalize(push_constants.camera.position - in.world_position);
-    let half_dir = normalize(view_dir + light.direction);
-
-    let normal = get_normal(in);
-
-    let diffuse_color = get_albedo(in).rgb * (1.0 - get_metallic(in));
-
-    let NoV = abs(dot(normal, view_dir));
-    let NoL = clamp(dot(normal, light.direction), 0.0, 1.0);
-    let NoH = clamp(dot(normal, half_dir), 0.0, 1.0);
-    let LoH = clamp(dot(light.direction, half_dir), 0.0, 1.0);
-
-    let Fr = specular_color(in, half_dir, NoV, NoL, NoH, LoH);
-    let Fd = diffuse_color(in, NoV, NoL, LoH, diffuse_color);
-
-    // FIXME: Implement energy compensation:
-    // https://google.github.io/filament/Filament.html#materialsystem/improvingthebrdfs
-    let color = Fd + Fr;
-
-    return (color * light.color) * (light.attenuation * NoL);
-}
-
-// ---
-// --- Specular impl
-// ---
-
-const MEDIUM_FLT_MAX: f32 = 65504.0;
-fn saturate_medium_p(x: f32) -> f32 {
-    return min(x, MEDIUM_FLT_MAX);
-}
-
-fn D_GGX(roughness: f32, NoH: f32, h: vec3<f32>) -> f32 {
-    let one_minus_noh_squared = 1.0 - NoH * NoH;
-
-    let a = NoH * roughness;
-    let k = roughness / (one_minus_noh_squared + a * a);
-    let d = k * k * (1.0 / PI);
-    return saturate_medium_p(d);
-}
-
-fn V_SmithGGXCorrelated(roughness: f32, NoV: f32, NoL: f32) -> f32 {
-    let a2 = roughness * roughness;
-    let lambda_v = NoV * sqrt((NoV - a2 * NoV) * NoV + a2);
-    let lambda_l = NoL * sqrt((NoL - a2 * NoL) * NoL + a2);
-    let v = 0.5 / (lambda_v + lambda_l);
-    return saturate_medium_p(v);
-}
-
-fn distribution(roughness: f32, NoH: f32, h: vec3<f32>) -> f32 {
-    return D_GGX(roughness, NoH, h);
-}
-
-fn visibility(roughness: f32, NoV: f32, NoL: f32) -> f32 {
-    return V_SmithGGXCorrelated(roughness, NoV, NoL);
-}
-
-fn fresnel(f0: vec3<f32>, LoH: f32) -> vec3<f32> {
-    let f90 = saturate(dot(f0, vec3<f32>(50.0 * 0.33)));
-    return F_Schlick_vec3(f0, f90, LoH);
-}
-
-fn F_Schlick_vec3(f0: vec3<f32>, f90: f32, VoH: f32) -> vec3<f32> {
-    return f0 + (f90 - f0) * pow(1.0 - VoH, 5.0);
-}
-
-fn F_Schlick(f0: f32, f90: f32, VoH: f32) -> f32 {
-    return f0 + (f90 - f0) * pow(1.0 - VoH, 5.0);
-}
-
-fn specular_color(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
-    return isotropic(in, h, NoV, NoL, NoH, LoH);
-}
-
-fn isotropic(in: FragInput, h: vec3<f32>, NoV: f32, NoL: f32, NoH: f32, LoH: f32) -> vec3<f32> {
-    let albedo = get_albedo(in);
-    let roughness = perceptual_roughness_to_roughness(get_roughness(in));
-    let metallic = get_metallic(in);
-
-    // Remap reflectance to f0 from `[0.0, 1.0]`.
-    let reflectance = constants.reflectance;
-    let f0 = 0.16 * reflectance * (1.0 - metallic) + albedo.rgb * metallic;
-
-    let d = distribution(roughness, NoH, h);
-    let v = visibility(roughness, NoV, NoL);
-    let f = fresnel(f0, LoH);
-
-    return (d * v) * f;
-}
-
-// ----------------
-// --- Diffuse impl
-// ----------------
-
-fn Fd_Burley(roughness: f32, NoV: f32, NoL: f32, LoH: f32) -> f32 {
-    let f90 = 0.5 + 2.0 * roughness * LoH * LoH;
-    let light_scatter = F_Schlick(1.0, f90, NoL);
-    let view_scatter = F_Schlick(1.0, f90, NoV);
-    return light_scatter * view_scatter * (1.0 / PI);
-}
-
-fn diffuse(roughness: f32, NoV: f32, NoL: f32, LoH: f32) -> f32 {
-    return Fd_Burley(roughness, NoV, NoL, LoH);
-}
-
-fn diffuse_color(in: FragInput, NoV: f32, NoL: f32, LoH: f32, diffuse_color: vec3<f32>) -> vec3<f32> {
-    let roughness = perceptual_roughness_to_roughness(get_roughness(in));
-    return diffuse_color * diffuse(roughness, NoV, NoL, LoH);
-}
-
-struct Light {
-    color: vec3<f32>,
-    attenuation: f32,
-    direction: vec3<f32>,
-}
-
-fn perceptual_roughness_to_roughness(perceptual_roughness: f32) -> f32 {
-    // We clamp the roughness to 0.089 to prevent precision problems.
-    // We might be able to lower that value to 0.045 since we're using
-    // 32-bit floats.
-    // See https://google.github.io/filament/Filament.html#toc4.8.3.3
-    let clamped_perceptual_roughness = clamp(perceptual_roughness, 0.089, 1.0);
-    return clamped_perceptual_roughness * clamped_perceptual_roughness;
 }
