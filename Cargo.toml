@@ -36,6 +36,7 @@ members = [
     "tools/make",
     "tools/builder",
     "game_prefab",
+    "game_core_pipeline",
 ]
 
 resolver = "2"

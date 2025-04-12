@@ -6,7 +6,7 @@ use game_common::cell::UnsafeRefCell;
 use crate::api::{CommandQueue, DescriptorSetLayout, Pipeline, PipelineDescriptor, Sampler};
 use crate::backend::{
     AddressMode, CompareOp, DepthStencilState, DescriptorBinding, DescriptorSetDescriptor,
-    DescriptorType, FilterMode, FragmentStage, FrontFace, PipelineStage, PrimitiveTopology,
+    DescriptorType, Face, FilterMode, FragmentStage, FrontFace, PipelineStage, PrimitiveTopology,
     PushConstantRange, SamplerDescriptor, ShaderModule, ShaderStages, TextureFormat, VertexStage,
 };
 use crate::entities::{Event, Resources};

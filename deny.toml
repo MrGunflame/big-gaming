@@ -45,6 +45,7 @@ exceptions = [
     { allow = ["GPL-3.0"], name = "game_client" },
     { allow = ["GPL-3.0"], name = "game_common" },
     { allow = ["GPL-3.0"], name = "game_core" },
+    { allow = ["GPL-3.0"], name = "game_core_pipeline" },
     { allow = ["GPL-3.0"], name = "game_crash_handler" },
     { allow = ["GPL-3.0"], name = "game_data" },
     { allow = ["GPL-3.0"], name = "game_editor" },

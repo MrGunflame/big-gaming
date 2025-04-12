@@ -22,8 +22,8 @@ const POST_PROCESS_PASS: NodeLabel = NodeLabel::new("POST_PROCESS_PASS");
 pub const FINAL_RENDER_PASS: NodeLabel = POST_PROCESS_PASS;
 
 pub fn init(graph: &mut RenderGraph, forward: Arc<ForwardPipeline>, queue: &mut CommandQueue<'_>) {
-    let forward_pass = ForwardPass::new(queue, forward, HDR_TEXTURE);
-    let post_process = PostProcessPass::new(queue, HDR_TEXTURE, SlotLabel::SURFACE);
+    // let forward_pass = ForwardPass::new(queue, forward, HDR_TEXTURE);
+    // let post_process = PostProcessPass::new(queue, HDR_TEXTURE, SlotLabel::SURFACE);
 
     // `SurfaceInjector` is dummy node that only exists to
     // "inject" the surface texture into the pipeline.
@@ -36,33 +36,33 @@ pub fn init(graph: &mut RenderGraph, forward: Arc<ForwardPipeline>, queue: &mut 
         SlotFlags::WRITE,
     );
 
-    graph.add_node(FORWARD_PASS, forward_pass);
-    graph.add_slot_dependency(
-        FORWARD_PASS,
-        HDR_TEXTURE,
-        SlotKind::Texture,
-        SlotFlags::WRITE,
-    );
-    graph.add_slot_dependency(
-        FORWARD_PASS,
-        SlotLabel::SURFACE,
-        SlotKind::Texture,
-        SlotFlags::READ,
-    );
+    // graph.add_node(FORWARD_PASS, forward_pass);
+    // graph.add_slot_dependency(
+    //     FORWARD_PASS,
+    //     HDR_TEXTURE,
+    //     SlotKind::Texture,
+    //     SlotFlags::WRITE,
+    // );
+    // graph.add_slot_dependency(
+    //     FORWARD_PASS,
+    //     SlotLabel::SURFACE,
+    //     SlotKind::Texture,
+    //     SlotFlags::READ,
+    // );
 
-    graph.add_node(POST_PROCESS_PASS, post_process);
-    graph.add_slot_dependency(
-        POST_PROCESS_PASS,
-        HDR_TEXTURE,
-        SlotKind::Texture,
-        SlotFlags::READ,
-    );
-    graph.add_slot_dependency(
-        POST_PROCESS_PASS,
-        SlotLabel::SURFACE,
-        SlotKind::Texture,
-        SlotFlags::WRITE | SlotFlags::READ,
-    );
+    // graph.add_node(POST_PROCESS_PASS, post_process);
+    // graph.add_slot_dependency(
+    //     POST_PROCESS_PASS,
+    //     HDR_TEXTURE,
+    //     SlotKind::Texture,
+    //     SlotFlags::READ,
+    // );
+    // graph.add_slot_dependency(
+    //     POST_PROCESS_PASS,
+    //     SlotLabel::SURFACE,
+    //     SlotKind::Texture,
+    //     SlotFlags::WRITE | SlotFlags::READ,
+    // );
 }
 
 struct SurfaceInjector;

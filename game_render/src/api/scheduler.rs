@@ -98,6 +98,12 @@ where
                 }
             }
 
+            // The above is possible to get fucked up like so:
+            // 0 -> 5
+            // 1 -> 2
+            // FIXME: Time to redo this entire thing.
+            queue.sort();
+
             let node = &nodes[index];
             for res in node.resources(&resources) {
                 let access = resources.access(res.id);
