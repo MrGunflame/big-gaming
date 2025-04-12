@@ -370,6 +370,7 @@ fn create_material(
         && material.specular_glossiness_texture.is_some()
     {
         flags |= MaterialFlags::METALLIC_FROM_SPECULAR;
+        flags |= MaterialFlags::ROUGHNESS_FROM_GLOSSINESS;
     }
 
     let data = queue.create_buffer_init(&BufferInitDescriptor {
@@ -486,6 +487,7 @@ bitflags! {
         const UNLIT = 1 << 0;
         const FLIP_NORMAL_Y = 1 << 1;
         const METALLIC_FROM_SPECULAR = 1 << 2;
+        const ROUGHNESS_FROM_GLOSSINESS = 1 << 3;
     }
 }
 

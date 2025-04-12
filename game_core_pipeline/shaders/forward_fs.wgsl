@@ -11,6 +11,11 @@ struct MaterialConstants {
     specular_color: vec4<f32>,
 }
 
+const MATERIAL_FLAGS_UNLIT: u32 = 1u << 0;
+const MATERIAL_FLAGS_FLIP_NORMAL_Y: u32 = 1u << 1;
+const MATERIAL_FLAGS_METALLIC_FROM_SPECULAR: u32 = 1u << 2;
+const MATERIAL_FLAGS_ROUGHNESS_FROM_GLOSSINESS: u32 = 1u << 3;
+
 var<push_constant> push_constants: PushConstants;
 
 struct PushConstants {
@@ -69,6 +74,10 @@ struct FragInput {
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
 
+    if (constants.flags & MATERIAL_FLAGS_UNLIT) != 0 {
+        return color;
+    }
+
     // if push_constants.options.shading_mode == SHADING_MODE_ALBEDO {
     //     return vec4<f32>(get_albedo(in), 1.0);
     // } else if push_constants.options.shading_mode == SHADING_MODE_NORMAL {
@@ -77,16 +86,29 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     //     return vec4<f32>(in.world_tangent.xyz, 1.0);
     // }
 
+    let specular_strength = get_specular_strength(in);
+    let specular_color = constants.specular_color.rgb;
+
+    var roughness = get_roughness(in);
+    if (constants.flags & MATERIAL_FLAGS_ROUGHNESS_FROM_GLOSSINESS) != 0 {
+        roughness = get_roughness_from_glossiness(in);
+    }
+
+    var metallic = get_metallic(in);
+    if (constants.flags & MATERIAL_FLAGS_METALLIC_FROM_SPECULAR) != 0 {
+        metallic = compute_metallic_from_specular_color(specular_color * specular_strength);
+    }
+
     // BRDF parameters
     let view_dir = normalize(push_constants.camera.position - in.world_position);
     var material: Material;
     material.base_color = get_base_color(in);
     material.normal = get_normal(in);
-    material.metallic = get_metallic(in);
-    material.roughness = get_roughness(in);
+    material.metallic = metallic;
+    material.roughness = roughness;
     material.reflectance = constants.reflectance;
-    material.specular_color = vec3(1.0);
-    material.specular_strength = 1.0;
+    material.specular_color = specular_color;
+    material.specular_strength = specular_strength;
 
     var luminance: vec3<f32> = vec3(0.0, 0.0, 0.0);
 
@@ -193,6 +215,14 @@ struct SpotLight {
     outer_cutoff: f32,
 }
 
+fn get_specular_strength(in: FragInput) -> f32 {
+    return constants.specular_strength * textureSample(specular_glossiness_texture, linear_sampler, in.uv).r;
+}
+
+fn get_roughness_from_glossiness(in: FragInput) -> f32 {
+    return constants.roughness * (1.0 - textureSample(specular_glossiness_texture, linear_sampler, in.uv).g);
+}
+
 fn get_base_color(in: FragInput) -> vec4<f32> {
     return constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
 }
@@ -208,7 +238,11 @@ fn get_normal(in: FragInput) -> vec3<f32> {
     let tbn = mat3x3(tangent_norm, bitangent, normal_norm);
 
     var normal = textureSample(normal_texture, linear_sampler, in.uv).rgb;
-    normal.g = 1.0 - normal.g;
+
+    if (constants.flags & MATERIAL_FLAGS_FLIP_NORMAL_Y) != 0 {
+        normal.g = 1.0 - normal.g;
+    }
+
     normal = normalize(normal * 2.0 - 1.0);
     normal = normalize(tbn * normal);
 
