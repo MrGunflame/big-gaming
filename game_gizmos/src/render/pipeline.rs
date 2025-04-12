@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
+use game_core_pipeline::camera::{Camera, CameraUniform};
 use game_render::api::{
     BindingResource, BufferInitDescriptor, CommandQueue, DescriptorSetDescriptor,
     DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
@@ -14,7 +15,6 @@ use game_render::backend::{
     PipelineStage, PrimitiveTopology, ShaderModule, ShaderStages, StoreOp, TextureFormat,
     VertexStage,
 };
-use game_render::camera::{Camera, CameraUniform};
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
 use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
@@ -147,7 +147,7 @@ impl Node for GizmoPass {
     fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("GizmoPass::render").entered();
 
-        let Some(camera) = *self.camera.lock() else {
+        let Some(camera) = { self.camera.lock() }.clone() else {
             return;
         };
 

@@ -7,13 +7,13 @@ use std::f32::consts::PI;
 use std::sync::Arc;
 
 use game_common::components::Color;
-use game_render::camera::Camera;
+use game_core_pipeline::camera::Camera;
+use game_core_pipeline::FINAL_RENDER_PASS;
 use game_render::graph::NodeLabel;
 use game_render::graph::SlotFlags;
 use game_render::graph::SlotKind;
 use game_render::graph::SlotLabel;
 use game_render::Renderer;
-use game_render::FINAL_RENDER_PASS;
 use game_tracing::trace_span;
 use glam::Quat;
 use glam::Vec3;

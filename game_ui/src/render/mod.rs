@@ -10,10 +10,11 @@ use std::sync::Arc;
 
 use ::image::{ImageBuffer, Rgba};
 use game_common::components::Color;
+use game_core_pipeline::FINAL_RENDER_PASS;
 use game_render::api::Texture;
 use game_render::camera::RenderTarget;
 use game_render::graph::{NodeLabel, SlotFlags, SlotKind, SlotLabel};
-use game_render::{Renderer, FINAL_RENDER_PASS};
+use game_render::Renderer;
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::RwLock;

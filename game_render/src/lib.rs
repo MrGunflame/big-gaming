@@ -2,15 +2,9 @@ pub mod aabb;
 pub mod api;
 pub mod buffer;
 pub mod camera;
-pub mod entities;
-pub mod forward;
 pub mod graph;
-pub mod light;
 pub mod mesh;
-pub mod metrics;
 pub mod mipmap;
-pub mod options;
-pub mod pbr;
 pub mod pipeline_cache;
 pub mod shader;
 pub mod shape;
@@ -27,7 +21,6 @@ mod pipelined_rendering;
 use api::CommandQueue;
 use backend::vulkan::{Config, Instance};
 use backend::{AdapterKind, MemoryHeapFlags, QueueCapabilities};
-use entities::{Event, Resources, ResourcesMut};
 pub use fps_limiter::FpsLimit;
 use game_tasks::park::Parker;
 use statistics::Statistics;
@@ -44,7 +37,6 @@ use game_tasks::TaskPool;
 use game_tracing::trace_span;
 
 use camera::RenderTarget;
-use forward::ForwardPipeline;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use graph::RenderGraph;
@@ -52,8 +44,6 @@ use pipelined_rendering::{Command, RenderThreadHandle};
 use texture::{RenderImageId, RenderTexture, RenderTextures};
 use thiserror::Error;
 use tokio::sync::oneshot;
-
-pub use passes::FINAL_RENDER_PASS;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -65,10 +55,6 @@ pub enum Error {
 
 pub struct Renderer {
     render_thread: RenderThreadHandle,
-
-    forward: Arc<ForwardPipeline>,
-    resources: Arc<Resources>,
-    events: Vec<Event>,
 
     render_textures: RenderTextures,
     jobs: VecDeque<Job>,
@@ -175,33 +161,14 @@ impl Renderer {
         let render_thread =
             RenderThreadHandle::new(instance, adapter, device, queue, statistics.clone());
 
-        let mut scheduler = unsafe { render_thread.shared.scheduler.borrow_mut() };
-        let mut graph = unsafe { render_thread.shared.graph.borrow_mut() };
-        let mut queue = scheduler.queue();
-
-        let resources = Arc::new(Resources::default());
-
-        let forward = Arc::new(ForwardPipeline::new(&mut queue, resources.clone()));
-        passes::init(&mut graph, forward.clone(), &mut queue);
-
-        drop(graph);
-        drop(scheduler);
-
         Ok(Self {
             render_thread,
             render_textures: RenderTextures::new(),
             jobs: VecDeque::new(),
-            forward,
-            resources,
-            events: Vec::new(),
             surface_sizes: HashMap::new(),
             parker: None,
             statistics,
         })
-    }
-
-    pub fn resources(&mut self) -> ResourcesMut<'_> {
-        unsafe { ResourcesMut::new(&self.resources, &mut self.events) }
     }
 
     pub fn read_gpu_texture(&mut self, id: RenderImageId) -> ReadTexture {
@@ -247,17 +214,6 @@ impl Renderer {
         if let Some(parker) = self.parker.take() {
             parker.park();
         }
-
-        // Resize all cameras that are linked to the surface handle.
-        // Technically this will happend before the actual surface is resized,
-        // but this should be considered a rare case anyway, so we can afford
-        // the aspect ratio to be slightly off during that time.
-        let mut cameras = unsafe { self.resources.cameras.viewer() };
-        for camera in cameras.iter_mut() {
-            if camera.target == RenderTarget::Window(id) {
-                camera.update_aspect_ratio(size);
-            }
-        }
     }
 
     pub fn destroy(&mut self, id: WindowId) {
@@ -293,14 +249,6 @@ impl Renderer {
         // so the renderer is also idle.
         if let Some(parker) = &self.parker {
             parker.park();
-        }
-
-        unsafe {
-            // Commit all new resources.
-            // This is safe since the renderer is idle.
-            self.resources.commit();
-            core::mem::swap(&mut *self.forward.events.borrow_mut(), &mut self.events);
-            self.events.clear();
         }
 
         // Submit a new render command with the parker used in the next call.

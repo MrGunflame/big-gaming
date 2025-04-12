@@ -10,6 +10,8 @@ game_render = { version = "0.1.0", path = "../game_render" }
 game_tasks = { version = "0.1.0", path = "../game_tasks" }
 game_tracing = { version = "0.1.0", path = "../game_tracing" }
 game_common = { version = "0.1.0", path = "../game_common" }
+game_core_pipeline = { version = "0.1.0", path = "../game_core_pipeline" }
+
 glam = "0.28.0"
 futures-lite = "2.3.0"
 image = "0.25.1"
