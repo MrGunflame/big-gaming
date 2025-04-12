@@ -186,16 +186,19 @@ pub enum Face {
     Back,
 }
 
+#[derive(Debug)]
 pub enum PipelineStage<'a> {
     Vertex(VertexStage<'a>),
     Fragment(FragmentStage<'a>),
 }
 
+#[derive(Debug)]
 pub struct VertexStage<'a> {
     pub shader: &'a ShaderModule,
     pub entry: &'static str,
 }
 
+#[derive(Debug)]
 pub struct FragmentStage<'a> {
     pub shader: &'a ShaderModule,
     pub entry: &'static str,

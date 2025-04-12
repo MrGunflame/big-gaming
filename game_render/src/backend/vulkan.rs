@@ -2914,7 +2914,12 @@ impl<'a> CommandEncoder<'a> {
             };
 
             // Images cannot be transitioned into `UNDEFINED`.
-            assert_ne!(new_layout, vk::ImageLayout::UNDEFINED);
+            if new_layout == vk::ImageLayout::UNDEFINED {
+                panic!(
+                    "invalid image transition {:?}->{:?}: dst flags result in transition into UNDEFINED layout",
+                    src_access_flags, dst_access_flags
+                );
+            }
 
             assert!(barrier.base_mip_level < barrier.texture.mip_levels);
             assert!(barrier.base_mip_level + barrier.mip_levels <= barrier.texture.mip_levels);
@@ -4199,7 +4204,12 @@ fn validate_shader_bindings(shader: &super::ShaderModule, descriptors: &[&Descri
             );
         };
 
-        assert!(shader_binding.kind == binding.kind);
+        assert!(
+            shader_binding.kind == binding.kind,
+            "cannot bind {:?} to shader slot {:?}",
+            binding,
+            shader_binding,
+        );
     }
 }
 

@@ -676,19 +676,17 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub fn create_pipeline(&mut self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
-        let descriptors = self
-            .executor
-            .resources
-            .descriptor_set_layouts
-            .iter()
-            .filter_map(|(id, layout)| {
-                descriptor
-                    .descriptors
-                    .iter()
-                    .any(|d| d.id == id)
-                    .then_some(&layout.inner)
-            })
-            .collect::<Vec<_>>();
+        let mut descriptors = Vec::new();
+        for layout in descriptor.descriptors {
+            let layout = self
+                .executor
+                .resources
+                .descriptor_set_layouts
+                .get(layout.id)
+                .unwrap();
+
+            descriptors.push(&layout.inner);
+        }
 
         let mut bindings = HashMap::new();
         for stage in descriptor.stages {
@@ -709,7 +707,9 @@ impl<'a> CommandQueue<'a> {
                             access |= AccessFlags::VERTEX_SHADER_WRITE;
                         }
 
-                        *bindings.entry(binding.location()).or_default() |= access;
+                        if !access.is_empty() {
+                            *bindings.entry(binding.location()).or_default() |= access;
+                        }
                     }
                 }
                 PipelineStage::Fragment(stage) => {
@@ -728,7 +728,9 @@ impl<'a> CommandQueue<'a> {
                             access |= AccessFlags::FRAGMENT_SHADER_WRITE;
                         }
 
-                        *bindings.entry(binding.location()).or_default() |= access;
+                        if !access.is_empty() {
+                            *bindings.entry(binding.location()).or_default() |= access;
+                        }
                     }
                 }
             }
@@ -910,6 +912,7 @@ struct SamplerInner {
     ref_count: usize,
 }
 
+#[derive(Debug)]
 pub struct PipelineDescriptor<'a> {
     pub topology: PrimitiveTopology,
     pub front_face: FrontFace,
@@ -1115,7 +1118,7 @@ impl Node<Resources> for Command {
                 ]
             }
             Self::RenderPass(cmd) => {
-                let mut accesses = HashMap::new();
+                let mut accesses: HashMap<ResourceId, AccessFlags> = HashMap::new();
 
                 let mut pipeline = None;
 
@@ -1135,53 +1138,45 @@ impl Node<Resources> for Command {
 
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
                             for (binding, buffer) in &descriptor_set.buffers {
-                                let access = *pipeline
-                                    .bindings
-                                    .get(&BindingLocation {
-                                        group: *group,
-                                        binding: *binding,
-                                    })
-                                    .unwrap();
-
-                                *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |= access;
-                            }
-
-                            for (binding, view) in &descriptor_set.textures {
-                                let access = *pipeline
-                                    .bindings
-                                    .get(&BindingLocation {
-                                        group: *group,
-                                        binding: *binding,
-                                    })
-                                    .unwrap();
-
-                                for mip in view.mips() {
-                                    *accesses
-                                        .entry(ResourceId::Texture(TextureMip {
-                                            id: view.texture,
-                                            mip_level: mip,
-                                        }))
-                                        .or_default() |= access;
+                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
+                                    group: *group,
+                                    binding: *binding,
+                                }) {
+                                    *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
+                                        *access;
                                 }
                             }
 
-                            for (binding, views) in &descriptor_set.texture_arrays {
-                                let access = *pipeline
-                                    .bindings
-                                    .get(&BindingLocation {
-                                        group: *group,
-                                        binding: *binding,
-                                    })
-                                    .unwrap();
-
-                                for view in views {
+                            for (binding, view) in &descriptor_set.textures {
+                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
+                                    group: *group,
+                                    binding: *binding,
+                                }) {
                                     for mip in view.mips() {
                                         *accesses
                                             .entry(ResourceId::Texture(TextureMip {
                                                 id: view.texture,
                                                 mip_level: mip,
                                             }))
-                                            .or_default() |= access;
+                                            .or_default() |= *access;
+                                    }
+                                }
+                            }
+
+                            for (binding, views) in &descriptor_set.texture_arrays {
+                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
+                                    group: *group,
+                                    binding: *binding,
+                                }) {
+                                    for view in views {
+                                        for mip in view.mips() {
+                                            *accesses
+                                                .entry(ResourceId::Texture(TextureMip {
+                                                    id: view.texture,
+                                                    mip_level: mip,
+                                                }))
+                                                .or_default() |= *access;
+                                        }
                                     }
                                 }
                             }
@@ -1214,7 +1209,14 @@ impl Node<Resources> for Command {
 
                 accesses
                     .into_iter()
-                    .map(|(id, access)| Resource { id, access })
+                    .map(|(id, access)| {
+                        // We should never require a resource without any flags.
+                        // This could result in a texture transition into UNDEFINED
+                        // which is always invalid.
+                        debug_assert!(!access.is_empty());
+
+                        Resource { id, access }
+                    })
                     .collect()
             }
             Self::TextureTransition(texture, access) => {

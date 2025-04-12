@@ -1,10 +1,14 @@
 #include pbr.wgsl
 
 struct MaterialConstants {
+    flags: u32,
+    // pad0: [u32; 3]
     base_color: vec4<f32>,
-    metallic: f32,
     roughness: f32,
+    metallic: f32,
     reflectance: f32,
+    specular_strength: f32,
+    specular_color: vec4<f32>,
 }
 
 var<push_constant> push_constants: PushConstants;
@@ -15,7 +19,7 @@ struct PushConstants {
     // in the shader we should just recompile the shader with only the paths
     // defined in the options.
     // This requires a shader pre-processor which we currently do not have.
-    options: Options,
+    // options: Options,
 }
 
 struct Options {
@@ -41,7 +45,7 @@ var normal_texture: texture_2d<f32>;
 @group(2) @binding(3)
 var metallic_roughness_texture: texture_2d<f32>;
 @group(2) @binding(4)
-var linear_sampler: sampler;
+var specular_glossiness_texture: texture_2d<f32>;
 
 @group(3) @binding(0)
 var<storage> directional_lights: DirectionalLights;
@@ -49,6 +53,8 @@ var<storage> directional_lights: DirectionalLights;
 var<storage> point_lights: PointLights;
 @group(3) @binding(2)
 var<storage> spot_lights: SpotLights;
+@group(3) @binding(3)
+var linear_sampler: sampler;
 
 struct FragInput {
     @builtin(position) clip_position: vec4<f32>,
@@ -63,13 +69,13 @@ struct FragInput {
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
 
-    if push_constants.options.shading_mode == SHADING_MODE_ALBEDO {
-        return vec4<f32>(get_albedo(in), 1.0);
-    } else if push_constants.options.shading_mode == SHADING_MODE_NORMAL {
-        return vec4<f32>(get_normal(in), 1.0);
-    } else if push_constants.options.shading_mode == SHADING_MODE_TANGENT {
-        return vec4<f32>(in.world_tangent.xyz, 1.0);
-    }
+    // if push_constants.options.shading_mode == SHADING_MODE_ALBEDO {
+    //     return vec4<f32>(get_albedo(in), 1.0);
+    // } else if push_constants.options.shading_mode == SHADING_MODE_NORMAL {
+    //     return vec4<f32>(get_normal(in), 1.0);
+    // } else if push_constants.options.shading_mode == SHADING_MODE_TANGENT {
+    //     return vec4<f32>(in.world_tangent.xyz, 1.0);
+    // }
 
     // BRDF parameters
     let view_dir = normalize(push_constants.camera.position - in.world_position);
