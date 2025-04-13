@@ -1,6 +1,6 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 
+use bytes::Bytes;
 use glam::UVec2;
 
 use crate::backend::TextureFormat;
@@ -13,7 +13,7 @@ pub enum ImageFormat {
 
 #[derive(Clone, Debug)]
 pub struct Image {
-    bytes: Arc<[u8]>,
+    bytes: Bytes,
     format: TextureFormat,
     width: u32,
     height: u32,
@@ -22,7 +22,7 @@ pub struct Image {
 impl Image {
     pub fn new<T>(size: UVec2, format: TextureFormat, bytes: T) -> Self
     where
-        T: Into<Arc<[u8]>>,
+        T: Into<Bytes>,
     {
         let this = Self {
             bytes: bytes.into(),
@@ -52,20 +52,10 @@ impl Image {
     }
 
     fn validate_size(&self) {
-        let size = match self.format {
-            // 8-bit
-            TextureFormat::Rgba8Unorm => 4,
-            TextureFormat::Rgba8UnormSrgb => 4,
-            TextureFormat::Bgra8Unorm => 4,
-            TextureFormat::Bgra8UnormSrgb => 4,
-            TextureFormat::Rgba16Float => 8,
-            TextureFormat::Depth32Float => 4,
-        };
-
-        assert_eq!(
-            self.width as usize * self.height as usize * size as usize,
-            self.bytes.len()
-        );
+        // Bytes for a 4x4 block.
+        let block_size = self.format.bytes_per_block();
+        let size = (self.width / 4) * (self.height / 4) * block_size;
+        assert_eq!(size as usize, self.bytes.len());
     }
 }
 
@@ -81,10 +71,14 @@ impl PartialEq for &Image {
             return false;
         }
 
+        if self.bytes.len() != other.bytes.len() {
+            return false;
+        }
+
         // The images always the same if they refer to
         // the same allocation. This check avoids us avoid
         // a big memcmp if true.
-        if Arc::ptr_eq(&self.bytes, &other.bytes) {
+        if self.bytes.as_ptr() == other.bytes.as_ptr() {
             return true;
         }
 

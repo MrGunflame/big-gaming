@@ -23,10 +23,10 @@ use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator
 use crate::backend::shader::{BindingLocation, ShaderAccess};
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
-    self, AccessFlags, AdapterMemoryProperties, BufferUsage, DepthStencilState, Face, FrontFace,
-    ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
-    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
-    TextureUsage,
+    self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
+    Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor,
+    TextureFormat, TextureUsage,
 };
 use crate::statistics::Statistics;
 
@@ -44,6 +44,7 @@ pub struct CommandExecutor {
     resources: Resources,
     cmds: Vec<Command>,
     device: Device,
+    adapter_props: AdapterProperties,
 }
 
 impl CommandExecutor {
@@ -51,6 +52,7 @@ impl CommandExecutor {
         device: Device,
         memory_props: AdapterMemoryProperties,
         statistics: Arc<Statistics>,
+        adapter_props: AdapterProperties,
     ) -> Self {
         Self {
             resources: Resources {
@@ -70,6 +72,7 @@ impl CommandExecutor {
             },
             cmds: Vec::new(),
             device,
+            adapter_props,
         }
     }
 
@@ -243,6 +246,18 @@ pub struct CommandQueue<'a> {
 }
 
 impl<'a> CommandQueue<'a> {
+    /// Returns the set of [`TextureUsage`] flags that the given [`TextureFormat`] supports.
+    ///
+    /// If the [`TextureFormat`] is not supported all all en empty set will be returned.
+    pub fn supported_texture_usages(&self, format: TextureFormat) -> TextureUsage {
+        self.executor
+            .adapter_props
+            .formats
+            .get(&format)
+            .copied()
+            .unwrap_or(TextureUsage::empty())
+    }
+
     pub fn create_buffer(&mut self, descriptor: &BufferDescriptor) -> Buffer {
         let buffer = self.executor.resources.allocator.create_buffer(
             descriptor.size.try_into().unwrap(),
@@ -338,6 +353,22 @@ impl<'a> CommandQueue<'a> {
             !descriptor.usage.is_empty(),
             "TextureUsage flags must not be empty",
         );
+        assert!(
+            self.supported_texture_usages(descriptor.format)
+                .contains(descriptor.usage),
+            "unsupported texture usages: {:?} (supported are {:?})",
+            descriptor.usage,
+            self.supported_texture_usages(descriptor.format),
+        );
+
+        let supported_usages = self
+            .executor
+            .adapter_props
+            .formats
+            .get(&descriptor.format)
+            .copied()
+            .unwrap_or(TextureUsage::empty());
+        if supported_usages.contains(descriptor.usage) {}
 
         let texture = self
             .executor
@@ -527,6 +558,42 @@ impl<'a> CommandQueue<'a> {
                 src: src.id,
                 src_offset: 0,
                 layout,
+                dst: dst.texture.id,
+                dst_mip_level: dst.mip_level,
+            }));
+    }
+
+    pub fn copy_texture_to_texture(&mut self, src: TextureRegion<'_>, dst: TextureRegion<'_>) {
+        assert!(
+            src.texture.usage.contains(TextureUsage::TRANSFER_SRC),
+            "Texture cannot be read from: TRANSER_SRC not set"
+        );
+        assert!(
+            dst.texture.usage.contains(TextureUsage::TRANSFER_DST),
+            "Texture cannot be written to: TRANSFER_DST not set",
+        );
+        assert!(src.mip_level < src.texture.mip_levels);
+        assert!(dst.mip_level < dst.texture.mip_levels);
+
+        // The source and destination textures must be kept alive.
+        self.executor
+            .resources
+            .textures
+            .get_mut(src.texture.id)
+            .unwrap()
+            .ref_count += 1;
+        self.executor
+            .resources
+            .textures
+            .get_mut(dst.texture.id)
+            .unwrap()
+            .ref_count += 1;
+
+        self.executor
+            .cmds
+            .push(Command::CopyTextureToTexture(CopyTextureToTexture {
+                src: src.texture.id,
+                src_mip_level: src.mip_level,
                 dst: dst.texture.id,
                 dst_mip_level: dst.mip_level,
             }));
@@ -1075,6 +1142,7 @@ enum Command {
     WriteBuffer(BufferId, Vec<u8>),
     CopyBufferToBuffer(CopyBufferToBuffer),
     CopyBufferToTexture(CopyBufferToTexture),
+    CopyTextureToTexture(CopyTextureToTexture),
     RenderPass(RenderPassCmd),
     TextureTransition(TextureMip, AccessFlags),
 }
@@ -1106,6 +1174,24 @@ impl Node<Resources> for Command {
                 vec![
                     Resource {
                         id: ResourceId::Buffer(cmd.src),
+                        access: AccessFlags::TRANSFER_READ,
+                    },
+                    Resource {
+                        id: ResourceId::Texture(TextureMip {
+                            id: cmd.dst,
+                            mip_level: cmd.dst_mip_level,
+                        }),
+                        access: AccessFlags::TRANSFER_WRITE,
+                    },
+                ]
+            }
+            Self::CopyTextureToTexture(cmd) => {
+                vec![
+                    Resource {
+                        id: ResourceId::Texture(TextureMip {
+                            id: cmd.src,
+                            mip_level: cmd.src_mip_level,
+                        }),
                         access: AccessFlags::TRANSFER_READ,
                     },
                     Resource {
@@ -1248,6 +1334,14 @@ struct CopyBufferToTexture {
     /// The texture to copy the bytes to.
     dst: TextureId,
     /// The mip level of the texture that should be written.
+    dst_mip_level: u32,
+}
+
+#[derive(Clone, Debug)]
+struct CopyTextureToTexture {
+    src: TextureId,
+    src_mip_level: u32,
+    dst: TextureId,
     dst_mip_level: u32,
 }
 

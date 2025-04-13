@@ -37,6 +37,7 @@ const HDR_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 const UPDATE_PASS: NodeLabel = NodeLabel::new("UPDATE_PASS");
 const FORWARD_PASS: NodeLabel = NodeLabel::new("FORWARD_PASS");
 const POST_PROCESS_PASS: NodeLabel = NodeLabel::new("POST_PROCESS_PASS");
+pub const FINAL_RENDER_PASS: NodeLabel = NodeLabel::new("FINAL_RENDER_PASS");
 
 const HDR_TEXTURE: SlotLabel = SlotLabel::new("HDR_TEXTURE");
 

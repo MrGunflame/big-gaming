@@ -1,6 +1,6 @@
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::{c_void, CStr, CString};
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
@@ -523,7 +523,50 @@ impl Adapter {
             _ => AdapterKind::Other,
         };
 
-        AdapterProperties { name, kind }
+        let formats = self.get_supported_format_usages();
+
+        AdapterProperties {
+            name,
+            kind,
+            formats,
+        }
+    }
+
+    fn get_supported_format_usages(&self) -> HashMap<TextureFormat, TextureUsage> {
+        let mut formats = HashMap::new();
+        for format in TextureFormat::all() {
+            let mut props = vk::FormatProperties2::default();
+
+            unsafe {
+                self.instance.get_physical_device_format_properties2(
+                    self.physical_device,
+                    vk::Format::from(*format),
+                    &mut props,
+                )
+            }
+
+            let features = props.format_properties.optimal_tiling_features;
+            let mut usages = TextureUsage::empty();
+
+            if features.contains(vk::FormatFeatureFlags::TRANSFER_SRC) {
+                usages |= TextureUsage::TRANSFER_SRC;
+            }
+            if features.contains(vk::FormatFeatureFlags::TRANSFER_DST) {
+                usages |= TextureUsage::TRANSFER_DST;
+            }
+            if features.contains(vk::FormatFeatureFlags::SAMPLED_IMAGE) {
+                usages |= TextureUsage::TEXTURE_BINDING;
+            }
+            if features.contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT)
+                || features.contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
+            {
+                usages |= TextureUsage::RENDER_ATTACHMENT;
+            }
+
+            formats.insert(*format, usages);
+        }
+
+        formats
     }
 
     /// Queries and returns information about this `Adapter`'s memories.
@@ -837,6 +880,22 @@ pub struct Device {
 }
 
 impl Device {
+    fn get_format_features(&self, format: TextureFormat) -> vk::FormatFeatureFlags {
+        let mut props = vk::FormatProperties2::default();
+
+        unsafe {
+            self.device.instance.get_physical_device_format_properties2(
+                self.physical_device,
+                format.into(),
+                &mut props,
+            );
+        }
+
+        // buffer and linear features are uninteresting as we never
+        // use them.
+        props.format_properties.optimal_tiling_features
+    }
+
     /// Creates a new [`Queue`], bound to this `Device`.
     pub fn create_queue(&mut self, family: QueueFamilyId) -> Result<Queue, Error> {
         // Find a queue with the fitting `id` that is not yet
@@ -1413,8 +1472,19 @@ impl Device {
                         .name(&*name)
                 }
                 PipelineStage::Fragment(stage) => {
-                    color_attchment_formats
-                        .extend(stage.targets.iter().copied().map(vk::Format::from));
+                    for target in stage.targets {
+                        if !self
+                            .get_format_features(*target)
+                            .contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT)
+                        {
+                            panic!(
+                                "format {:?} does not support being used as an color attachment",
+                                target
+                            );
+                        }
+
+                        color_attchment_formats.push(vk::Format::from(*target));
+                    }
 
                     let spirv = create_pipeline_shader_module(
                         &stage.shader.shader,
@@ -2204,120 +2274,141 @@ impl Drop for Swapchain {
     }
 }
 
-impl TryFrom<vk::PresentModeKHR> for PresentMode {
-    type Error = UnknownEnumValue;
+macro_rules! vk_enum {
+    ($t:ty => $vk_ty:ty, $($lhs:path => $rhs:path),*,) => {
+        impl From<$t> for $vk_ty {
+            fn from(value: $t) -> Self {
+                match value {
+                    $(
+                        $lhs => $rhs,
+                    )*
+                }
+            }
+        }
 
-    fn try_from(value: vk::PresentModeKHR) -> Result<Self, Self::Error> {
+        impl TryFrom<$vk_ty> for $t {
+            type Error = UnknownEnumValue;
+
+            fn try_from(value: $vk_ty) -> Result<Self, Self::Error> {
+                match value {
+                    $(
+                        $rhs => Ok($lhs),
+                    )*
+                    _ => Err(UnknownEnumValue)
+                }
+            }
+        }
+    };
+}
+
+vk_enum! {
+    PresentMode => vk::PresentModeKHR,
+    PresentMode::Fifo => vk::PresentModeKHR::FIFO,
+    PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
+    PresentMode::FifoRelaxed => vk::PresentModeKHR::FIFO_RELAXED,
+    PresentMode::Mailbox => vk::PresentModeKHR::MAILBOX,
+}
+
+vk_enum! {
+    TextureFormat => vk::Format,
+    TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
+    TextureFormat::Rgba8UnormSrgb => vk::Format::R8G8B8A8_SRGB,
+    TextureFormat::Bgra8Unorm => vk::Format::B8G8R8A8_UNORM,
+    TextureFormat::Bgra8UnormSrgb => vk::Format::B8G8R8A8_SRGB,
+    TextureFormat::Depth32Float => vk::Format::D32_SFLOAT,
+    TextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
+    TextureFormat::Bc1RgbaUnorm => vk::Format::BC1_RGBA_UNORM_BLOCK,
+    TextureFormat::Bc1RgbaUnormSrgb => vk::Format::BC1_RGBA_SRGB_BLOCK,
+    TextureFormat::Bc2RgbaUnorm => vk::Format::BC2_UNORM_BLOCK,
+    TextureFormat::Bc2RgbaUnormSrgb => vk::Format::BC2_SRGB_BLOCK,
+    TextureFormat::Bc3RgbaUnorm => vk::Format::BC3_UNORM_BLOCK,
+    TextureFormat::Bc3RgbaUnormSrgb => vk::Format::BC3_SRGB_BLOCK,
+    TextureFormat::Bc4RUnorm => vk::Format::BC4_UNORM_BLOCK,
+    TextureFormat::Bc4RSnorm => vk::Format::BC4_SNORM_BLOCK,
+    TextureFormat::Bc5RgUnorm => vk::Format::BC5_UNORM_BLOCK,
+    TextureFormat::Bc5RgSnorm => vk::Format::BC5_SNORM_BLOCK,
+    TextureFormat::Bc6HRgbUFloat => vk::Format::BC6H_UFLOAT_BLOCK,
+    TextureFormat::Bc6HRgbSFloat => vk::Format::BC6H_SFLOAT_BLOCK,
+    TextureFormat::Bc7RgbaUnorm => vk::Format::BC7_UNORM_BLOCK,
+    TextureFormat::Bc7RgbaUnormSrgb => vk::Format::BC7_SRGB_BLOCK,
+}
+
+vk_enum! {
+    ColorSpace => vk::ColorSpaceKHR,
+    ColorSpace::SrgbNonLinear => vk::ColorSpaceKHR::SRGB_NONLINEAR,
+}
+
+vk_enum! {
+    PrimitiveTopology => vk::PrimitiveTopology,
+    PrimitiveTopology::TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
+    PrimitiveTopology::LineList => vk::PrimitiveTopology::LINE_LIST,
+    PrimitiveTopology::PointList => vk::PrimitiveTopology::POINT_LIST,
+    PrimitiveTopology::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
+    PrimitiveTopology::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
+}
+
+vk_enum! {
+    FrontFace => vk::FrontFace,
+    FrontFace::Cw => vk::FrontFace::CLOCKWISE,
+    FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
+}
+
+vk_enum! {
+    DescriptorType => vk::DescriptorType,
+    DescriptorType::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
+    DescriptorType::Storage => vk::DescriptorType::STORAGE_BUFFER,
+    DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
+    DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
+}
+
+vk_enum! {
+    TextureLayout => vk::ImageLayout,
+    TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
+    TextureLayout::ColorAttachment => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+    TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
+    TextureLayout::TransferDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+    TextureLayout::ShaderRead => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+}
+
+vk_enum! {
+    FilterMode => vk::Filter,
+    FilterMode::Nearest => vk::Filter::NEAREST,
+    FilterMode::Linear => vk::Filter::LINEAR,
+}
+
+impl From<FilterMode> for vk::SamplerMipmapMode {
+    fn from(value: FilterMode) -> Self {
         match value {
-            vk::PresentModeKHR::FIFO => Ok(PresentMode::Fifo),
-            vk::PresentModeKHR::IMMEDIATE => Ok(PresentMode::Immediate),
-            vk::PresentModeKHR::FIFO_RELAXED => Ok(PresentMode::FifoRelaxed),
-            vk::PresentModeKHR::MAILBOX => Ok(PresentMode::Mailbox),
-            _ => Err(UnknownEnumValue),
+            FilterMode::Nearest => vk::SamplerMipmapMode::NEAREST,
+            FilterMode::Linear => vk::SamplerMipmapMode::LINEAR,
         }
     }
 }
 
-impl From<PresentMode> for vk::PresentModeKHR {
-    fn from(value: PresentMode) -> Self {
-        match value {
-            PresentMode::Fifo => vk::PresentModeKHR::FIFO,
-            PresentMode::Immediate => vk::PresentModeKHR::IMMEDIATE,
-            PresentMode::FifoRelaxed => vk::PresentModeKHR::FIFO_RELAXED,
-            PresentMode::Mailbox => vk::PresentModeKHR::MAILBOX,
-        }
-    }
+vk_enum! {
+    AddressMode => vk::SamplerAddressMode,
+    AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
+    AddressMode::MirrorRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
+    AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+    AddressMode::ClampToBorder => vk::SamplerAddressMode::CLAMP_TO_BORDER,
 }
 
-impl TryFrom<vk::Format> for TextureFormat {
-    type Error = UnknownEnumValue;
-
-    fn try_from(value: vk::Format) -> Result<Self, Self::Error> {
-        match value {
-            vk::Format::R8G8B8A8_UNORM => Ok(Self::Rgba8Unorm),
-            vk::Format::R8G8B8A8_SRGB => Ok(Self::Rgba8UnormSrgb),
-            vk::Format::B8G8R8A8_UNORM => Ok(Self::Bgra8Unorm),
-            vk::Format::B8G8R8A8_SRGB => Ok(Self::Bgra8UnormSrgb),
-            vk::Format::D32_SFLOAT => Ok(Self::Depth32Float),
-            vk::Format::R16G16B16A16_SFLOAT => Ok(Self::Rgba16Float),
-            _ => Err(UnknownEnumValue),
-        }
-    }
+vk_enum! {
+    IndexFormat => vk::IndexType,
+    IndexFormat::U16 => vk::IndexType::UINT16,
+    IndexFormat::U32 => vk::IndexType::UINT32,
 }
 
-impl From<TextureFormat> for vk::Format {
-    fn from(value: TextureFormat) -> Self {
-        match value {
-            TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
-            TextureFormat::Rgba8UnormSrgb => vk::Format::R8G8B8A8_SRGB,
-            TextureFormat::Bgra8Unorm => vk::Format::B8G8R8A8_UNORM,
-            TextureFormat::Bgra8UnormSrgb => vk::Format::B8G8R8A8_SRGB,
-            TextureFormat::Depth32Float => vk::Format::D32_SFLOAT,
-            TextureFormat::Rgba16Float => vk::Format::R16G16B16A16_SFLOAT,
-        }
-    }
-}
-
-impl From<ColorSpace> for vk::ColorSpaceKHR {
-    fn from(value: ColorSpace) -> Self {
-        match value {
-            ColorSpace::SrgbNonLinear => vk::ColorSpaceKHR::SRGB_NONLINEAR,
-        }
-    }
-}
-
-impl TryFrom<vk::ColorSpaceKHR> for ColorSpace {
-    type Error = UnknownEnumValue;
-
-    fn try_from(value: vk::ColorSpaceKHR) -> Result<Self, Self::Error> {
-        match value {
-            vk::ColorSpaceKHR::SRGB_NONLINEAR => Ok(Self::SrgbNonLinear),
-            _ => Err(UnknownEnumValue),
-        }
-    }
-}
-
-impl TryFrom<vk::PrimitiveTopology> for PrimitiveTopology {
-    type Error = UnknownEnumValue;
-
-    fn try_from(value: vk::PrimitiveTopology) -> Result<Self, Self::Error> {
-        match value {
-            vk::PrimitiveTopology::TRIANGLE_LIST => Ok(Self::TriangleList),
-            _ => Err(UnknownEnumValue),
-        }
-    }
-}
-
-impl From<PrimitiveTopology> for vk::PrimitiveTopology {
-    fn from(value: PrimitiveTopology) -> Self {
-        match value {
-            PrimitiveTopology::TriangleList => vk::PrimitiveTopology::TRIANGLE_LIST,
-            PrimitiveTopology::LineList => vk::PrimitiveTopology::LINE_LIST,
-            PrimitiveTopology::PointList => vk::PrimitiveTopology::POINT_LIST,
-            PrimitiveTopology::LineStrip => vk::PrimitiveTopology::LINE_STRIP,
-            PrimitiveTopology::TriangleStrip => vk::PrimitiveTopology::TRIANGLE_STRIP,
-        }
-    }
-}
-
-impl From<FrontFace> for vk::FrontFace {
-    fn from(value: FrontFace) -> Self {
-        match value {
-            FrontFace::Cw => vk::FrontFace::CLOCKWISE,
-            FrontFace::Ccw => vk::FrontFace::COUNTER_CLOCKWISE,
-        }
-    }
-}
-
-impl From<DescriptorType> for vk::DescriptorType {
-    fn from(value: DescriptorType) -> Self {
-        match value {
-            DescriptorType::Uniform => vk::DescriptorType::UNIFORM_BUFFER,
-            DescriptorType::Storage => vk::DescriptorType::STORAGE_BUFFER,
-            DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
-            DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
-        }
-    }
+vk_enum! {
+    CompareOp => vk::CompareOp,
+    CompareOp::Never => vk::CompareOp::NEVER,
+    CompareOp::Less => vk::CompareOp::LESS,
+    CompareOp::LessEqual => vk::CompareOp::LESS_OR_EQUAL,
+    CompareOp::Equal => vk::CompareOp::EQUAL,
+    CompareOp::Greater => vk::CompareOp::GREATER,
+    CompareOp::GreaterEqual => vk::CompareOp::GREATER_OR_EQUAL,
+    CompareOp::Always => vk::CompareOp::ALWAYS,
+    CompareOp::NotEqual => vk::CompareOp::NOT_EQUAL,
 }
 
 impl From<ShaderStages> for vk::ShaderStageFlags {
@@ -2348,71 +2439,6 @@ impl From<TextureUsage> for vk::ImageUsageFlags {
             flags |= vk::ImageUsageFlags::SAMPLED;
         }
         flags
-    }
-}
-
-impl From<TextureLayout> for vk::ImageLayout {
-    fn from(value: TextureLayout) -> Self {
-        match value {
-            TextureLayout::Undefined => vk::ImageLayout::UNDEFINED,
-            TextureLayout::ColorAttachment => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            TextureLayout::Present => vk::ImageLayout::PRESENT_SRC_KHR,
-            TextureLayout::TransferDst => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            TextureLayout::ShaderRead => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        }
-    }
-}
-
-impl From<FilterMode> for vk::Filter {
-    fn from(value: FilterMode) -> Self {
-        match value {
-            FilterMode::Nearest => vk::Filter::NEAREST,
-            FilterMode::Linear => vk::Filter::LINEAR,
-        }
-    }
-}
-
-impl From<FilterMode> for vk::SamplerMipmapMode {
-    fn from(value: FilterMode) -> Self {
-        match value {
-            FilterMode::Nearest => vk::SamplerMipmapMode::NEAREST,
-            FilterMode::Linear => vk::SamplerMipmapMode::LINEAR,
-        }
-    }
-}
-
-impl From<AddressMode> for vk::SamplerAddressMode {
-    fn from(value: AddressMode) -> Self {
-        match value {
-            AddressMode::Repeat => vk::SamplerAddressMode::REPEAT,
-            AddressMode::MirrorRepeat => vk::SamplerAddressMode::MIRRORED_REPEAT,
-            AddressMode::ClampToEdge => vk::SamplerAddressMode::CLAMP_TO_EDGE,
-            AddressMode::ClampToBorder => vk::SamplerAddressMode::CLAMP_TO_BORDER,
-        }
-    }
-}
-
-impl From<IndexFormat> for vk::IndexType {
-    fn from(value: IndexFormat) -> Self {
-        match value {
-            IndexFormat::U16 => vk::IndexType::UINT16,
-            IndexFormat::U32 => vk::IndexType::UINT32,
-        }
-    }
-}
-
-impl From<CompareOp> for vk::CompareOp {
-    fn from(value: CompareOp) -> Self {
-        match value {
-            CompareOp::Never => Self::NEVER,
-            CompareOp::Less => Self::LESS,
-            CompareOp::LessEqual => Self::LESS_OR_EQUAL,
-            CompareOp::Equal => Self::EQUAL,
-            CompareOp::Greater => Self::GREATER,
-            CompareOp::GreaterEqual => Self::GREATER_OR_EQUAL,
-            CompareOp::Always => Self::ALWAYS,
-            CompareOp::NotEqual => Self::NOT_EQUAL,
-        }
     }
 }
 
@@ -2708,6 +2734,92 @@ impl<'a> CommandEncoder<'a> {
             self.device
                 .device
                 .cmd_copy_buffer_to_image2(self.buffer, &info);
+        }
+    }
+
+    /// Copies texels from a source [`Texture`] to a destination [`Texture`].
+    ///
+    /// # Safety
+    ///
+    /// - The `src` [`Texture`] must have only the [`TRANSFER_READ`] flag set at the time of operation.
+    /// - The `dst` [`Texture`] must have only the [`TRANSFER_WRITE`] flag set at the time of operation.
+    /// - Only one operation must write to `dst` before the write is flushed.
+    ///
+    /// [`TRANSFER_READ`]: AccessFlags::TRANSFER_READ
+    /// [`TRANSFER_WRITE`]: AccessFlags::TRANSFER_WRITE
+    pub unsafe fn copy_texture_to_texture(
+        &mut self,
+        src: &Texture,
+        src_mip_level: u32,
+        dst: &Texture,
+        dst_mip_level: u32,
+    ) {
+        assert!(self.queue_caps.contains(QueueCapabilities::TRANSFER));
+
+        assert_ne!(src.size.x, 0);
+        assert_ne!(src.size.y, 0);
+        assert!(src_mip_level < src.mip_levels);
+
+        assert_ne!(dst.size.x, 0);
+        assert_ne!(dst.size.y, 0);
+        assert!(dst_mip_level < dst.mip_levels);
+
+        // TODO: We only support copying the entire image for now
+        // and as such both must be the same size.
+        // Note that we must account for the mip levels.
+        // https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-mip-level-sizing
+        let src_size = src.size >> src_mip_level;
+        let dst_size = dst.size >> dst_mip_level;
+        assert_eq!(src_size, dst_size);
+
+        let src_aspect_mask = if src.format.is_depth() {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            vk::ImageAspectFlags::COLOR
+        };
+
+        let src_subresource = vk::ImageSubresourceLayers::default()
+            .aspect_mask(src_aspect_mask)
+            .mip_level(src_mip_level)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let dst_aspect_mask = if dst.format.is_depth() {
+            vk::ImageAspectFlags::DEPTH
+        } else {
+            vk::ImageAspectFlags::COLOR
+        };
+
+        let dst_subresource = vk::ImageSubresourceLayers::default()
+            .aspect_mask(dst_aspect_mask)
+            .mip_level(dst_mip_level)
+            .base_array_layer(0)
+            .layer_count(1);
+
+        let region = vk::ImageCopy2::default()
+            .src_subresource(src_subresource)
+            .src_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+            .dst_subresource(dst_subresource)
+            .dst_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
+            .extent(vk::Extent3D {
+                // - `extent.width` must not be 0.
+                width: dst.size.x,
+                // - `extent.height` must not be 0.
+                height: dst.size.y,
+                // - `extent.depth` must not be 0.
+                depth: 1,
+            });
+
+        let regions = &[region];
+        let info = vk::CopyImageInfo2::default()
+            .src_image(src.image)
+            .src_image_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .dst_image(dst.image)
+            .dst_image_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .regions(regions);
+
+        unsafe {
+            self.device.device.cmd_copy_image2(self.buffer, &info);
         }
     }
 

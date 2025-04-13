@@ -3,6 +3,7 @@ pub mod descriptors;
 pub mod shader;
 pub mod vulkan;
 
+use std::collections::HashMap;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
 
@@ -18,6 +19,8 @@ use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, TextureView
 pub struct AdapterProperties {
     pub name: String,
     pub kind: AdapterKind,
+    /// What operations are supported by which texture formats.
+    pub formats: HashMap<TextureFormat, TextureUsage>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -121,15 +124,83 @@ pub enum TextureFormat {
     Bgra8UnormSrgb,
     Depth32Float,
     Rgba16Float,
+    Bc1RgbaUnorm,
+    Bc1RgbaUnormSrgb,
+    Bc2RgbaUnorm,
+    Bc2RgbaUnormSrgb,
+    Bc3RgbaUnorm,
+    Bc3RgbaUnormSrgb,
+    Bc4RUnorm,
+    Bc4RSnorm,
+    Bc5RgUnorm,
+    Bc5RgSnorm,
+    Bc6HRgbUFloat,
+    Bc6HRgbSFloat,
+    Bc7RgbaUnorm,
+    Bc7RgbaUnormSrgb,
 }
 
 impl TextureFormat {
     pub const fn is_srgb(&self) -> bool {
-        matches!(self, Self::Bgra8UnormSrgb | Self::Rgba8UnormSrgb)
+        match self {
+            Self::Rgba8UnormSrgb => true,
+            Self::Bgra8UnormSrgb => true,
+            Self::Bc1RgbaUnormSrgb => true,
+            Self::Bc2RgbaUnormSrgb => true,
+            Self::Bc3RgbaUnormSrgb => true,
+            Self::Bc7RgbaUnormSrgb => true,
+            _ => false,
+        }
     }
 
     pub const fn is_depth(&self) -> bool {
         matches!(self, Self::Depth32Float)
+    }
+
+    /// Returns the number of bytes per 4x4 block.
+    pub const fn bytes_per_block(&self) -> u32 {
+        match self {
+            // 8-bit
+            TextureFormat::Rgba8Unorm => 64,
+            TextureFormat::Rgba8UnormSrgb => 64,
+            TextureFormat::Bgra8Unorm => 64,
+            TextureFormat::Bgra8UnormSrgb => 64,
+            TextureFormat::Rgba16Float => 128,
+            TextureFormat::Depth32Float => 64,
+            TextureFormat::Bc1RgbaUnorm => 8,
+            TextureFormat::Bc1RgbaUnormSrgb => 8,
+            TextureFormat::Bc2RgbaUnorm => 16,
+            TextureFormat::Bc2RgbaUnormSrgb => 16,
+            TextureFormat::Bc3RgbaUnorm => 16,
+            TextureFormat::Bc3RgbaUnormSrgb => 16,
+            TextureFormat::Bc4RUnorm => 8,
+            TextureFormat::Bc4RSnorm => 8,
+            TextureFormat::Bc5RgSnorm => 16,
+            TextureFormat::Bc5RgUnorm => 16,
+            TextureFormat::Bc6HRgbUFloat => 16,
+            TextureFormat::Bc6HRgbSFloat => 16,
+            TextureFormat::Bc7RgbaUnorm => 16,
+            TextureFormat::Bc7RgbaUnormSrgb => 16,
+        }
+    }
+
+    pub fn all() -> &'static [Self] {
+        &[
+            Self::Rgba8Unorm,
+            Self::Rgba8UnormSrgb,
+            Self::Bgra8Unorm,
+            Self::Bgra8UnormSrgb,
+            Self::Depth32Float,
+            Self::Rgba16Float,
+            Self::Bc1RgbaUnorm,
+            Self::Bc1RgbaUnormSrgb,
+            Self::Bc2RgbaUnorm,
+            Self::Bc2RgbaUnormSrgb,
+            Self::Bc3RgbaUnorm,
+            Self::Bc3RgbaUnormSrgb,
+            Self::Bc5RgUnorm,
+            Self::Bc5RgSnorm,
+        ]
     }
 }
 
@@ -303,9 +374,13 @@ bitflags! {
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
     pub struct TextureUsage: u32 {
+        /// The texture can be used as a copy source.
         const TRANSFER_SRC = 1 << 0;
+        /// The texture can be used as a copy destination.
         const TRANSFER_DST = 1 << 1;
+        /// The texture can be used as a target attachment in a render pass.
         const RENDER_ATTACHMENT = 1 << 2;
+        /// The texture can be bound in a shader.
         const TEXTURE_BINDING = 1 << 3;
     }
 }
@@ -385,28 +460,6 @@ pub struct TextureDescriptor {
     pub mip_levels: u32,
     pub format: TextureFormat,
     pub usage: TextureUsage,
-}
-
-impl TextureDescriptor {
-    #[deprecated]
-    pub fn compute_size(&self) -> u64 {
-        // TODO: Implement mips > 1
-        assert_eq!(
-            self.mip_levels, 1,
-            "compute_size is not yet implemented for mips > 1"
-        );
-
-        let bytes_per_texel = match self.format {
-            TextureFormat::Rgba8Unorm => 4,
-            TextureFormat::Rgba8UnormSrgb => 4,
-            TextureFormat::Bgra8Unorm => 4,
-            TextureFormat::Bgra8UnormSrgb => 4,
-            TextureFormat::Depth32Float => 4,
-            TextureFormat::Rgba16Float => 8,
-        };
-
-        bytes_per_texel * u64::from(self.size.x) * u64::from(self.size.y)
-    }
 }
 
 pub struct PipelineBarriers<'a> {

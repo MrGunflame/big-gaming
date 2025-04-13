@@ -95,7 +95,6 @@ impl Node for UpdatePass {
                     state.materials.remove(&id);
                 }
                 Event::CreateObject(id, object) => {
-                    tracing::trace!("create obj");
                     let transform = create_object_transform(
                         ctx.queue,
                         &state.transform_descriptor_layout,
@@ -113,13 +112,11 @@ impl Node for UpdatePass {
                     }
                 }
                 Event::DestroyObject(id) => {
-                    tracing::trace!("rm obj");
                     for scene in state.scenes.values_mut() {
                         scene.objects.remove(&id);
                     }
                 }
                 Event::CreateCamera(id, camera) => {
-                    tracing::trace!("camera");
                     if let Some(scene) = state.scenes.get_mut(&camera.scene.id()) {
                         scene.cameras.insert(id, camera);
                     }
@@ -322,14 +319,32 @@ fn create_mesh(
 fn create_image(queue: &mut CommandQueue<'_>, mipgen: &MipMapGenerator, image: &Image) -> Texture {
     let _span = trace_span!("create_image").entered();
 
+    let supported_usages = queue.supported_texture_usages(image.format());
+    if !supported_usages.contains(TextureUsage::TRANSFER_DST)
+        || !supported_usages.contains(TextureUsage::TEXTURE_BINDING)
+    {
+        // TODO: Error handling
+        todo!("unsupported texture format: {:?}", image.format());
+    }
+
+    let generate_mipmaps = supported_usages.contains(TextureUsage::RENDER_ATTACHMENT);
+
+    let mut mip_levels = 1;
+    let mut usage = TextureUsage::TRANSFER_DST | TextureUsage::TEXTURE_BINDING;
+    if generate_mipmaps {
+        mip_levels = max_mips_2d(UVec2::new(image.width(), image.height()));
+        usage |= TextureUsage::RENDER_ATTACHMENT;
+    }
+
     let texture = queue.create_texture(&TextureDescriptor {
         size: UVec2::new(image.width(), image.height()),
-        mip_levels: max_mips_2d(UVec2::new(image.width(), image.height())),
+        mip_levels,
         format: image.format(),
-        usage: TextureUsage::TRANSFER_DST
-            | TextureUsage::TEXTURE_BINDING
-            | TextureUsage::RENDER_ATTACHMENT,
+        usage,
     });
+
+    let bytes_per_row = image.width() / 16 * image.format().bytes_per_block();
+    let rows_per_image = image.height();
 
     queue.write_texture(
         TextureRegion {
@@ -338,12 +353,14 @@ fn create_image(queue: &mut CommandQueue<'_>, mipgen: &MipMapGenerator, image: &
         },
         image.as_bytes(),
         ImageDataLayout {
-            bytes_per_row: 4 * image.width(),
-            rows_per_image: image.height(),
+            bytes_per_row,
+            rows_per_image,
         },
     );
 
-    mipgen.generate_mipmaps(queue, &texture);
+    if generate_mipmaps {
+        mipgen.generate_mipmaps(queue, &texture);
+    }
 
     texture
 }

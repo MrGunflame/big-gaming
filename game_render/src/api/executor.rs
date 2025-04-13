@@ -14,9 +14,9 @@ use crate::backend::{
 
 use super::scheduler::{Barrier, Step};
 use super::{
-    BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, DescriptorSetId, DrawCall, DrawCmd,
-    LifecycleEvent, PipelineId, RenderPassCmd, ResourceId, Resources, SamplerId, TextureData,
-    TextureId,
+    BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, CopyTextureToTexture,
+    DescriptorSetId, DrawCall, DrawCmd, LifecycleEvent, PipelineId, RenderPassCmd, ResourceId,
+    Resources, SamplerId, TextureData, TextureId,
 };
 
 pub(super) fn execute<'a, I>(
@@ -50,6 +50,9 @@ where
             }
             Step::Node(Command::CopyBufferToTexture(cmd)) => {
                 copy_buffer_to_texture(resources, &mut tmp, cmd, encoder);
+            }
+            Step::Node(Command::CopyTextureToTexture(cmd)) => {
+                copy_texture_to_texture(resources, &mut tmp, cmd, encoder);
             }
             Step::Node(Command::RenderPass(cmd)) => {
                 run_render_pass(resources, &mut tmp, &cmd, encoder);
@@ -155,6 +158,33 @@ fn copy_buffer_to_texture(
     // Both buffer and texture must be kept alive until the
     // copy operation is complete.
     tmp.buffers.insert(cmd.src);
+    tmp.textures.insert(cmd.dst);
+}
+
+fn copy_texture_to_texture(
+    resources: &mut Resources,
+    tmp: &mut TemporaryResources,
+    cmd: &CopyTextureToTexture,
+    encoder: &mut CommandEncoder<'_>,
+) {
+    let src = resources.textures.get(cmd.src).unwrap();
+    let dst = resources.textures.get(cmd.dst).unwrap();
+
+    // Safety:
+    // We have inserted the propert barriers such that the source texture
+    // is only `TRANSFER_READ` and the destination texture is only
+    // `TRANSFER_WRITE`.
+    unsafe {
+        encoder.copy_texture_to_texture(
+            src.data.texture(),
+            cmd.src_mip_level,
+            dst.data.texture(),
+            cmd.dst_mip_level,
+        );
+    }
+
+    // Both textures need to be kept alive until the copy operation is complete.
+    tmp.textures.insert(cmd.src);
     tmp.textures.insert(cmd.dst);
 }
 
