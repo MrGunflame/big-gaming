@@ -50,8 +50,12 @@ impl RenderThreadHandle {
         queue: Queue,
         statistics: Arc<Statistics>,
     ) -> Self {
-        let executor =
-            CommandExecutor::new(device.clone(), adapter.memory_properties(), statistics);
+        let executor = CommandExecutor::new(
+            device.clone(),
+            adapter.memory_properties(),
+            statistics,
+            adapter.properties(),
+        );
 
         let shared = Arc::new(SharedState {
             instance,

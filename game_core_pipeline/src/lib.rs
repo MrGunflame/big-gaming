@@ -5,6 +5,8 @@ pub mod material;
 
 mod passes;
 
+pub use passes::FINAL_RENDER_PASS;
+
 use entities::Entities;
 use game_render::Renderer;
 use material::StandardMaterial;
