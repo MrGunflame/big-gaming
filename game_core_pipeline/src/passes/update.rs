@@ -383,6 +383,10 @@ fn create_material(
         flags |= MaterialFlags::FLIP_NORMAL_Y;
     }
 
+    if material.two_component_normal_encoding {
+        flags |= MaterialFlags::NORMAL_ENCODING_TWO_CHANNEL;
+    }
+
     if material.metallic_roughness_texture.is_none()
         && material.specular_glossiness_texture.is_some()
     {
@@ -505,6 +509,7 @@ bitflags! {
         const FLIP_NORMAL_Y = 1 << 1;
         const METALLIC_FROM_SPECULAR = 1 << 2;
         const ROUGHNESS_FROM_GLOSSINESS = 1 << 3;
+        const NORMAL_ENCODING_TWO_CHANNEL = 1 << 4;
     }
 }
 

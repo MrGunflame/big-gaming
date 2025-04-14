@@ -15,6 +15,7 @@ const MATERIAL_FLAGS_UNLIT: u32 = 1u << 0;
 const MATERIAL_FLAGS_FLIP_NORMAL_Y: u32 = 1u << 1;
 const MATERIAL_FLAGS_METALLIC_FROM_SPECULAR: u32 = 1u << 2;
 const MATERIAL_FLAGS_ROUGHNESS_FROM_GLOSSINESS: u32 = 1u << 3;
+const MATERIAL_FLAGS_NORMAL_ENCODING_TWO_COMPONENT: u32 = 1u << 4;
 
 var<push_constant> push_constants: PushConstants;
 
@@ -78,15 +79,7 @@ fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
         return color;
     }
 
-    // if push_constants.options.shading_mode == SHADING_MODE_ALBEDO {
-    //     return vec4<f32>(get_albedo(in), 1.0);
-    // } else if push_constants.options.shading_mode == SHADING_MODE_NORMAL {
-    //     return vec4<f32>(get_normal(in), 1.0);
-    // } else if push_constants.options.shading_mode == SHADING_MODE_TANGENT {
-    //     return vec4<f32>(in.world_tangent.xyz, 1.0);
-    // }
-
-    let specular_strength = get_specular_strength(in);
+    let specular_strength = constants.specular_strength * get_specular_strength(in);
     let specular_color = constants.specular_color.rgb;
 
     var roughness = get_roughness(in);
@@ -243,16 +236,22 @@ fn get_normal(in: FragInput) -> vec3<f32> {
         normal.g = 1.0 - normal.g;
     }
 
-    normal = normalize(normal * 2.0 - 1.0);
+    normal = normal * 2.0 - 1.0;
+
+    if (constants.flags & MATERIAL_FLAGS_NORMAL_ENCODING_TWO_COMPONENT) != 0 {
+        normal.z = sqrt(1.0 - dot(normal.xy, normal.xy));
+    }
+
+    normal = normalize(normal);
     normal = normalize(tbn * normal);
 
     // Invert the normal if the triangle is facing backwards.
     // Without this step the lighting direction will be inversed
     // for back-facing triangles.
     if in.front_facing {
-        return -normal;
-    } else {
         return normal;
+    } else {
+        return -normal;
     }
 }
 
