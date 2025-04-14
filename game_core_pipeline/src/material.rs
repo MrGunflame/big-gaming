@@ -17,6 +17,13 @@ pub struct StandardMaterial {
     ///
     /// Defaults to `false`.
     pub flip_normal_y: bool,
+    /// Use two-channel normal map encoding.
+    ///
+    /// The X and Y channels are expected to be in the R and G channels respectively. The Z
+    /// channel is reconstructed.
+    ///
+    /// Defaults to `false`.
+    pub two_component_normal_encoding: bool,
     /// Linear perceptual roughness.
     ///
     /// Defaults to `0.5`.
@@ -66,6 +73,7 @@ impl Default for StandardMaterial {
             base_color_texture: None,
             normal_texture: None,
             flip_normal_y: false,
+            two_component_normal_encoding: false,
             roughness: 0.5,
             metallic: 0.0,
             reflectance: 0.5,
