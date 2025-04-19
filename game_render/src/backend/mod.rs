@@ -3,7 +3,6 @@ pub mod descriptors;
 pub mod shader;
 pub mod vulkan;
 
-use std::collections::HashMap;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
 
@@ -12,6 +11,7 @@ use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
 use glam::UVec2;
+use hashbrown::HashMap;
 use shader::Shader;
 use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, TextureView};
 

@@ -12,20 +12,24 @@ use crate::backend::{
     WriteDescriptorResources,
 };
 
+use super::commands::{
+    Command, CopyBufferToBuffer, CopyBufferToTexture, CopyTextureToTexture, RenderPassCmd,
+    WriteBuffer,
+};
 use super::scheduler::{Barrier, Step};
 use super::{
-    BufferId, Command, CopyBufferToBuffer, CopyBufferToTexture, CopyTextureToTexture,
-    DescriptorSetId, DrawCall, DrawCmd, LifecycleEvent, PipelineId, RenderPassCmd, ResourceId,
+    BufferId, DescriptorSetId, DrawCall, DrawCmd, LifecycleEvent, PipelineId, ResourceId,
     Resources, SamplerId, TextureData, TextureId,
 };
 
-pub(super) fn execute<'a, I>(
+pub(super) fn execute<I, T>(
     resources: &mut Resources,
     steps: I,
     encoder: &mut CommandEncoder<'_>,
 ) -> TemporaryResources
 where
-    I: IntoIterator<Item = Step<&'a Command, ResourceId>>,
+    I: IntoIterator<Item = Step<T, ResourceId>>,
+    T: AsRef<Command>,
 {
     let _span = trace_span!("execute").entered();
 
@@ -42,27 +46,29 @@ where
         }
 
         match step {
-            Step::Node(Command::WriteBuffer(id, data)) => {
-                write_buffer(resources, &mut tmp, *id, data);
-            }
-            Step::Node(Command::CopyBufferToBuffer(cmd)) => {
-                copy_buffer_to_buffer(resources, &mut tmp, cmd, encoder);
-            }
-            Step::Node(Command::CopyBufferToTexture(cmd)) => {
-                copy_buffer_to_texture(resources, &mut tmp, cmd, encoder);
-            }
-            Step::Node(Command::CopyTextureToTexture(cmd)) => {
-                copy_texture_to_texture(resources, &mut tmp, cmd, encoder);
-            }
-            Step::Node(Command::RenderPass(cmd)) => {
-                run_render_pass(resources, &mut tmp, &cmd, encoder);
-            }
-            Step::Node(Command::TextureTransition(texture, _)) => {
-                // The texture is not explicitly used anywhere else, but
-                // it still must be kept alive for this frame since it
-                // is used in a barrier.
-                tmp.textures.insert(texture.id);
-            }
+            Step::Node(cmd) => match cmd.as_ref() {
+                Command::WriteBuffer(cmd) => {
+                    write_buffer(resources, &mut tmp, cmd);
+                }
+                Command::CopyBufferToBuffer(cmd) => {
+                    copy_buffer_to_buffer(resources, &mut tmp, cmd, encoder);
+                }
+                Command::CopyBufferToTexture(cmd) => {
+                    copy_buffer_to_texture(resources, &mut tmp, cmd, encoder);
+                }
+                Command::CopyTextureToTexture(cmd) => {
+                    copy_texture_to_texture(resources, &mut tmp, cmd, encoder);
+                }
+                Command::TextureTransition(cmd) => {
+                    // The texture is not explicitly used anywhere else, but
+                    // it still must be kept alive for this frame since it
+                    // is used in a barrier.
+                    tmp.textures.insert(cmd.texture.id);
+                }
+                Command::RenderPass(cmd) => {
+                    run_render_pass(resources, &mut tmp, cmd, encoder);
+                }
+            },
             Step::Barrier(barrier) => {
                 barriers.push(barrier);
             }
@@ -77,15 +83,10 @@ where
     tmp
 }
 
-fn write_buffer(
-    resources: &mut Resources,
-    tmp: &mut TemporaryResources,
-    id: BufferId,
-    data: &[u8],
-) {
-    let buffer = resources.buffers.get_mut(id).unwrap();
+fn write_buffer(resources: &mut Resources, tmp: &mut TemporaryResources, cmd: &WriteBuffer) {
+    let buffer = resources.buffers.get_mut(cmd.buffer).unwrap();
 
-    buffer.buffer.map().copy_from_slice(&data);
+    buffer.buffer.map().copy_from_slice(&cmd.data);
 
     // If the memory of the buffer is not HOST_COHERENT it needs to
     // be flushed, otherwise it may never become visible to the device.
@@ -100,7 +101,7 @@ fn write_buffer(
         }
     }
 
-    tmp.buffers.insert(id);
+    tmp.buffers.insert(cmd.buffer);
 }
 
 fn copy_buffer_to_buffer(
