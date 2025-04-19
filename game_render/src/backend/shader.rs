@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use std::num::NonZeroU32;
 
 use bitflags::bitflags;
+use hashbrown::HashMap;
 use naga::back::spv::{self, PipelineOptions};
 use naga::front::wgsl;
 use naga::valid::{Capabilities, GlobalUse, ModuleInfo, ValidationFlags, Validator};

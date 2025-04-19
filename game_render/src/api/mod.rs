@@ -1,20 +1,27 @@
 //! Rendering API
 
+mod commands;
 pub mod executor;
 mod scheduler;
 
-use std::collections::HashMap;
 use std::num::NonZeroU64;
 use std::ops::Range;
 use std::sync::Arc;
 
+use bumpalo::Bump;
+use commands::{
+    Command, CommandStream, CopyBufferToBuffer, CopyBufferToTexture, CopyTextureToTexture,
+    RenderPassCmd, TextureTransition, WriteBuffer,
+};
 use crossbeam_queue::SegQueue;
 use executor::TemporaryResources;
 use game_common::collections::arena::{Arena, Key};
 use game_common::components::Color;
+use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
-use scheduler::{Node, Resource, ResourceMap};
+use hashbrown::HashMap;
+use scheduler::{Node, Resource, ResourceMap, Scheduler};
 
 use crate::backend::allocator::{
     BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
@@ -42,9 +49,10 @@ type SamplerId = Key;
 #[derive(Debug)]
 pub struct CommandExecutor {
     resources: Resources,
-    cmds: Vec<Command>,
+    cmds: CommandStream,
     device: Device,
     adapter_props: AdapterProperties,
+    allocator: Exclusive<Bump>,
 }
 
 impl CommandExecutor {
@@ -70,9 +78,10 @@ impl CommandExecutor {
                 samplers: Arena::new(),
                 lifecycle_events: Arc::new(SegQueue::new()),
             },
-            cmds: Vec::new(),
+            cmds: CommandStream::new(),
             device,
             adapter_props,
+            allocator: Exclusive::new(Bump::new()),
         }
     }
 
@@ -83,7 +92,17 @@ impl CommandExecutor {
     pub fn execute(&mut self, encoder: &mut CommandEncoder<'_>) -> TemporaryResources {
         let _span = trace_span!("CommandExecutor::execute").entered();
 
-        let steps = scheduler::schedule(&mut self.resources, &self.cmds);
+        let allocator = self.allocator.get_mut();
+
+        let cmds = self.cmds.cmd_refs();
+
+        let mut scheduler = Scheduler {
+            resources: &mut self.resources,
+            allocator: &*allocator,
+        };
+
+        let steps = scheduler.schedule(&cmds);
+        allocator.reset();
         let tmp = executor::execute(&mut self.resources, steps, encoder);
         self.cmds.clear();
 
@@ -315,9 +334,13 @@ impl<'a> CommandQueue<'a> {
                 .unwrap()
                 .ref_count += 1;
 
-            self.executor
-                .cmds
-                .push(Command::WriteBuffer(buffer.id, data.to_vec()));
+            self.executor.cmds.push(
+                &self.executor.resources,
+                Command::WriteBuffer(WriteBuffer {
+                    buffer: buffer.id,
+                    data: data.to_vec(),
+                }),
+            );
         } else {
             // Otherwise we cannot access the buffer directly and
             // need to go through a host visible staging buffer.
@@ -339,9 +362,13 @@ impl<'a> CommandQueue<'a> {
                 .ref_count += 1;
 
             // Write the data into the staging buffer.
-            self.executor
-                .cmds
-                .push(Command::WriteBuffer(staging_buffer.id, data.to_vec()));
+            self.executor.cmds.push(
+                &self.executor.resources,
+                Command::WriteBuffer(WriteBuffer {
+                    buffer: staging_buffer.id,
+                    data: data.to_vec(),
+                }),
+            );
 
             self.copy_buffer_to_buffer(&staging_buffer, buffer);
         }
@@ -511,15 +538,16 @@ impl<'a> CommandQueue<'a> {
             .unwrap()
             .ref_count += 1;
 
-        self.executor
-            .cmds
-            .push(Command::CopyBufferToBuffer(CopyBufferToBuffer {
+        self.executor.cmds.push(
+            &self.executor.resources,
+            Command::CopyBufferToBuffer(CopyBufferToBuffer {
                 src: src.id,
                 src_offset: 0,
                 dst: dst.id,
                 dst_offset: 0,
                 count,
-            }));
+            }),
+        );
     }
 
     pub fn copy_buffer_to_texture(
@@ -552,15 +580,16 @@ impl<'a> CommandQueue<'a> {
             .unwrap()
             .ref_count += 1;
 
-        self.executor
-            .cmds
-            .push(Command::CopyBufferToTexture(CopyBufferToTexture {
+        self.executor.cmds.push(
+            &self.executor.resources,
+            Command::CopyBufferToTexture(CopyBufferToTexture {
                 src: src.id,
                 src_offset: 0,
                 layout,
                 dst: dst.texture.id,
                 dst_mip_level: dst.mip_level,
-            }));
+            }),
+        );
     }
 
     pub fn copy_texture_to_texture(&mut self, src: TextureRegion<'_>, dst: TextureRegion<'_>) {
@@ -589,14 +618,15 @@ impl<'a> CommandQueue<'a> {
             .unwrap()
             .ref_count += 1;
 
-        self.executor
-            .cmds
-            .push(Command::CopyTextureToTexture(CopyTextureToTexture {
+        self.executor.cmds.push(
+            &self.executor.resources,
+            Command::CopyTextureToTexture(CopyTextureToTexture {
                 src: src.texture.id,
                 src_mip_level: src.mip_level,
                 dst: dst.texture.id,
                 dst_mip_level: dst.mip_level,
-            }));
+            }),
+        );
     }
 
     #[track_caller]
@@ -907,13 +937,16 @@ impl<'a> CommandQueue<'a> {
             .unwrap()
             .ref_count += 1;
 
-        self.executor.cmds.push(Command::TextureTransition(
-            TextureMip {
-                id: texture.texture.id,
-                mip_level: texture.mip_level,
-            },
-            to,
-        ));
+        self.executor.cmds.push(
+            &self.executor.resources,
+            Command::TextureTransition(TextureTransition {
+                texture: TextureMip {
+                    id: texture.texture.id,
+                    mip_level: texture.mip_level,
+                },
+                access: to,
+            }),
+        );
     }
 }
 
@@ -1138,214 +1171,6 @@ enum LifecycleEvent {
 }
 
 #[derive(Debug)]
-enum Command {
-    WriteBuffer(BufferId, Vec<u8>),
-    CopyBufferToBuffer(CopyBufferToBuffer),
-    CopyBufferToTexture(CopyBufferToTexture),
-    CopyTextureToTexture(CopyTextureToTexture),
-    RenderPass(RenderPassCmd),
-    TextureTransition(TextureMip, AccessFlags),
-}
-
-impl Node<Resources> for Command {
-    type ResourceId = ResourceId;
-
-    fn resources(&self, resources: &Resources) -> Vec<Resource<Self::ResourceId>> {
-        match self {
-            Self::WriteBuffer(id, _) => {
-                vec![Resource {
-                    id: ResourceId::Buffer(*id),
-                    access: AccessFlags::TRANSFER_WRITE,
-                }]
-            }
-            Self::CopyBufferToBuffer(cmd) => {
-                vec![
-                    Resource {
-                        id: ResourceId::Buffer(cmd.src),
-                        access: AccessFlags::TRANSFER_READ,
-                    },
-                    Resource {
-                        id: ResourceId::Buffer(cmd.dst),
-                        access: AccessFlags::TRANSFER_WRITE,
-                    },
-                ]
-            }
-            Self::CopyBufferToTexture(cmd) => {
-                vec![
-                    Resource {
-                        id: ResourceId::Buffer(cmd.src),
-                        access: AccessFlags::TRANSFER_READ,
-                    },
-                    Resource {
-                        id: ResourceId::Texture(TextureMip {
-                            id: cmd.dst,
-                            mip_level: cmd.dst_mip_level,
-                        }),
-                        access: AccessFlags::TRANSFER_WRITE,
-                    },
-                ]
-            }
-            Self::CopyTextureToTexture(cmd) => {
-                vec![
-                    Resource {
-                        id: ResourceId::Texture(TextureMip {
-                            id: cmd.src,
-                            mip_level: cmd.src_mip_level,
-                        }),
-                        access: AccessFlags::TRANSFER_READ,
-                    },
-                    Resource {
-                        id: ResourceId::Texture(TextureMip {
-                            id: cmd.dst,
-                            mip_level: cmd.dst_mip_level,
-                        }),
-                        access: AccessFlags::TRANSFER_WRITE,
-                    },
-                ]
-            }
-            Self::RenderPass(cmd) => {
-                let mut accesses: HashMap<ResourceId, AccessFlags> = HashMap::new();
-
-                let mut pipeline = None;
-
-                for cmd in &cmd.cmds {
-                    match cmd {
-                        DrawCmd::SetPipeline(id) => {
-                            pipeline = Some(resources.pipelines.get(*id).unwrap());
-                        }
-                        DrawCmd::SetIndexBuffer(buffer, _) => {
-                            *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
-                                AccessFlags::INDEX;
-                        }
-                        DrawCmd::SetDescriptorSet(group, id) => {
-                            let Some(pipeline) = pipeline else {
-                                continue;
-                            };
-
-                            let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
-                            for (binding, buffer) in &descriptor_set.buffers {
-                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
-                                    group: *group,
-                                    binding: *binding,
-                                }) {
-                                    *accesses.entry(ResourceId::Buffer(*buffer)).or_default() |=
-                                        *access;
-                                }
-                            }
-
-                            for (binding, view) in &descriptor_set.textures {
-                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
-                                    group: *group,
-                                    binding: *binding,
-                                }) {
-                                    for mip in view.mips() {
-                                        *accesses
-                                            .entry(ResourceId::Texture(TextureMip {
-                                                id: view.texture,
-                                                mip_level: mip,
-                                            }))
-                                            .or_default() |= *access;
-                                    }
-                                }
-                            }
-
-                            for (binding, views) in &descriptor_set.texture_arrays {
-                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
-                                    group: *group,
-                                    binding: *binding,
-                                }) {
-                                    for view in views {
-                                        for mip in view.mips() {
-                                            *accesses
-                                                .entry(ResourceId::Texture(TextureMip {
-                                                    id: view.texture,
-                                                    mip_level: mip,
-                                                }))
-                                                .or_default() |= *access;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        DrawCmd::SetPushConstants(_, _, _) => (),
-                        DrawCmd::Draw(_) => (),
-                    }
-                }
-
-                for attachment in &cmd.color_attachments {
-                    for mip in attachment.target.mips() {
-                        *accesses
-                            .entry(ResourceId::Texture(TextureMip {
-                                id: attachment.target.texture,
-                                mip_level: mip,
-                            }))
-                            .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
-                    }
-                }
-
-                if let Some(attachment) = &cmd.depth_stencil_attachment {
-                    *accesses
-                        .entry(ResourceId::Texture(TextureMip {
-                            id: attachment.texture,
-                            mip_level: 0,
-                        }))
-                        .or_default() |=
-                        AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
-                }
-
-                accesses
-                    .into_iter()
-                    .map(|(id, access)| {
-                        // We should never require a resource without any flags.
-                        // This could result in a texture transition into UNDEFINED
-                        // which is always invalid.
-                        debug_assert!(!access.is_empty());
-
-                        Resource { id, access }
-                    })
-                    .collect()
-            }
-            Self::TextureTransition(texture, access) => {
-                vec![Resource {
-                    id: ResourceId::Texture(*texture),
-                    access: *access,
-                }]
-            }
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-struct CopyBufferToBuffer {
-    src: BufferId,
-    src_offset: u64,
-    dst: BufferId,
-    dst_offset: u64,
-    count: NonZeroU64,
-}
-
-#[derive(Clone, Debug)]
-struct CopyBufferToTexture {
-    /// The buffer from which to copy bytes from.
-    src: BufferId,
-    /// The offset at which to start the copy from.
-    src_offset: u64,
-    layout: ImageDataLayout,
-    /// The texture to copy the bytes to.
-    dst: TextureId,
-    /// The mip level of the texture that should be written.
-    dst_mip_level: u32,
-}
-
-#[derive(Clone, Debug)]
-struct CopyTextureToTexture {
-    src: TextureId,
-    src_mip_level: u32,
-    dst: TextureId,
-    dst_mip_level: u32,
-}
-
-#[derive(Debug)]
 struct DescriptorSetInner {
     // (Binding, Resource)
     buffers: Vec<(u32, BufferId)>,
@@ -1356,13 +1181,6 @@ struct DescriptorSetInner {
     layout: DescriptorSetLayoutId,
     physical_texture_views: Vec<vulkan::TextureView<'static>>,
     ref_count: usize,
-}
-
-#[derive(Clone, Debug)]
-struct RenderPassCmd {
-    color_attachments: Vec<ColorAttachmentOwned>,
-    depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
-    cmds: Vec<DrawCmd>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1600,14 +1418,14 @@ impl<'a, 'b> RenderPass<'a, 'b> {
 
 impl<'a, 'b> Drop for RenderPass<'a, 'b> {
     fn drop(&mut self) {
-        self.ctx
-            .executor
-            .cmds
-            .push(Command::RenderPass(RenderPassCmd {
+        self.ctx.executor.cmds.push(
+            &self.ctx.executor.resources,
+            Command::RenderPass(RenderPassCmd {
                 color_attachments: self.color_attachments.clone(),
                 depth_stencil_attachment: self.depth_stencil_attachment.clone(),
                 cmds: core::mem::take(&mut self.cmds),
-            }));
+            }),
+        );
     }
 }
 

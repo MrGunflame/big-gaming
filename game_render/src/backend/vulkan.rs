@@ -1,6 +1,5 @@
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
 use std::ffi::{c_void, CStr, CString};
 use std::fmt::{self, Debug, Formatter};
 use std::marker::PhantomData;
@@ -17,6 +16,7 @@ use ash::vk::Handle;
 use ash::{vk, Entry};
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
+use hashbrown::HashMap;
 use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
@@ -1547,9 +1547,9 @@ impl Device {
 
         let attachment = vk::PipelineColorBlendAttachmentState::default()
             .color_write_mask(vk::ColorComponentFlags::RGBA)
-            .blend_enable(false)
-            .src_color_blend_factor(vk::BlendFactor::ONE)
-            .dst_color_blend_factor(vk::BlendFactor::ZERO)
+            .blend_enable(true)
+            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
+            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
