@@ -74,6 +74,7 @@ struct FragInput {
 @fragment
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
     var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+    color.a = 1.0;
 
     if (constants.flags & MATERIAL_FLAGS_UNLIT) != 0 {
         return color;

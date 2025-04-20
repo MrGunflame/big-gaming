@@ -2717,6 +2717,10 @@ impl<'a> CommandEncoder<'a> {
 
         assert!(mip_level < dst.mip_levels);
 
+        // Use the size of the selected mip level.
+        // https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-mip-level-sizing
+        let dst_size = UVec2::max(UVec2::ONE, dst.size >> mip_level);
+
         let aspect_mask = if dst.format.is_depth() {
             vk::ImageAspectFlags::DEPTH
         } else {
@@ -2732,18 +2736,20 @@ impl<'a> CommandEncoder<'a> {
         let region = vk::BufferImageCopy2::default()
             .buffer_offset(src.offset)
             // - `bufferRowLength` must be 0, or greater than or equal to `width` of `imageExtent`.
-            .buffer_row_length(dst.size.x)
+            // We use a value of 0, which indicates that the source buffer is tightly packed.
+            .buffer_row_length(0)
             //.buffer_row_length(0)
             // - `bufferImageHeight` must be 0, or greater than or equal to `height` of `imageExtent`.
-            .buffer_image_height(dst.size.y)
+            // We use a value of 0, which indicates that the source buffer is tightly packed.
+            .buffer_image_height(0)
             //.buffer_image_height(0)
             .image_subresource(subresource)
             .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
             .image_extent(vk::Extent3D {
                 // - `imageExtent.width` must not be 0.
-                width: dst.size.x,
+                width: dst_size.x,
                 // - `imageExtent.height` must not be 0.
-                height: dst.size.y,
+                height: dst_size.y,
                 // - `imageExtent.depth` must not be 0.
                 depth: 1,
             });
