@@ -4,6 +4,7 @@ mod commands;
 pub mod executor;
 mod scheduler;
 
+use std::any::Any;
 use std::num::NonZeroU64;
 use std::ops::Range;
 use std::sync::Arc;
@@ -563,6 +564,12 @@ impl<'a> CommandQueue<'a> {
         assert!(
             dst.texture.usage.contains(TextureUsage::TRANSFER_DST),
             "Texture cannot be written to: TRANSFER_DST not set",
+        );
+        assert!(
+            dst.mip_level < dst.texture.mip_levels,
+            "Cannot write to mip level {}, only {} levels exist",
+            dst.mip_level,
+            dst.texture.mip_levels
         );
 
         // The source buffer and destination buffer must be kept alive

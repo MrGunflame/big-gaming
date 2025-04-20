@@ -5,6 +5,45 @@ use glam::UVec2;
 
 use crate::backend::TextureFormat;
 
+#[derive(Clone, Debug)]
+pub struct MipImage {
+    mips: Vec<Image>,
+}
+
+impl MipImage {
+    pub fn new(mips: Vec<Image>) -> Self {
+        assert!(!mips.is_empty());
+
+        Self { mips }
+    }
+
+    pub fn format(&self) -> TextureFormat {
+        self.mips[0].format()
+    }
+
+    pub fn mip_levels(&self) -> u32 {
+        self.mips.len() as u32
+    }
+
+    pub fn root(&self) -> &Image {
+        &self.mips[0]
+    }
+
+    pub fn get(&self, level: u32) -> Option<&Image> {
+        self.mips.get(level as usize)
+    }
+
+    pub fn mips(&self) -> &[Image] {
+        &self.mips
+    }
+}
+
+impl From<Image> for MipImage {
+    fn from(value: Image) -> Self {
+        Self::new(vec![value])
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ImageFormat {
@@ -54,7 +93,7 @@ impl Image {
     fn validate_size(&self) {
         // Bytes for a 4x4 block.
         let block_size = self.format.bytes_per_block();
-        let size = (self.width / 4) * (self.height / 4) * block_size;
+        let size = u32::max(1, self.width / 4) * u32::max(1, self.height / 4) * block_size;
         assert_eq!(size as usize, self.bytes.len());
     }
 }

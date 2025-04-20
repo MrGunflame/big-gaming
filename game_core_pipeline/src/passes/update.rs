@@ -18,6 +18,7 @@ use game_render::graph::{Node, RenderContext};
 use game_render::mesh::{Indices, Mesh};
 use game_render::mipmap::MipMapGenerator;
 use game_render::texture::Image;
+use game_render::texture::image::MipImage;
 use game_tracing::trace_span;
 use glam::{Mat3, Mat4, UVec2, Vec4};
 use parking_lot::Mutex;
@@ -316,7 +317,11 @@ fn create_mesh(
     }
 }
 
-fn create_image(queue: &mut CommandQueue<'_>, mipgen: &MipMapGenerator, image: &Image) -> Texture {
+fn create_image(
+    queue: &mut CommandQueue<'_>,
+    mipgen: &MipMapGenerator,
+    image: &MipImage,
+) -> Texture {
     let _span = trace_span!("create_image").entered();
 
     let supported_usages = queue.supported_texture_usages(image.format());
@@ -327,36 +332,45 @@ fn create_image(queue: &mut CommandQueue<'_>, mipgen: &MipMapGenerator, image: &
         todo!("unsupported texture format: {:?}", image.format());
     }
 
-    let generate_mipmaps = supported_usages.contains(TextureUsage::RENDER_ATTACHMENT);
+    // Generate mipmaps for the texture if
+    // - we don't already have mipmaps (assume that if we have more than 1 mip
+    // we have enough mips.)
+    // TODO: In the future we may want to still generate missing mips.
+    // - The format can be used to create mipmaps.
+    let generate_mipmaps =
+        image.mip_levels() == 1 && supported_usages.contains(TextureUsage::RENDER_ATTACHMENT);
 
-    let mut mip_levels = 1;
+    let mut mip_levels = image.mip_levels();
     let mut usage = TextureUsage::TRANSFER_DST | TextureUsage::TEXTURE_BINDING;
     if generate_mipmaps {
-        mip_levels = max_mips_2d(UVec2::new(image.width(), image.height()));
+        mip_levels = max_mips_2d(UVec2::new(image.root().width(), image.root().height()));
         usage |= TextureUsage::RENDER_ATTACHMENT;
     }
 
     let texture = queue.create_texture(&TextureDescriptor {
-        size: UVec2::new(image.width(), image.height()),
+        size: UVec2::new(image.root().width(), image.root().height()),
         mip_levels,
         format: image.format(),
         usage,
     });
 
-    let bytes_per_row = image.width() / 16 * image.format().bytes_per_block();
-    let rows_per_image = image.height();
+    for (mip_level, mip) in image.mips().iter().enumerate() {
+        let bytes_per_row = u32::max(1, mip.width() / 4) * mip.format().bytes_per_block();
+        let rows_per_image = u32::max(1, mip.height() / 4);
+        dbg!(&mip.width(), &mip.height());
 
-    queue.write_texture(
-        TextureRegion {
-            texture: &texture,
-            mip_level: 0,
-        },
-        image.as_bytes(),
-        ImageDataLayout {
-            bytes_per_row,
-            rows_per_image,
-        },
-    );
+        queue.write_texture(
+            TextureRegion {
+                texture: &texture,
+                mip_level: mip_level as u32,
+            },
+            mip.as_bytes(),
+            ImageDataLayout {
+                bytes_per_row,
+                rows_per_image,
+            },
+        );
+    }
 
     if generate_mipmaps {
         mipgen.generate_mipmaps(queue, &texture);
