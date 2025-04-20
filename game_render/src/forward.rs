@@ -5,9 +5,10 @@ use game_common::cell::UnsafeRefCell;
 
 use crate::api::{CommandQueue, DescriptorSetLayout, Pipeline, PipelineDescriptor, Sampler};
 use crate::backend::{
-    AddressMode, CompareOp, DepthStencilState, DescriptorBinding, DescriptorSetDescriptor,
-    DescriptorType, Face, FilterMode, FragmentStage, FrontFace, PipelineStage, PrimitiveTopology,
-    PushConstantRange, SamplerDescriptor, ShaderModule, ShaderStages, TextureFormat, VertexStage,
+    AddressMode, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
+    DescriptorSetDescriptor, DescriptorType, Face, FilterMode, FragmentStage, FrontFace,
+    PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderModule,
+    ShaderStages, TextureFormat, VertexStage,
 };
 use crate::entities::{Event, Resources};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -216,7 +217,10 @@ impl PipelineBuilder for ForwardPipelineBuilder {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: None,
+                    }],
                 }),
             ],
             depth_stencil_state: Some(DepthStencilState {

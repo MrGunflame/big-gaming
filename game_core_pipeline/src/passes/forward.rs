@@ -10,10 +10,10 @@ use game_render::api::{
     TextureViewDescriptor,
 };
 use game_render::backend::{
-    AddressMode, CompareOp, DepthStencilState, DescriptorBinding, DescriptorType, FilterMode,
-    FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
-    SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
-    TextureUsage, VertexStage,
+    AddressMode, BlendFactor, BlendOp, BlendState, ColorTargetState, CompareOp, DepthStencilState,
+    DescriptorBinding, DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage,
+    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderModule, ShaderStages, StoreOp,
+    TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
@@ -212,6 +212,9 @@ impl ForwardPass {
             &push_constants,
         );
 
+        render_pass.set_descriptor_set(3, &lights_and_sampler_descriptor);
+
+        dbg!(scene.objects.len());
         for object in scene.objects.values() {
             let mesh = state.meshes.get(&object.mesh).unwrap();
             let material_descriptor = state.materials.get(&object.material).unwrap();
@@ -219,7 +222,6 @@ impl ForwardPass {
             render_pass.set_descriptor_set(0, &object.transform);
             render_pass.set_descriptor_set(1, &mesh.descriptor);
             render_pass.set_descriptor_set(2, material_descriptor);
-            render_pass.set_descriptor_set(3, &lights_and_sampler_descriptor);
 
             render_pass.set_index_buffer(&mesh.indices.buffer, mesh.indices.format);
             render_pass.draw_indexed(0..mesh.indices.len, 0, 0..1);
@@ -306,7 +308,10 @@ impl PipelineBuilder for BuildForwardPipeline {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+                    }],
                 }),
             ],
             depth_stencil_state: Some(DepthStencilState {

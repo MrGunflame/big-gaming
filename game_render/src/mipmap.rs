@@ -9,9 +9,9 @@ use crate::api::{
     RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
 };
 use crate::backend::{
-    AddressMode, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage, FrontFace,
-    LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderStages,
-    StoreOp, TextureFormat, VertexStage,
+    AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, Face, FilterMode,
+    FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor,
+    ShaderModule, ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
 use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
@@ -142,7 +142,10 @@ impl PipelineBuilder for BlitPipelineBuilder {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: None,
+                    }],
                 }),
             ],
         })
