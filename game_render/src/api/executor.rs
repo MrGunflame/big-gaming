@@ -18,8 +18,8 @@ use super::commands::{
 };
 use super::scheduler::{Barrier, Step};
 use super::{
-    BufferId, DescriptorSetId, DrawCall, DrawCmd, LifecycleEvent, PipelineId, ResourceId,
-    Resources, SamplerId, TextureData, TextureId,
+    BufferId, DeletionEvent, DescriptorSetId, DrawCall, DrawCmd, PipelineId, ResourceId, Resources,
+    SamplerId, TextureData, TextureId,
 };
 
 pub(super) fn execute<I, T>(
@@ -84,7 +84,7 @@ where
 }
 
 fn write_buffer(resources: &mut Resources, tmp: &mut TemporaryResources, cmd: &WriteBuffer) {
-    let buffer = resources.buffers.get_mut(cmd.buffer).unwrap();
+    let buffer = resources.buffers.get(cmd.buffer).unwrap();
 
     buffer.buffer.map().copy_from_slice(&cmd.data);
 
@@ -151,7 +151,7 @@ fn copy_buffer_to_texture(
                 offset: cmd.src_offset,
                 layout: cmd.layout,
             },
-            texture.data.texture(),
+            texture.texture(),
             cmd.dst_mip_level,
         );
     }
@@ -177,9 +177,9 @@ fn copy_texture_to_texture(
     // `TRANSFER_WRITE`.
     unsafe {
         encoder.copy_texture_to_texture(
-            src.data.texture(),
+            src.texture(),
             cmd.src_mip_level,
-            dst.data.texture(),
+            dst.texture(),
             cmd.dst_mip_level,
         );
     }
@@ -200,7 +200,7 @@ fn run_render_pass(
     for cmd in &cmd.cmds {
         match cmd {
             DrawCmd::SetDescriptorSet(_, id) => {
-                let set = resources.descriptor_sets.get_mut(*id).unwrap();
+                let set = resources.descriptor_sets.get(*id).unwrap();
                 if set.descriptor_set.is_none() {
                     build_descriptor_set(resources, *id);
                 }
@@ -335,7 +335,7 @@ fn run_render_pass(
 fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
     let _span = trace_span!("build_descriptor_set").entered();
 
-    let descriptor_set = resources.descriptor_sets.get_mut(id).unwrap();
+    let descriptor_set = resources.descriptor_sets.get(id).unwrap();
     let layout = resources
         .descriptor_set_layouts
         .get(descriptor_set.layout)
@@ -343,13 +343,17 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
 
     let mut bindings = Vec::new();
 
+    let buffers = descriptor_set
+        .buffers
+        .iter()
+        .map(|(_, id)| resources.buffers.get(*id).unwrap())
+        .collect::<Vec<_>>();
+
     let buffer_views = ScratchBuffer::new(descriptor_set.buffers.len());
     let texture_views = ScratchBuffer::new(descriptor_set.textures.len());
     let texture_array_views = ScratchBuffer::new(descriptor_set.texture_arrays.len());
 
-    for (binding, id) in &descriptor_set.buffers {
-        let buffer = resources.buffers.get(*id).unwrap();
-
+    for ((binding, id), buffer) in descriptor_set.buffers.iter().zip(&buffers) {
         let view = buffer_views.insert(buffer.buffer.buffer_view());
 
         match layout.inner.bindings()[*binding as usize].kind {
@@ -372,13 +376,9 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
     for (binding, view) in &descriptor_set.textures {
         let texture = resources.textures.get(view.texture).unwrap();
 
-        let physical_texture = match &texture.data {
-            TextureData::Physical(data) => data,
-            TextureData::Virtual(data) => data.texture(),
-        };
-
         let view = texture_views.insert(unsafe {
-            physical_texture
+            texture
+                .texture()
                 .create_view(&TextureViewDescriptor {
                     base_mip_level: view.base_mip_level,
                     mip_levels: view.mip_levels,
@@ -392,8 +392,13 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         });
     }
 
-    for (binding, id) in &descriptor_set.samplers {
-        let sampler = resources.samplers.get(*id).unwrap();
+    let samplers = descriptor_set
+        .samplers
+        .iter()
+        .map(|(_, id)| resources.samplers.get(*id).unwrap())
+        .collect::<Vec<_>>();
+
+    for ((binding, id), sampler) in descriptor_set.samplers.iter().zip(&samplers) {
         bindings.push(WriteDescriptorBinding {
             binding: *binding,
             resource: WriteDescriptorResource::Sampler(core::slice::from_ref(&sampler.inner)),
@@ -405,13 +410,10 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
 
         for view in textures {
             let texture = resources.textures.get(view.texture).unwrap();
-            let physical_texture = match &texture.data {
-                TextureData::Physical(data) => data,
-                TextureData::Virtual(data) => data.texture(),
-            };
 
             views.insert(unsafe {
-                physical_texture
+                texture
+                    .texture()
                     .create_view(&TextureViewDescriptor {
                         base_mip_level: view.base_mip_level,
                         mip_levels: view.mip_levels,
@@ -433,12 +435,15 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         });
     }
 
-    descriptor_set.physical_texture_views.extend(texture_views);
+    let mut physical_texture_views = unsafe { descriptor_set.physical_texture_views.borrow_mut() };
+    physical_texture_views.extend(texture_views);
     for texture_views in texture_array_views {
-        descriptor_set.physical_texture_views.extend(texture_views);
+        physical_texture_views.extend(texture_views);
     }
 
-    descriptor_set.descriptor_set = Some(set);
+    unsafe {
+        *descriptor_set.descriptor_set.borrow_mut() = Some(set);
+    }
 }
 
 fn insert_barriers(
@@ -464,7 +469,7 @@ fn insert_barriers(
             ResourceId::Texture(tex) => {
                 let texture = resources.textures.get(tex.id).unwrap();
                 texture_barriers.push(TextureBarrier {
-                    texture: texture.data.texture(),
+                    texture: texture.texture(),
                     src_access: barrier.src_access,
                     dst_access: barrier.dst_access,
                     base_mip_level: tex.mip_level,
@@ -492,46 +497,48 @@ pub struct TemporaryResources {
 }
 
 impl TemporaryResources {
-    pub(super) fn destroy(mut self, resources: &mut Resources) {
+    pub(super) fn destroy(mut self, resources: &Resources) {
         drop(self.texture_views.drain(..));
 
         for (id, count) in self.buffers.drain() {
-            for _ in 0..count {
-                resources
-                    .lifecycle_events
-                    .push(LifecycleEvent::DestroyBufferHandle(id));
+            let buffer = resources.buffers.get(id).unwrap();
+
+            if buffer.ref_count.decrement_many(count) {
+                resources.deletion_queue.push(DeletionEvent::Buffer(id));
             }
         }
 
         for (id, count) in self.textures.drain() {
-            for _ in 0..count {
-                resources
-                    .lifecycle_events
-                    .push(LifecycleEvent::DestroyTextureHandle(id));
+            let texture = resources.textures.get(id).unwrap();
+
+            if texture.ref_count.decrement_many(count) {
+                resources.deletion_queue.push(DeletionEvent::Texture(id));
             }
         }
 
         for (id, count) in self.descriptor_sets.drain() {
-            for _ in 0..count {
+            let set = resources.descriptor_sets.get(id).unwrap();
+
+            if set.ref_count.decrement_many(count) {
                 resources
-                    .lifecycle_events
-                    .push(LifecycleEvent::DestroyDescriptorSetHandle(id));
+                    .deletion_queue
+                    .push(DeletionEvent::DescriptorSet(id));
             }
         }
 
         for (id, count) in self.samplers.drain() {
-            for _ in 0..count {
-                resources
-                    .lifecycle_events
-                    .push(LifecycleEvent::DestroySamplerHandle(id));
+            let sampler = resources.samplers.get(id).unwrap();
+
+            if sampler.ref_count.decrement_many(count) {
+                resources.deletion_queue.push(DeletionEvent::Sampler(id));
             }
         }
 
         for (id, count) in self.pipelines.drain() {
-            for _ in 0..count {
-                resources
-                    .lifecycle_events
-                    .push(LifecycleEvent::DestroyPipelineHandle(id));
+            let pipeline = resources.pipelines.get(id).unwrap();
+
+            if pipeline.ref_count.decrement_many(count) {
+                resources.deletion_queue.push(DeletionEvent::Pipeline(id));
             }
         }
     }

@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use bumpalo::Bump;
 use game_common::utils::exclusive::Exclusive;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 
 use crate::backend::shader::BindingLocation;
 use crate::backend::{AccessFlags, ImageDataLayout};
@@ -73,7 +73,7 @@ pub struct CommandRef<'a> {
     cmd: &'a Command,
 }
 
-impl<'a> Node<Resources> for CommandRef<'a> {
+impl<'a> Node for CommandRef<'a> {
     type ResourceId = ResourceId;
 
     fn resources(&self) -> &[Resource<ResourceId>] {
@@ -165,6 +165,11 @@ impl Command {
             }
             Self::RenderPass(cmd) => {
                 let mut access_flags = HashMap::<ResourceId, AccessFlags, _, &Bump>::new_in(alloc);
+                // The same descriptor set may get bound multiple times,
+                // but this has no effect on the access flags.
+                // As such it is cheaper to track visited descriptor sets
+                // and skip duplicate bindings.
+                let mut visited_descriptor_sets = HashSet::new_in(alloc);
 
                 let mut pipeline = None;
 
@@ -178,9 +183,14 @@ impl Command {
                                 AccessFlags::INDEX;
                         }
                         DrawCmd::SetDescriptorSet(group, id) => {
-                            let Some(pipeline) = pipeline else {
+                            let Some(pipeline) = &pipeline else {
                                 continue;
                             };
+
+                            if visited_descriptor_sets.contains(id) {
+                                continue;
+                            }
+                            visited_descriptor_sets.insert(id);
 
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
                             for (binding, buffer) in &descriptor_set.buffers {

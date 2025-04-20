@@ -11,18 +11,18 @@ use crate::backend::AccessFlags;
 type UsizeMap<T, A> = HashMap<usize, T, BuildNoHashHasher<usize>, A>;
 
 #[derive(Debug)]
-pub struct Scheduler<'a, M, A> {
-    pub resources: &'a mut M,
+pub struct Scheduler<M, A> {
+    pub resources: M,
     pub allocator: A,
 }
 
-impl<'a, M, A> Scheduler<'a, M, A>
+impl<M, A> Scheduler<M, A>
 where
     A: Allocator,
 {
-    pub fn schedule<'b, T>(&mut self, nodes: &'b [T]) -> std::vec::Vec<Step<&'b T, T::ResourceId>>
+    pub fn schedule<'a, T>(&mut self, nodes: &'a [T]) -> std::vec::Vec<Step<&'a T, T::ResourceId>>
     where
-        T: Node<M>,
+        T: Node,
         T::ResourceId: Copy + Hash + Eq,
         M: ResourceMap<Id = T::ResourceId>,
     {
@@ -185,7 +185,7 @@ pub(super) trait ResourceMap {
     fn set_access(&mut self, id: Self::Id, access: AccessFlags);
 }
 
-pub(super) trait Node<M> {
+pub(super) trait Node {
     type ResourceId: 'static;
 
     /// Returns every resource that is accessed by this node.
@@ -218,7 +218,7 @@ mod tests {
         resources: Vec<Resource<u64>>,
     }
 
-    impl Node<HashMap<u64, Resource<u64>>> for TestNode {
+    impl Node for TestNode {
         type ResourceId = u64;
 
         fn resources(&self) -> &[Resource<u64>] {
@@ -226,7 +226,7 @@ mod tests {
         }
     }
 
-    impl ResourceMap for HashMap<u64, Resource<u64>> {
+    impl ResourceMap for &mut HashMap<u64, Resource<u64>> {
         type Id = u64;
 
         fn access(&self, id: Self::Id) -> AccessFlags {
