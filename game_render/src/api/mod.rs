@@ -27,7 +27,7 @@ use crate::backend::allocator::{
     BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
 };
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::shader::{BindingLocation, ShaderAccess};
+use crate::backend::shader::ShaderAccess;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
@@ -785,7 +785,7 @@ impl<'a> CommandQueue<'a> {
             descriptors.push(&layout.inner);
         }
 
-        let mut bindings = HashMap::new();
+        let mut bindings = BindingMap::default();
         for stage in descriptor.stages {
             match stage {
                 PipelineStage::Vertex(stage) => {
@@ -805,7 +805,11 @@ impl<'a> CommandQueue<'a> {
                         }
 
                         if !access.is_empty() {
-                            *bindings.entry(binding.location()).or_default() |= access;
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
                         }
                     }
                 }
@@ -826,7 +830,11 @@ impl<'a> CommandQueue<'a> {
                         }
 
                         if !access.is_empty() {
-                            *bindings.entry(binding.location()).or_default() |= access;
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
                         }
                     }
                 }
@@ -1083,7 +1091,39 @@ impl Drop for Pipeline {
 struct PipelineInner {
     inner: vulkan::Pipeline,
     ref_count: usize,
-    bindings: HashMap<BindingLocation, AccessFlags>,
+    bindings: BindingMap,
+}
+
+/// Tracks how a pipeline accesses each binding.
+#[derive(Clone, Debug, Default)]
+struct BindingMap {
+    // Bindings are usually compact and continous so we can use direct
+    // indexing and pad empty slots.
+    // In most cases the number of empty slots is zero.
+    groups: Vec<Vec<Option<AccessFlags>>>,
+}
+
+impl BindingMap {
+    fn insert(&mut self, group: u32, binding: u32, flags: AccessFlags) {
+        if group as usize >= self.groups.len() {
+            self.groups.resize(group as usize + 1, Vec::new());
+        }
+        let group = &mut self.groups[group as usize];
+
+        if binding as usize >= group.len() {
+            group.resize(binding as usize + 1, None);
+        }
+
+        *group[binding as usize].get_or_insert_default() |= flags;
+    }
+
+    fn get(&self, group: u32, binding: u32) -> Option<AccessFlags> {
+        self.groups
+            .get(group as usize)?
+            .get(binding as usize)?
+            .as_ref()
+            .copied()
+    }
 }
 
 #[derive(Debug)]
