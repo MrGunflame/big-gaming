@@ -11,10 +11,10 @@ use game_render::api::{
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    AddressMode, BufferUsage, DescriptorBinding, DescriptorType, Face, FilterMode, FragmentStage,
-    FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
-    SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
-    TextureUsage, VertexStage,
+    AddressMode, BufferUsage, ColorTargetState, DescriptorBinding, DescriptorType, Face,
+    FilterMode, FragmentStage, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage,
+    PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureDescriptor,
+    TextureFormat, TextureUsage, VertexStage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
@@ -125,7 +125,10 @@ impl PipelineBuilder for UiPipelineBuilder {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: None,
+                    }],
                 }),
             ],
             depth_stencil_state: None,

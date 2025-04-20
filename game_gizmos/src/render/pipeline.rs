@@ -10,9 +10,9 @@ use game_render::api::{
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    BufferUsage, DescriptorBinding, DescriptorType, Face, FragmentStage, FrontFace, LoadOp,
-    PipelineStage, PrimitiveTopology, ShaderModule, ShaderStages, StoreOp, TextureFormat,
-    VertexStage,
+    BufferUsage, ColorTargetState, DescriptorBinding, DescriptorType, Face, FragmentStage,
+    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, ShaderModule, ShaderStages, StoreOp,
+    TextureFormat, VertexStage,
 };
 use game_render::camera::{Camera, CameraUniform};
 use game_render::graph::{Node, RenderContext, SlotLabel};
@@ -92,7 +92,10 @@ impl PipelineBuilder for GizmoPipelineBuilder {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: None,
+                    }],
                 }),
             ],
             depth_stencil_state: None,

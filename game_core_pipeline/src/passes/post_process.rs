@@ -7,9 +7,9 @@ use game_render::api::{
     RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
 };
 use game_render::backend::{
-    AddressMode, DescriptorBinding, DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp,
-    PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderStages, StoreOp,
-    TextureFormat, VertexStage,
+    AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, FilterMode, FragmentStage,
+    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule,
+    ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -142,7 +142,10 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: None,
+                    }],
                 }),
             ],
             depth_stencil_state: None,

@@ -9,9 +9,9 @@ use crate::api::{
     TextureViewDescriptor,
 };
 use crate::backend::{
-    AddressMode, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, FilterMode,
-    FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor,
-    ShaderModule, ShaderStages, StoreOp, TextureFormat, VertexStage,
+    AddressMode, ColorTargetState, DescriptorBinding, DescriptorSetDescriptor, DescriptorType,
+    FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology,
+    SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -144,7 +144,10 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
                     entry: "fs_main",
-                    targets: &[format],
+                    targets: &[ColorTargetState {
+                        format,
+                        blend: None,
+                    }],
                 }),
             ],
             depth_stencil_state: None,
