@@ -2,6 +2,7 @@
 
 mod commands;
 pub mod executor;
+mod resources;
 mod scheduler;
 
 use std::any::Any;
@@ -16,18 +17,22 @@ use commands::{
 };
 use crossbeam_queue::SegQueue;
 use executor::TemporaryResources;
-use game_common::collections::arena::{Arena, Key};
+use game_common::cell::UnsafeRefCell;
 use game_common::components::Color;
 use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
 use hashbrown::HashMap;
-use scheduler::{Node, Resource, ResourceMap, Scheduler};
-
-use crate::backend::allocator::{
-    BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
+use resources::{
+    BufferId, BufferInner, DescriptorSetId, DescriptorSetInner, DescriptorSetLayoutId,
+    DescriptorSetLayoutInner, PipelineId, PipelineInner, RefCount, Resources, SamplerId,
+    SamplerInner, TextureData, TextureId, TextureInner,
 };
-use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
+use scheduler::{Node, Resource, ResourceMap, Scheduler};
+use sharded_slab::Slab;
+
+use crate::backend::allocator::{GeneralPurposeAllocator, MemoryManager, UsageFlags};
+use crate::backend::descriptors::DescriptorSetAllocator;
 use crate::backend::shader::ShaderAccess;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
@@ -40,16 +45,9 @@ use crate::statistics::Statistics;
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
 
-type PipelineId = Key;
-type BufferId = Key;
-type TextureId = Key;
-type DescriptorSetId = Key;
-type DescriptorSetLayoutId = Key;
-type SamplerId = Key;
-
 #[derive(Debug)]
 pub struct CommandExecutor {
-    resources: Resources,
+    resources: Arc<Resources>,
     cmds: CommandStream,
     device: Device,
     adapter_props: AdapterProperties,
@@ -64,21 +62,21 @@ impl CommandExecutor {
         adapter_props: AdapterProperties,
     ) -> Self {
         Self {
-            resources: Resources {
-                pipelines: Arena::new(),
-                buffers: Arena::new(),
-                textures: Arena::new(),
-                descriptor_sets: Arena::new(),
-                descriptor_set_layouts: Arena::new(),
+            resources: Arc::new(Resources {
+                pipelines: Slab::new(),
+                buffers: Slab::new(),
+                textures: Slab::new(),
+                descriptor_sets: Slab::new(),
+                descriptor_set_layouts: Slab::new(),
                 allocator: GeneralPurposeAllocator::new(
                     device.clone(),
                     MemoryManager::new(device.clone(), memory_props),
                     statistics,
                 ),
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
-                samplers: Arena::new(),
-                lifecycle_events: Arc::new(SegQueue::new()),
-            },
+                samplers: Slab::new(),
+                deletion_queue: SegQueue::new(),
+            }),
             cmds: CommandStream::new(),
             device,
             adapter_props,
@@ -98,7 +96,7 @@ impl CommandExecutor {
         let cmds = self.cmds.cmd_refs();
 
         let mut scheduler = Scheduler {
-            resources: &mut self.resources,
+            resources: &*self.resources,
             allocator: &*allocator,
         };
 
@@ -118,116 +116,78 @@ impl CommandExecutor {
     fn cleanup(&mut self) {
         let _span = trace_span!("CommandExecutor::cleanup").entered();
 
-        while let Some(cmd) = self.resources.lifecycle_events.pop() {
+        while let Some(cmd) = self.resources.deletion_queue.pop() {
             match cmd {
-                LifecycleEvent::DestroyBufferHandle(id) => {
-                    let buffer = self.resources.buffers.get_mut(id).unwrap();
-                    buffer.ref_count -= 1;
-                    if buffer.ref_count == 0 {
-                        self.resources.buffers.remove(id).unwrap();
-                    }
+                DeletionEvent::Buffer(id) => {
+                    self.resources.buffers.remove(id);
                 }
-                LifecycleEvent::DestroyTextureHandle(id) => {
-                    let texture = self.resources.textures.get_mut(id).unwrap();
-                    texture.ref_count -= 1;
-                    if texture.ref_count == 0 {
-                        self.resources.textures.remove(id).unwrap();
-                    }
+                DeletionEvent::Texture(id) => {
+                    self.resources.textures.remove(id);
                 }
-                LifecycleEvent::DestroySamplerHandle(id) => {
-                    let sampler = self.resources.samplers.get_mut(id).unwrap();
-                    sampler.ref_count -= 1;
-                    if sampler.ref_count == 0 {
-                        self.resources.samplers.remove(id).unwrap();
-                    }
+                DeletionEvent::DescriptorSetLayout(id) => {
+                    self.resources.descriptor_set_layouts.remove(id);
                 }
-                LifecycleEvent::DestroyDescriptorSetHandle(id) => {
-                    let set = self.resources.descriptor_sets.get_mut(id).unwrap();
-                    set.ref_count -= 1;
-                    if set.ref_count != 0 {
-                        continue;
-                    }
+                DeletionEvent::Pipeline(id) => {
+                    self.resources.pipelines.remove(id);
+                }
+                DeletionEvent::Sampler(id) => {
+                    self.resources.samplers.remove(id);
+                }
+                DeletionEvent::DescriptorSet(id) => {
+                    let set = self.resources.descriptor_sets.take(id).unwrap();
 
                     for (_, id) in &set.buffers {
-                        self.resources
-                            .lifecycle_events
-                            .push(LifecycleEvent::DestroyBufferHandle(*id));
+                        let buffer = self.resources.buffers.get(*id).unwrap();
+                        if buffer.ref_count.decrement() {
+                            self.resources
+                                .deletion_queue
+                                .push(DeletionEvent::Buffer(*id));
+                        }
                     }
 
                     for (_, view) in &set.textures {
-                        self.resources
-                            .lifecycle_events
-                            .push(LifecycleEvent::DestroyTextureHandle(view.texture));
+                        let texture = self.resources.textures.get(view.texture).unwrap();
+                        if texture.ref_count.decrement() {
+                            self.resources
+                                .deletion_queue
+                                .push(DeletionEvent::Texture(view.texture));
+                        }
                     }
 
                     for (_, views) in &set.texture_arrays {
                         for view in views {
-                            self.resources
-                                .lifecycle_events
-                                .push(LifecycleEvent::DestroyTextureHandle(view.texture));
+                            let texture = self.resources.textures.get(view.texture).unwrap();
+                            if texture.ref_count.decrement() {
+                                self.resources
+                                    .deletion_queue
+                                    .push(DeletionEvent::Texture(view.texture));
+                            }
                         }
                     }
 
-                    self.resources
-                        .lifecycle_events
-                        .push(LifecycleEvent::DestroyDescriptorSetLayoutHandle(set.layout));
+                    for (_, id) in &set.samplers {
+                        let sampler = self.resources.samplers.get(*id).unwrap();
+                        if sampler.ref_count.decrement() {
+                            self.resources
+                                .deletion_queue
+                                .push(DeletionEvent::Sampler(*id));
+                        }
+                    }
 
-                    self.resources.descriptor_sets.remove(id);
-                }
-                LifecycleEvent::DestroyPipelineHandle(id) => {
-                    let pipeline = self.resources.pipelines.get_mut(id).unwrap();
-                    pipeline.ref_count -= 1;
-                    if pipeline.ref_count == 0 {
-                        self.resources.pipelines.remove(id);
+                    let layout = self
+                        .resources
+                        .descriptor_set_layouts
+                        .get(set.layout)
+                        .unwrap();
+                    if layout.ref_count.decrement() {
+                        self.resources
+                            .deletion_queue
+                            .push(DeletionEvent::DescriptorSetLayout(id));
                     }
-                }
-                LifecycleEvent::DestroyDescriptorSetLayoutHandle(id) => {
-                    let layout = self.resources.descriptor_set_layouts.get_mut(id).unwrap();
-                    layout.ref_count -= 1;
-                    if layout.ref_count == 0 {
-                        self.resources.descriptor_set_layouts.remove(id);
-                    }
-                }
-                LifecycleEvent::CloneBufferHandle(id) => {
-                    let buffer = self.resources.buffers.get_mut(id).unwrap();
-                    buffer.ref_count += 1;
-                }
-                LifecycleEvent::CloneTextureHandle(id) => {
-                    let texture = self.resources.textures.get_mut(id).unwrap();
-                    texture.ref_count += 1;
-                }
-                LifecycleEvent::CloneSamplerHandle(id) => {
-                    let sampler = self.resources.samplers.get_mut(id).unwrap();
-                    sampler.ref_count += 1;
-                }
-                LifecycleEvent::ClonePipelineHandle(id) => {
-                    let pipeline = self.resources.pipelines.get_mut(id).unwrap();
-                    pipeline.ref_count += 1;
-                }
-                LifecycleEvent::CloneDescriptorSetLayoutHandle(id) => {
-                    let layout = self.resources.descriptor_set_layouts.get_mut(id).unwrap();
-                    layout.ref_count += 1;
-                }
-                LifecycleEvent::CloneDescriptorSetHandle(id) => {
-                    let set = self.resources.descriptor_sets.get_mut(id).unwrap();
-                    set.ref_count += 1;
                 }
             }
         }
     }
-}
-
-#[derive(Debug)]
-struct Resources {
-    buffers: Arena<BufferInner>,
-    textures: Arena<TextureInner>,
-    samplers: Arena<SamplerInner>,
-    descriptor_set_layouts: Arena<DescriptorSetLayoutInner>,
-    descriptor_sets: Arena<DescriptorSetInner>,
-    pipelines: Arena<PipelineInner>,
-    allocator: GeneralPurposeAllocator,
-    descriptor_allocator: DescriptorSetAllocator,
-    lifecycle_events: Arc<SegQueue<LifecycleEvent>>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -236,30 +196,7 @@ enum ResourceId {
     Texture(TextureMip),
 }
 
-impl ResourceMap for Resources {
-    type Id = ResourceId;
-
-    fn access(&self, id: Self::Id) -> AccessFlags {
-        match id {
-            ResourceId::Buffer(id) => self.buffers.get(id).unwrap().access,
-            ResourceId::Texture(tex) => {
-                let texture = self.textures.get(tex.id).unwrap();
-                texture.mips[tex.mip_level as usize]
-            }
-        }
-    }
-
-    fn set_access(&mut self, id: Self::Id, access: AccessFlags) {
-        match id {
-            ResourceId::Buffer(id) => self.buffers.get_mut(id).unwrap().access = access,
-            ResourceId::Texture(tex) => {
-                let texture = self.textures.get_mut(tex.id).unwrap();
-                texture.mips[tex.mip_level as usize] = access;
-            }
-        }
-    }
-}
-
+/// A queue for encoding rendering commands.
 #[derive(Debug)]
 pub struct CommandQueue<'a> {
     executor: &'a mut CommandExecutor,
@@ -278,28 +215,35 @@ impl<'a> CommandQueue<'a> {
             .unwrap_or(TextureUsage::empty())
     }
 
-    pub fn create_buffer(&mut self, descriptor: &BufferDescriptor) -> Buffer {
+    /// Creates a new [`Buffer`].
+    pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> Buffer {
         let buffer = self.executor.resources.allocator.create_buffer(
             descriptor.size.try_into().unwrap(),
             descriptor.usage,
-            UsageFlags::HOST_VISIBLE,
+            descriptor.flags,
         );
 
-        let id = self.executor.resources.buffers.insert(BufferInner {
-            buffer,
-            access: AccessFlags::empty(),
-            ref_count: 1,
-        });
+        let id = self
+            .executor
+            .resources
+            .buffers
+            .insert(BufferInner {
+                buffer: UnsafeRefCell::new(buffer),
+                access: UnsafeRefCell::new(AccessFlags::empty()),
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         Buffer {
             id,
             size: descriptor.size,
             usage: descriptor.usage,
             flags: descriptor.flags,
-            events: self.executor.resources.lifecycle_events.clone(),
+            resources: self.executor.resources.clone(),
         }
     }
 
+    #[track_caller]
     pub fn create_buffer_init(&mut self, descriptor: &BufferInitDescriptor<'_>) -> Buffer {
         let buffer = self.create_buffer(&BufferDescriptor {
             size: descriptor.contents.len() as u64,
@@ -310,6 +254,7 @@ impl<'a> CommandQueue<'a> {
         buffer
     }
 
+    #[track_caller]
     pub fn write_buffer(&mut self, buffer: &Buffer, data: &[u8]) {
         assert!(
             buffer.usage.contains(BufferUsage::TRANSFER_DST),
@@ -328,12 +273,7 @@ impl<'a> CommandQueue<'a> {
         if buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
             // The destination buffer must be kept alive until
             // the memcpy is complete.
-            self.executor
-                .resources
-                .buffers
-                .get_mut(buffer.id)
-                .unwrap()
-                .ref_count += 1;
+            buffer.increment_ref_count();
 
             self.executor.cmds.push(
                 &self.executor.resources,
@@ -355,12 +295,7 @@ impl<'a> CommandQueue<'a> {
 
             // The staging buffer must be kept alive until
             // the memcpy is complete.
-            self.executor
-                .resources
-                .buffers
-                .get_mut(staging_buffer.id)
-                .unwrap()
-                .ref_count += 1;
+            staging_buffer.increment_ref_count();
 
             // Write the data into the staging buffer.
             self.executor.cmds.push(
@@ -404,20 +339,30 @@ impl<'a> CommandQueue<'a> {
             .allocator
             .create_texture(&descriptor, UsageFlags::empty());
 
-        let id = self.executor.resources.textures.insert(TextureInner {
-            data: TextureData::Virtual(texture),
-            ref_count: 1,
-            mips: vec![AccessFlags::empty(); descriptor.mip_levels as usize],
-        });
+        let mut mip_access = Vec::with_capacity(descriptor.mip_levels as usize);
+        for _ in 0..descriptor.mip_levels {
+            mip_access.push(UnsafeRefCell::new(AccessFlags::empty()));
+        }
+
+        let id = self
+            .executor
+            .resources
+            .textures
+            .insert(TextureInner {
+                texture: TextureData::Virtual(texture),
+                mip_access,
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         Texture {
             id,
             size: descriptor.size,
             format: descriptor.format,
             usage: descriptor.usage,
-            events: self.executor.resources.lifecycle_events.clone(),
-            auto_destroy: true,
             mip_levels: descriptor.mip_levels,
+            manually_managed: false,
+            resources: self.executor.resources.clone(),
         }
     }
 
@@ -432,47 +377,40 @@ impl<'a> CommandQueue<'a> {
         let format = texture.format();
         let mip_levels = texture.mip_levels();
 
-        let id = self.executor.resources.textures.insert(TextureInner {
-            data: TextureData::Physical(texture),
-            ref_count: 1,
-            mips: vec![access; mip_levels as usize],
-        });
+        let mut mip_access = Vec::with_capacity(mip_levels as usize);
+        for _ in 0..mip_levels {
+            mip_access.push(UnsafeRefCell::new(access));
+        }
+
+        let id = self
+            .executor
+            .resources
+            .textures
+            .insert(TextureInner {
+                texture: TextureData::Physical(texture),
+                mip_access,
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         Texture {
             id,
             size,
             format,
             usage,
-            events: self.executor.resources.lifecycle_events.clone(),
-            auto_destroy: false,
             mip_levels,
+            manually_managed: true,
+            resources: self.executor.resources.clone(),
         }
     }
 
     pub(crate) fn remove_imported_texture(&mut self, texture: Texture) {
-        for (_, descriptor_set) in self.executor.resources.descriptor_sets.iter() {
-            assert!(
-                !descriptor_set
-                    .textures
-                    .iter()
-                    .any(|(_, view)| view.texture == texture.id),
-                "Texture cannot be removed: it is used in a descriptor set",
-            );
-        }
+        debug_assert!(texture.manually_managed);
 
-        let tex = self
-            .executor
-            .resources
-            .textures
-            .get_mut(texture.id)
-            .unwrap();
-        tex.ref_count -= 1;
-        if tex.ref_count != 0 {
+        let texture = self.executor.resources.textures.take(texture.id).unwrap();
+        if !texture.ref_count.decrement() {
             panic!("Texture is still in use");
         }
-
-        self.executor.resources.textures.remove(texture.id);
-        debug_assert!(!texture.auto_destroy);
     }
 
     #[track_caller]
@@ -526,18 +464,8 @@ impl<'a> CommandQueue<'a> {
 
         // The source and destination buffer must be kept alive
         // for this command.
-        self.executor
-            .resources
-            .buffers
-            .get_mut(src.id)
-            .unwrap()
-            .ref_count += 1;
-        self.executor
-            .resources
-            .buffers
-            .get_mut(dst.id)
-            .unwrap()
-            .ref_count += 1;
+        src.increment_ref_count();
+        dst.increment_ref_count();
 
         self.executor.cmds.push(
             &self.executor.resources,
@@ -574,18 +502,8 @@ impl<'a> CommandQueue<'a> {
 
         // The source buffer and destination buffer must be kept alive
         // for this command.
-        self.executor
-            .resources
-            .buffers
-            .get_mut(src.id)
-            .unwrap()
-            .ref_count += 1;
-        self.executor
-            .resources
-            .textures
-            .get_mut(dst.texture.id)
-            .unwrap()
-            .ref_count += 1;
+        src.increment_ref_count();
+        dst.texture.increment_ref_count();
 
         self.executor.cmds.push(
             &self.executor.resources,
@@ -612,18 +530,8 @@ impl<'a> CommandQueue<'a> {
         assert!(dst.mip_level < dst.texture.mip_levels);
 
         // The source and destination textures must be kept alive.
-        self.executor
-            .resources
-            .textures
-            .get_mut(src.texture.id)
-            .unwrap()
-            .ref_count += 1;
-        self.executor
-            .resources
-            .textures
-            .get_mut(dst.texture.id)
-            .unwrap()
-            .ref_count += 1;
+        src.texture.increment_ref_count();
+        dst.texture.increment_ref_count();
 
         self.executor.cmds.push(
             &self.executor.resources,
@@ -654,22 +562,12 @@ impl<'a> CommandQueue<'a> {
                         "Buffer cannot be bound to descriptor set: UNIFORM and STORAGE not set",
                     );
 
-                    self.executor
-                        .resources
-                        .buffers
-                        .get_mut(buffer.id)
-                        .unwrap()
-                        .ref_count += 1;
+                    buffer.increment_ref_count();
 
                     buffers.push((entry.binding, buffer.id));
                 }
                 BindingResource::Sampler(sampler) => {
-                    self.executor
-                        .resources
-                        .samplers
-                        .get_mut(sampler.id)
-                        .unwrap()
-                        .ref_count += 1;
+                    sampler.increment_ref_count();
 
                     samplers.push((entry.binding, sampler.id));
                 }
@@ -679,12 +577,7 @@ impl<'a> CommandQueue<'a> {
                         "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
                     );
 
-                    self.executor
-                        .resources
-                        .textures
-                        .get_mut(view.texture.id)
-                        .unwrap()
-                        .ref_count += 1;
+                    view.texture.increment_ref_count();
 
                     textures.push((
                         entry.binding,
@@ -704,12 +597,7 @@ impl<'a> CommandQueue<'a> {
                     }
 
                     for view in views {
-                        self.executor
-                            .resources
-                            .textures
-                            .get_mut(view.texture.id)
-                            .unwrap()
-                            .ref_count += 1;
+                        view.texture.increment_ref_count();
                     }
 
                     texture_arrays.push((
@@ -730,9 +618,10 @@ impl<'a> CommandQueue<'a> {
         self.executor
             .resources
             .descriptor_set_layouts
-            .get_mut(descriptor.layout.id)
+            .get(descriptor.layout.id)
             .unwrap()
-            .ref_count += 1;
+            .ref_count
+            .increment();
 
         let id = self
             .executor
@@ -743,15 +632,16 @@ impl<'a> CommandQueue<'a> {
                 samplers,
                 textures,
                 texture_arrays,
-                descriptor_set: None,
+                descriptor_set: UnsafeRefCell::new(None),
                 layout: descriptor.layout.id,
-                physical_texture_views: Vec::new(),
-                ref_count: 1,
-            });
+                physical_texture_views: UnsafeRefCell::new(Vec::new()),
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         DescriptorSet {
             id,
-            events: self.executor.resources.lifecycle_events.clone(),
+            resources: self.executor.resources.clone(),
         }
     }
 
@@ -770,27 +660,29 @@ impl<'a> CommandQueue<'a> {
             .descriptor_set_layouts
             .insert(DescriptorSetLayoutInner {
                 inner,
-                ref_count: 1,
-            });
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         DescriptorSetLayout {
             id,
-            events: self.executor.resources.lifecycle_events.clone(),
+            resources: self.executor.resources.clone(),
         }
     }
 
     pub fn create_pipeline(&mut self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
-        let mut descriptors = Vec::new();
-        for layout in descriptor.descriptors {
-            let layout = self
-                .executor
-                .resources
-                .descriptor_set_layouts
-                .get(layout.id)
-                .unwrap();
-
-            descriptors.push(&layout.inner);
-        }
+        let layouts: Vec<_> = descriptor
+            .descriptors
+            .iter()
+            .map(|layout| {
+                self.executor
+                    .resources
+                    .descriptor_set_layouts
+                    .get(layout.id)
+                    .unwrap()
+            })
+            .collect();
+        let descriptors: Vec<_> = layouts.iter().map(|layout| &layout.inner).collect();
 
         let mut bindings = BindingMap::default();
         for stage in descriptor.stages {
@@ -861,28 +753,38 @@ impl<'a> CommandQueue<'a> {
                 push_constant_ranges: descriptor.push_constant_ranges,
             })
             .unwrap();
-        let id = self.executor.resources.pipelines.insert(PipelineInner {
-            inner,
-            ref_count: 1,
-            bindings,
-        });
+        let id = self
+            .executor
+            .resources
+            .pipelines
+            .insert(PipelineInner {
+                inner: Arc::new(inner),
+                bindings,
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         Pipeline {
             id,
-            events: self.executor.resources.lifecycle_events.clone(),
+            resources: self.executor.resources.clone(),
         }
     }
 
     pub fn create_sampler(&mut self, descriptor: &SamplerDescriptor) -> Sampler {
         let inner = self.executor.device.create_sampler(descriptor).unwrap();
-        let id = self.executor.resources.samplers.insert(SamplerInner {
-            inner,
-            ref_count: 1,
-        });
+        let id = self
+            .executor
+            .resources
+            .samplers
+            .insert(SamplerInner {
+                inner,
+                ref_count: RefCount::new(),
+            })
+            .unwrap();
 
         Sampler {
             id,
-            events: self.executor.resources.lifecycle_events.clone(),
+            resources: self.executor.resources.clone(),
         }
     }
 
@@ -902,9 +804,10 @@ impl<'a> CommandQueue<'a> {
                 self.executor
                     .resources
                     .textures
-                    .get_mut(a.target.texture.id)
+                    .get(a.target.texture.id)
                     .unwrap()
-                    .ref_count += 1;
+                    .ref_count
+                    .increment();
 
                 ColorAttachmentOwned {
                     target: RawTextureView {
@@ -922,9 +825,10 @@ impl<'a> CommandQueue<'a> {
             self.executor
                 .resources
                 .textures
-                .get_mut(attachment.texture.id)
+                .get(attachment.texture.id)
                 .unwrap()
-                .ref_count += 1;
+                .ref_count
+                .increment();
 
             DepthStencilAttachmentOwned {
                 texture: attachment.texture.id,
@@ -948,9 +852,10 @@ impl<'a> CommandQueue<'a> {
         self.executor
             .resources
             .textures
-            .get_mut(texture.texture.id)
+            .get(texture.texture.id)
             .unwrap()
-            .ref_count += 1;
+            .ref_count
+            .increment();
 
         self.executor.cmds.push(
             &self.executor.resources,
@@ -974,57 +879,66 @@ pub struct TextureRegion<'a> {
 #[derive(Debug)]
 pub struct DescriptorSet {
     id: DescriptorSetId,
-    events: Arc<SegQueue<LifecycleEvent>>,
+    resources: Arc<Resources>,
 }
 
 impl Clone for DescriptorSet {
     fn clone(&self) -> Self {
-        self.events
-            .push(LifecycleEvent::CloneDescriptorSetHandle(self.id));
+        let set = self.resources.descriptor_sets.get(self.id).unwrap();
+        set.ref_count.increment();
 
         Self {
             id: self.id,
-            events: self.events.clone(),
+            resources: self.resources.clone(),
         }
     }
 }
 
 impl Drop for DescriptorSet {
     fn drop(&mut self) {
-        self.events
-            .push(LifecycleEvent::DestroyDescriptorSetHandle(self.id));
+        let set = self.resources.descriptor_sets.get(self.id).unwrap();
+        if set.ref_count.decrement() {
+            self.resources
+                .deletion_queue
+                .push(DeletionEvent::DescriptorSet(self.id));
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct Sampler {
     id: SamplerId,
-    events: Arc<SegQueue<LifecycleEvent>>,
+    resources: Arc<Resources>,
+}
+
+impl Sampler {
+    fn increment_ref_count(&self) {
+        let sampler = self.resources.samplers.get(self.id).unwrap();
+        sampler.ref_count.increment();
+    }
 }
 
 impl Clone for Sampler {
     fn clone(&self) -> Self {
-        self.events
-            .push(LifecycleEvent::CloneSamplerHandle(self.id));
+        let sampler = self.resources.samplers.get(self.id).unwrap();
+        sampler.ref_count.increment();
 
         Self {
             id: self.id,
-            events: self.events.clone(),
+            resources: self.resources.clone(),
         }
     }
 }
 
 impl Drop for Sampler {
     fn drop(&mut self) {
-        self.events
-            .push(LifecycleEvent::DestroySamplerHandle(self.id));
+        let sampler = self.resources.samplers.get(self.id).unwrap();
+        if sampler.ref_count.decrement() {
+            self.resources
+                .deletion_queue
+                .push(DeletionEvent::Sampler(self.id));
+        }
     }
-}
-
-#[derive(Debug)]
-struct SamplerInner {
-    inner: vulkan::Sampler,
-    ref_count: usize,
 }
 
 #[derive(Debug)]
@@ -1041,64 +955,59 @@ pub struct PipelineDescriptor<'a> {
 #[derive(Debug)]
 pub struct DescriptorSetLayout {
     id: DescriptorSetLayoutId,
-    events: Arc<SegQueue<LifecycleEvent>>,
+    resources: Arc<Resources>,
 }
 
 impl Clone for DescriptorSetLayout {
     fn clone(&self) -> Self {
-        self.events
-            .push(LifecycleEvent::CloneDescriptorSetLayoutHandle(self.id));
+        let layout = self.resources.descriptor_set_layouts.get(self.id).unwrap();
+        layout.ref_count.increment();
 
         Self {
             id: self.id,
-            events: self.events.clone(),
+            resources: self.resources.clone(),
         }
     }
 }
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
-        self.events
-            .push(LifecycleEvent::DestroyDescriptorSetLayoutHandle(self.id));
+        let layout = self.resources.descriptor_set_layouts.get(self.id).unwrap();
+        if layout.ref_count.decrement() {
+            self.resources
+                .deletion_queue
+                .push(DeletionEvent::DescriptorSetLayout(self.id));
+        }
     }
-}
-
-#[derive(Debug)]
-struct DescriptorSetLayoutInner {
-    inner: vulkan::DescriptorSetLayout,
-    ref_count: usize,
 }
 
 #[derive(Debug)]
 pub struct Pipeline {
     id: PipelineId,
-    events: Arc<SegQueue<LifecycleEvent>>,
+    resources: Arc<Resources>,
 }
 
 impl Clone for Pipeline {
     fn clone(&self) -> Self {
-        self.events
-            .push(LifecycleEvent::ClonePipelineHandle(self.id));
+        let pipeline = self.resources.pipelines.get(self.id).unwrap();
+        pipeline.ref_count.increment();
 
         Self {
             id: self.id,
-            events: self.events.clone(),
+            resources: self.resources.clone(),
         }
     }
 }
 
 impl Drop for Pipeline {
     fn drop(&mut self) {
-        self.events
-            .push(LifecycleEvent::DestroyPipelineHandle(self.id));
+        let pipeline = self.resources.pipelines.get(self.id).unwrap();
+        if pipeline.ref_count.decrement() {
+            self.resources
+                .deletion_queue
+                .push(DeletionEvent::Pipeline(self.id));
+        }
     }
-}
-
-#[derive(Debug)]
-struct PipelineInner {
-    inner: vulkan::Pipeline,
-    ref_count: usize,
-    bindings: BindingMap,
 }
 
 /// Tracks how a pipeline accesses each binding.
@@ -1139,35 +1048,40 @@ pub struct Buffer {
     size: u64,
     usage: BufferUsage,
     flags: UsageFlags,
-    events: Arc<SegQueue<LifecycleEvent>>,
+    resources: Arc<Resources>,
+}
+
+impl Buffer {
+    fn increment_ref_count(&self) {
+        let buffer = self.resources.buffers.get(self.id).unwrap();
+        buffer.ref_count.increment();
+    }
 }
 
 impl Clone for Buffer {
     fn clone(&self) -> Self {
-        self.events.push(LifecycleEvent::CloneBufferHandle(self.id));
+        let buffer = self.resources.buffers.get(self.id).unwrap();
+        buffer.ref_count.increment();
 
         Self {
             id: self.id,
             size: self.size,
             usage: self.usage,
             flags: self.flags,
-            events: self.events.clone(),
+            resources: self.resources.clone(),
         }
     }
 }
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        self.events
-            .push(LifecycleEvent::DestroyBufferHandle(self.id));
+        let buffer = self.resources.buffers.get(self.id).unwrap();
+        if buffer.ref_count.decrement() {
+            self.resources
+                .deletion_queue
+                .push(DeletionEvent::Buffer(self.id));
+        }
     }
-}
-
-#[derive(Debug)]
-pub struct BufferInner {
-    buffer: BufferAlloc,
-    access: AccessFlags,
-    ref_count: usize,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1202,32 +1116,13 @@ pub enum BindingResource<'a> {
 }
 
 #[derive(Copy, Clone, Debug)]
-enum LifecycleEvent {
-    DestroyBufferHandle(BufferId),
-    DestroyTextureHandle(TextureId),
-    DestroySamplerHandle(SamplerId),
-    DestroyPipelineHandle(PipelineId),
-    DestroyDescriptorSetHandle(DescriptorSetId),
-    DestroyDescriptorSetLayoutHandle(DescriptorSetLayoutId),
-    CloneBufferHandle(BufferId),
-    CloneTextureHandle(TextureId),
-    CloneSamplerHandle(SamplerId),
-    CloneDescriptorSetHandle(DescriptorSetId),
-    CloneDescriptorSetLayoutHandle(DescriptorSetLayoutId),
-    ClonePipelineHandle(PipelineId),
-}
-
-#[derive(Debug)]
-struct DescriptorSetInner {
-    // (Binding, Resource)
-    buffers: Vec<(u32, BufferId)>,
-    samplers: Vec<(u32, SamplerId)>,
-    textures: Vec<(u32, RawTextureView)>,
-    texture_arrays: Vec<(u32, Vec<RawTextureView>)>,
-    descriptor_set: Option<AllocatedDescriptorSet>,
-    layout: DescriptorSetLayoutId,
-    physical_texture_views: Vec<vulkan::TextureView<'static>>,
-    ref_count: usize,
+enum DeletionEvent {
+    Buffer(BufferId),
+    Texture(TextureId),
+    Sampler(SamplerId),
+    Pipeline(PipelineId),
+    DescriptorSet(DescriptorSetId),
+    DescriptorSetLayout(DescriptorSetLayoutId),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1255,9 +1150,9 @@ pub struct Texture {
     size: UVec2,
     format: TextureFormat,
     usage: TextureUsage,
-    events: Arc<SegQueue<LifecycleEvent>>,
-    auto_destroy: bool,
     mip_levels: u32,
+    resources: Arc<Resources>,
+    manually_managed: bool,
 }
 
 impl Texture {
@@ -1288,13 +1183,18 @@ impl Texture {
             mip_levels,
         }
     }
+
+    fn increment_ref_count(&self) {
+        let texture = self.resources.textures.get(self.id).unwrap();
+        texture.ref_count.increment();
+    }
 }
 
 impl Clone for Texture {
     fn clone(&self) -> Self {
-        if self.auto_destroy {
-            self.events
-                .push(LifecycleEvent::CloneTextureHandle(self.id));
+        if !self.manually_managed {
+            let texture = self.resources.textures.get(self.id).unwrap();
+            texture.ref_count.increment();
         }
 
         Self {
@@ -1302,18 +1202,22 @@ impl Clone for Texture {
             size: self.size,
             format: self.format,
             usage: self.usage,
-            events: self.events.clone(),
-            auto_destroy: self.auto_destroy,
             mip_levels: self.mip_levels,
+            resources: self.resources.clone(),
+            manually_managed: self.manually_managed,
         }
     }
 }
 
 impl Drop for Texture {
     fn drop(&mut self) {
-        if self.auto_destroy {
-            self.events
-                .push(LifecycleEvent::DestroyTextureHandle(self.id));
+        if !self.manually_managed {
+            let texture = self.resources.textures.get(self.id).unwrap();
+            if texture.ref_count.decrement() {
+                self.resources
+                    .deletion_queue
+                    .push(DeletionEvent::Texture(self.id));
+            }
         }
     }
 }
@@ -1329,29 +1233,6 @@ pub struct TextureView {
 pub struct TextureViewDescriptor {
     pub base_mip_level: u32,
     pub mip_levels: Option<u32>,
-}
-
-#[derive(Debug)]
-pub struct TextureInner {
-    data: TextureData,
-    ref_count: usize,
-    /// Access flags of each mip level.
-    mips: Vec<AccessFlags>,
-}
-
-#[derive(Debug)]
-enum TextureData {
-    Physical(vulkan::Texture),
-    Virtual(TextureAlloc),
-}
-
-impl TextureData {
-    fn texture(&self) -> &vulkan::Texture {
-        match self {
-            Self::Physical(data) => data,
-            Self::Virtual(data) => data.texture(),
-        }
-    }
 }
 
 pub struct RenderPass<'a, 'b> {
@@ -1371,9 +1252,10 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .executor
             .resources
             .pipelines
-            .get_mut(pipeline.id)
+            .get(pipeline.id)
             .unwrap()
-            .ref_count += 1;
+            .ref_count
+            .increment();
 
         self.cmds.push(DrawCmd::SetPipeline(pipeline.id));
         self.last_pipeline = Some(pipeline.id);
@@ -1382,14 +1264,14 @@ impl<'a, 'b> RenderPass<'a, 'b> {
     pub fn set_descriptor_set(&mut self, index: u32, descriptor_set: &'b DescriptorSet) {
         assert!(self.last_pipeline.is_some(), "Pipeline is not set");
 
-        let set = self
-            .ctx
+        self.ctx
             .executor
             .resources
             .descriptor_sets
-            .get_mut(descriptor_set.id)
-            .unwrap();
-        set.ref_count += 1;
+            .get(descriptor_set.id)
+            .unwrap()
+            .ref_count
+            .increment();
 
         self.cmds
             .push(DrawCmd::SetDescriptorSet(index, descriptor_set.id));
@@ -1411,9 +1293,10 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .executor
             .resources
             .buffers
-            .get_mut(buffer.id)
+            .get(buffer.id)
             .unwrap()
-            .ref_count += 1;
+            .ref_count
+            .increment();
 
         self.cmds.push(DrawCmd::SetIndexBuffer(buffer.id, format));
         self.last_index_buffer = Some((buffer.id, format));
@@ -1446,10 +1329,11 @@ impl<'a, 'b> RenderPass<'a, 'b> {
         };
 
         let buffer = self.ctx.executor.resources.buffers.get(buffer).unwrap();
+        let buffer_size = unsafe { buffer.buffer.borrow().size() };
         assert!(
-            buffer.buffer.size() >= min_size.into(),
+            buffer_size >= min_size.into(),
             "index buffer of size {} is too small for indices={:?} format={:?}",
-            buffer.buffer.size(),
+            buffer_size,
             indices,
             format,
         );

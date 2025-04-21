@@ -3,6 +3,7 @@ use std::mem::transmute;
 use std::num::NonZeroU32;
 
 use game_tracing::trace_span;
+use parking_lot::Mutex;
 use slab::Slab;
 
 use super::vulkan::{DescriptorPool, DescriptorSet, DescriptorSetLayout, Device, Error};
@@ -32,20 +33,20 @@ impl AllocatedDescriptorSet {
 #[derive(Debug)]
 pub struct DescriptorSetAllocator {
     device: Device,
-    buckets: HashMap<DescriptorSetResourceCount, DescriptorPoolBucket>,
+    buckets: Mutex<HashMap<DescriptorSetResourceCount, DescriptorPoolBucket>>,
 }
 
 impl DescriptorSetAllocator {
     pub fn new(device: Device) -> Self {
         Self {
             device,
-            buckets: HashMap::new(),
+            buckets: Mutex::new(HashMap::new()),
         }
     }
 
     // FIXME: Why is this unsafe again?
     pub unsafe fn alloc(
-        &mut self,
+        &self,
         layout: &DescriptorSetLayout,
     ) -> Result<AllocatedDescriptorSet, Error> {
         let _span = trace_span!("DescriptorSetAllocator::alloc").entered();
@@ -69,8 +70,8 @@ impl DescriptorSetAllocator {
             }
         }
 
-        let bucket = self
-            .buckets
+        let mut buckets = self.buckets.lock();
+        let bucket = buckets
             .entry(count)
             .or_insert_with(|| DescriptorPoolBucket::new());
 
@@ -94,7 +95,8 @@ impl DescriptorSetAllocator {
     pub unsafe fn dealloc(&mut self, descriptor_set: AllocatedDescriptorSet) {
         let _span = trace_span!("DescriptorSetAllocator::dealloc").entered();
 
-        let bucket = self.buckets.get_mut(&descriptor_set.bucket).unwrap();
+        let mut buckets = self.buckets.lock();
+        let bucket = buckets.get_mut(&descriptor_set.bucket).unwrap();
 
         unsafe {
             bucket.dealloc(descriptor_set.pool);
