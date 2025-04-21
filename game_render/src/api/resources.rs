@@ -11,7 +11,7 @@ use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator
 use crate::backend::shader::BindingLocation;
 use crate::backend::{vulkan, AccessFlags};
 
-use super::{DeletionEvent, RawTextureView, ResourceId, ResourceMap};
+use super::{BindingMap, DeletionEvent, RawTextureView, ResourceId, ResourceMap};
 
 pub type BufferId = usize;
 pub type TextureId = usize;
@@ -128,7 +128,7 @@ pub struct DescriptorSetInner {
 #[derive(Debug)]
 pub struct PipelineInner {
     pub inner: Arc<vulkan::Pipeline>,
-    pub bindings: HashMap<BindingLocation, AccessFlags>,
+    pub bindings: BindingMap,
     pub ref_count: RefCount,
 }
 
