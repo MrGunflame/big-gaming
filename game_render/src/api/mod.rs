@@ -5,6 +5,7 @@ pub mod executor;
 mod resources;
 mod scheduler;
 
+use std::any::Any;
 use std::num::NonZeroU64;
 use std::ops::Range;
 use std::sync::Arc;
@@ -492,6 +493,12 @@ impl<'a> CommandQueue<'a> {
             dst.texture.usage.contains(TextureUsage::TRANSFER_DST),
             "Texture cannot be written to: TRANSFER_DST not set",
         );
+        assert!(
+            dst.mip_level < dst.texture.mip_levels,
+            "Cannot write to mip level {}, only {} levels exist",
+            dst.mip_level,
+            dst.texture.mip_levels
+        );
 
         // The source buffer and destination buffer must be kept alive
         // for this command.
@@ -677,7 +684,7 @@ impl<'a> CommandQueue<'a> {
             .collect();
         let descriptors: Vec<_> = layouts.iter().map(|layout| &layout.inner).collect();
 
-        let mut bindings = HashMap::new();
+        let mut bindings = BindingMap::default();
         for stage in descriptor.stages {
             match stage {
                 PipelineStage::Vertex(stage) => {
@@ -697,7 +704,11 @@ impl<'a> CommandQueue<'a> {
                         }
 
                         if !access.is_empty() {
-                            *bindings.entry(binding.location()).or_default() |= access;
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
                         }
                     }
                 }
@@ -718,7 +729,11 @@ impl<'a> CommandQueue<'a> {
                         }
 
                         if !access.is_empty() {
-                            *bindings.entry(binding.location()).or_default() |= access;
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
                         }
                     }
                 }
@@ -992,6 +1007,38 @@ impl Drop for Pipeline {
                 .deletion_queue
                 .push(DeletionEvent::Pipeline(self.id));
         }
+    }
+}
+
+/// Tracks how a pipeline accesses each binding.
+#[derive(Clone, Debug, Default)]
+struct BindingMap {
+    // Bindings are usually compact and continous so we can use direct
+    // indexing and pad empty slots.
+    // In most cases the number of empty slots is zero.
+    groups: Vec<Vec<Option<AccessFlags>>>,
+}
+
+impl BindingMap {
+    fn insert(&mut self, group: u32, binding: u32, flags: AccessFlags) {
+        if group as usize >= self.groups.len() {
+            self.groups.resize(group as usize + 1, Vec::new());
+        }
+        let group = &mut self.groups[group as usize];
+
+        if binding as usize >= group.len() {
+            group.resize(binding as usize + 1, None);
+        }
+
+        *group[binding as usize].get_or_insert_default() |= flags;
+    }
+
+    fn get(&self, group: u32, binding: u32) -> Option<AccessFlags> {
+        self.groups
+            .get(group as usize)?
+            .get(binding as usize)?
+            .as_ref()
+            .copied()
     }
 }
 

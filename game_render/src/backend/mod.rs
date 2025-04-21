@@ -273,7 +273,62 @@ pub struct VertexStage<'a> {
 pub struct FragmentStage<'a> {
     pub shader: &'a ShaderModule,
     pub entry: &'static str,
-    pub targets: &'a [TextureFormat],
+    pub targets: &'a [ColorTargetState],
+}
+
+#[derive(Clone, Debug)]
+pub struct ColorTargetState {
+    pub format: TextureFormat,
+    pub blend: Option<BlendState>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BlendState {
+    pub color_src_factor: BlendFactor,
+    pub color_dst_factor: BlendFactor,
+    pub color_op: BlendOp,
+    pub alpha_src_factor: BlendFactor,
+    pub alpha_dst_factor: BlendFactor,
+    pub alpha_op: BlendOp,
+}
+
+impl BlendState {
+    pub const PREMULTIPLIED_ALPHA: Self = Self {
+        color_src_factor: BlendFactor::One,
+        color_dst_factor: BlendFactor::OneMinusSrcAlpha,
+        color_op: BlendOp::Add,
+        alpha_src_factor: BlendFactor::One,
+        alpha_dst_factor: BlendFactor::OneMinusSrcAlpha,
+        alpha_op: BlendOp::Add,
+    };
+
+    pub const NON_PREMULTIPLIED_ALPHA: Self = Self {
+        color_src_factor: BlendFactor::SrcAlpha,
+        color_dst_factor: BlendFactor::OneMinusSrcAlpha,
+        color_op: BlendOp::Add,
+        alpha_src_factor: BlendFactor::One,
+        alpha_dst_factor: BlendFactor::OneMinusSrcAlpha,
+        alpha_op: BlendOp::Add,
+    };
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BlendFactor {
+    Zero,
+    One,
+    Src,
+    OneMinusSrc,
+    SrcAlpha,
+    OneMinusSrcAlpha,
+    Dst,
+    OneMinusDst,
+    DstAlpha,
+    OneMinusDstAlpha,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BlendOp {
+    Add,
 }
 
 #[derive(Debug)]

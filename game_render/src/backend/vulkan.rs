@@ -25,8 +25,8 @@ use crate::backend::{mip_level_size_2d, DescriptorType, SurfaceFormat, TextureLa
 
 use super::shader::{self, BindingInfo, Shader};
 use super::{
-    AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BufferUsage,
-    BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
+    AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BlendFactor,
+    BlendOp, BufferUsage, BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
     DescriptorSetDescriptor, Face, FilterMode, FrontFace, IndexFormat, LoadOp, MemoryHeap,
     MemoryHeapFlags, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
     PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology, QueueCapabilities,
@@ -1437,6 +1437,7 @@ impl Device {
 
         let mut stages = Vec::new();
         let mut color_attchment_formats: Vec<vk::Format> = Vec::new();
+        let mut color_blend_attachments = Vec::new();
 
         // We need exactly one `VK_SHADER_STAGE_VERTEX_BIT` or `VK_SHADER_STAGE_MESH_BIT_EXT` stage.
         assert_eq!(
@@ -1474,7 +1475,7 @@ impl Device {
                 PipelineStage::Fragment(stage) => {
                     for target in stage.targets {
                         if !self
-                            .get_format_features(*target)
+                            .get_format_features(target.format)
                             .contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT)
                         {
                             panic!(
@@ -1483,7 +1484,24 @@ impl Device {
                             );
                         }
 
-                        color_attchment_formats.push(vk::Format::from(*target));
+                        color_attchment_formats.push(vk::Format::from(target.format));
+
+                        let mut color_blend_state =
+                            vk::PipelineColorBlendAttachmentState::default()
+                                .color_write_mask(vk::ColorComponentFlags::RGBA)
+                                .blend_enable(target.blend.is_some());
+
+                        if let Some(state) = target.blend {
+                            color_blend_state = color_blend_state
+                                .src_color_blend_factor(state.color_src_factor.into())
+                                .dst_color_blend_factor(state.color_dst_factor.into())
+                                .color_blend_op(state.color_op.into())
+                                .src_alpha_blend_factor(state.alpha_src_factor.into())
+                                .dst_alpha_blend_factor(state.alpha_dst_factor.into())
+                                .alpha_blend_op(state.alpha_op.into());
+                        }
+
+                        color_blend_attachments.push(color_blend_state);
                     }
 
                     let spirv = create_pipeline_shader_module(
@@ -1545,21 +1563,10 @@ impl Device {
             .sample_shading_enable(false)
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        let attachment = vk::PipelineColorBlendAttachmentState::default()
-            .color_write_mask(vk::ColorComponentFlags::RGBA)
-            .blend_enable(true)
-            .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
-            .dst_color_blend_factor(vk::BlendFactor::ONE_MINUS_SRC_ALPHA)
-            .color_blend_op(vk::BlendOp::ADD)
-            .src_alpha_blend_factor(vk::BlendFactor::ONE)
-            .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-            .alpha_blend_op(vk::BlendOp::ADD);
-
-        let attachments = &[attachment];
         let color_blend_state = vk::PipelineColorBlendStateCreateInfo::default()
             .logic_op_enable(false)
             .logic_op(vk::LogicOp::COPY)
-            .attachments(attachments)
+            .attachments(&color_blend_attachments)
             .blend_constants([0.0, 0.0, 0.0, 0.0]);
 
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
@@ -2411,6 +2418,25 @@ vk_enum! {
     CompareOp::NotEqual => vk::CompareOp::NOT_EQUAL,
 }
 
+vk_enum! {
+    BlendFactor => vk::BlendFactor,
+    BlendFactor::Zero => vk::BlendFactor::ZERO,
+    BlendFactor::One => vk::BlendFactor::ONE,
+    BlendFactor::Src => vk::BlendFactor::SRC_COLOR,
+    BlendFactor::OneMinusSrc => vk::BlendFactor::ONE_MINUS_SRC_COLOR,
+    BlendFactor::SrcAlpha => vk::BlendFactor::SRC_ALPHA,
+    BlendFactor::OneMinusSrcAlpha => vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+    BlendFactor::Dst => vk::BlendFactor::DST_COLOR,
+    BlendFactor::OneMinusDst => vk::BlendFactor::ONE_MINUS_DST_COLOR,
+    BlendFactor::DstAlpha => vk::BlendFactor::DST_ALPHA,
+    BlendFactor::OneMinusDstAlpha => vk::BlendFactor::ONE_MINUS_DST_ALPHA,
+}
+
+vk_enum! {
+    BlendOp => vk::BlendOp,
+    BlendOp::Add => vk::BlendOp::ADD,
+}
+
 impl From<ShaderStages> for vk::ShaderStageFlags {
     fn from(value: ShaderStages) -> Self {
         let mut flags = vk::ShaderStageFlags::empty();
@@ -2691,6 +2717,10 @@ impl<'a> CommandEncoder<'a> {
 
         assert!(mip_level < dst.mip_levels);
 
+        // Use the size of the selected mip level.
+        // https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-mip-level-sizing
+        let dst_size = UVec2::max(UVec2::ONE, dst.size >> mip_level);
+
         let aspect_mask = if dst.format.is_depth() {
             vk::ImageAspectFlags::DEPTH
         } else {
@@ -2706,18 +2736,20 @@ impl<'a> CommandEncoder<'a> {
         let region = vk::BufferImageCopy2::default()
             .buffer_offset(src.offset)
             // - `bufferRowLength` must be 0, or greater than or equal to `width` of `imageExtent`.
-            .buffer_row_length(dst.size.x)
+            // We use a value of 0, which indicates that the source buffer is tightly packed.
+            .buffer_row_length(0)
             //.buffer_row_length(0)
             // - `bufferImageHeight` must be 0, or greater than or equal to `height` of `imageExtent`.
-            .buffer_image_height(dst.size.y)
+            // We use a value of 0, which indicates that the source buffer is tightly packed.
+            .buffer_image_height(0)
             //.buffer_image_height(0)
             .image_subresource(subresource)
             .image_offset(vk::Offset3D { x: 0, y: 0, z: 0 })
             .image_extent(vk::Extent3D {
                 // - `imageExtent.width` must not be 0.
-                width: dst.size.x,
+                width: dst_size.x,
                 // - `imageExtent.height` must not be 0.
-                height: dst.size.y,
+                height: dst_size.y,
                 // - `imageExtent.depth` must not be 0.
                 depth: 1,
             });

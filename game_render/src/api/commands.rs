@@ -4,7 +4,6 @@ use bumpalo::Bump;
 use game_common::utils::exclusive::Exclusive;
 use hashbrown::{HashMap, HashSet};
 
-use crate::backend::shader::BindingLocation;
 use crate::backend::{AccessFlags, ImageDataLayout};
 
 use super::{
@@ -194,37 +193,28 @@ impl Command {
 
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
                             for (binding, buffer) in &descriptor_set.buffers {
-                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
-                                    group: *group,
-                                    binding: *binding,
-                                }) {
+                                if let Some(access) = pipeline.bindings.get(*group, *binding) {
                                     *access_flags
                                         .entry(ResourceId::Buffer(*buffer))
-                                        .or_default() |= *access;
+                                        .or_default() |= access;
                                 }
                             }
 
                             for (binding, view) in &descriptor_set.textures {
-                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
-                                    group: *group,
-                                    binding: *binding,
-                                }) {
+                                if let Some(access) = pipeline.bindings.get(*group, *binding) {
                                     for mip in view.mips() {
                                         *access_flags
                                             .entry(ResourceId::Texture(TextureMip {
                                                 id: view.texture,
                                                 mip_level: mip,
                                             }))
-                                            .or_default() |= *access;
+                                            .or_default() |= access;
                                     }
                                 }
                             }
 
                             for (binding, views) in &descriptor_set.texture_arrays {
-                                if let Some(access) = pipeline.bindings.get(&BindingLocation {
-                                    group: *group,
-                                    binding: *binding,
-                                }) {
+                                if let Some(access) = pipeline.bindings.get(*group, *binding) {
                                     for view in views {
                                         for mip in view.mips() {
                                             *access_flags
@@ -232,7 +222,7 @@ impl Command {
                                                     id: view.texture,
                                                     mip_level: mip,
                                                 }))
-                                                .or_default() |= *access;
+                                                .or_default() |= access;
                                         }
                                     }
                                 }

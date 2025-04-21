@@ -4,7 +4,7 @@ use crossbeam::channel::{Receiver, Sender};
 use game_common::collections::arena::{Arena, Key};
 use game_common::components::Transform;
 use game_render::mesh::Mesh;
-use game_render::texture::Image;
+use game_render::texture::image::MipImage;
 use parking_lot::Mutex;
 
 use crate::StandardMaterial;
@@ -58,11 +58,17 @@ impl Entities {
         }
     }
 
-    pub fn create_image(&self, image: Image) -> ImageHandle {
+    pub fn create_image<T>(&self, image: T) -> ImageHandle
+    where
+        T: Into<MipImage>,
+    {
         let mut images = self.inner.images.lock();
         let id = ImageId(images.insert(1));
 
-        self.inner.events.send(Event::CreateImage(id, image)).ok();
+        self.inner
+            .events
+            .send(Event::CreateImage(id, image.into()))
+            .ok();
         ImageHandle {
             inner: self.inner.clone(),
             id,
@@ -435,7 +441,7 @@ pub(crate) enum Event {
     DestroyMesh(MeshId),
     CreateMaterial(MaterialId, StandardMaterial),
     DestroyMaterial(MaterialId),
-    CreateImage(ImageId, Image),
+    CreateImage(ImageId, MipImage),
     DestroyImage(ImageId),
     CreateObject(ObjectId, Object),
     DestroyObject(ObjectId),
