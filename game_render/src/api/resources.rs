@@ -155,7 +155,7 @@ impl RefCount {
     /// Decrements the reference counter by `count` at once.
     #[must_use]
     pub fn decrement_many(&self, count: usize) -> bool {
-        if self.0.fetch_sub(count, Ordering::Release) != 1 {
+        if self.0.fetch_sub(count, Ordering::Release) != count {
             return false;
         }
 
