@@ -1,10 +1,12 @@
-use std::collections::HashMap;
 use std::hash::Hash;
+use std::sync::Arc;
 
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
+use hashbrown::HashMap;
 
-use crate::backend::vulkan::{CommandEncoder, TextureView};
+use crate::backend::allocator::BufferAlloc;
+use crate::backend::vulkan::{self, CommandEncoder, TextureView};
 use crate::backend::{
     AccessFlags, BufferBarrier, CopyBuffer, DescriptorType, MemoryTypeFlags, PipelineBarriers,
     RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
@@ -19,11 +21,11 @@ use super::commands::{
 use super::scheduler::{Barrier, Step};
 use super::{
     BufferId, DeletionEvent, DescriptorSetId, DrawCall, DrawCmd, PipelineId, ResourceId, Resources,
-    SamplerId, TextureData, TextureId,
+    SamplerId, TextureId,
 };
 
 pub(super) fn execute<I, T>(
-    resources: &mut Resources,
+    resources: &Resources,
     steps: I,
     encoder: &mut CommandEncoder<'_>,
 ) -> TemporaryResources
@@ -83,21 +85,18 @@ where
     tmp
 }
 
-fn write_buffer(resources: &mut Resources, tmp: &mut TemporaryResources, cmd: &WriteBuffer) {
+fn write_buffer(resources: &Resources, tmp: &mut TemporaryResources, cmd: &WriteBuffer) {
     let buffer = resources.buffers.get(cmd.buffer).unwrap();
 
-    buffer.buffer.map().copy_from_slice(&cmd.data);
+    let mut buffer = unsafe { buffer.buffer.borrow_mut() };
+    buffer.map().copy_from_slice(&cmd.data);
 
     // If the memory of the buffer is not HOST_COHERENT it needs to
     // be flushed, otherwise it may never become visible to the device.
     // TODO: We should batch and do a single flush for all writes.
-    if !buffer
-        .buffer
-        .flags()
-        .contains(MemoryTypeFlags::HOST_COHERENT)
-    {
+    if !buffer.flags().contains(MemoryTypeFlags::HOST_COHERENT) {
         unsafe {
-            buffer.buffer.flush();
+            buffer.flush();
         }
     }
 
@@ -105,7 +104,7 @@ fn write_buffer(resources: &mut Resources, tmp: &mut TemporaryResources, cmd: &W
 }
 
 fn copy_buffer_to_buffer(
-    resources: &mut Resources,
+    resources: &Resources,
     tmp: &mut TemporaryResources,
     cmd: &CopyBufferToBuffer,
     encoder: &mut CommandEncoder<'_>,
@@ -118,9 +117,9 @@ fn copy_buffer_to_buffer(
     // `TRANSFER_READ` and the destination is `TRANSFER_WRITE`.
     unsafe {
         encoder.copy_buffer_to_buffer(
-            src.buffer.buffer(),
+            src.buffer.borrow().buffer(),
             cmd.src_offset,
-            dst.buffer.buffer(),
+            dst.buffer.borrow().buffer(),
             cmd.dst_offset,
             cmd.count.get(),
         );
@@ -133,7 +132,7 @@ fn copy_buffer_to_buffer(
 }
 
 fn copy_buffer_to_texture(
-    resources: &mut Resources,
+    resources: &Resources,
     tmp: &mut TemporaryResources,
     cmd: &CopyBufferToTexture,
     encoder: &mut CommandEncoder<'_>,
@@ -147,7 +146,7 @@ fn copy_buffer_to_texture(
     unsafe {
         encoder.copy_buffer_to_texture(
             CopyBuffer {
-                buffer: buffer.buffer.buffer(),
+                buffer: buffer.buffer.borrow().buffer(),
                 offset: cmd.src_offset,
                 layout: cmd.layout,
             },
@@ -163,7 +162,7 @@ fn copy_buffer_to_texture(
 }
 
 fn copy_texture_to_texture(
-    resources: &mut Resources,
+    resources: &Resources,
     tmp: &mut TemporaryResources,
     cmd: &CopyTextureToTexture,
     encoder: &mut CommandEncoder<'_>,
@@ -190,7 +189,7 @@ fn copy_texture_to_texture(
 }
 
 fn run_render_pass(
-    resources: &mut Resources,
+    resources: &Resources,
     tmp: &mut TemporaryResources,
     cmd: &RenderPassCmd,
     encoder: &mut CommandEncoder<'_>,
@@ -201,7 +200,7 @@ fn run_render_pass(
         match cmd {
             DrawCmd::SetDescriptorSet(_, id) => {
                 let set = resources.descriptor_sets.get(*id).unwrap();
-                if set.descriptor_set.is_none() {
+                if unsafe { set.descriptor_set.borrow().is_none() } {
                     build_descriptor_set(resources, *id);
                 }
             }
@@ -216,16 +215,12 @@ fn run_render_pass(
     let mut color_attachments = Vec::new();
     for attachment in &cmd.color_attachments {
         let texture = resources.textures.get(attachment.target.texture).unwrap();
-        let physical_texture = match &texture.data {
-            TextureData::Physical(data) => data,
-            TextureData::Virtual(data) => data.texture(),
-        };
-
         // Attachment must be kept alive until the render pass completes.
         tmp.textures.insert(attachment.target.texture);
 
         let view = attachment_views.insert(unsafe {
-            physical_texture
+            texture
+                .texture()
                 .create_view(&TextureViewDescriptor {
                     base_mip_level: attachment.target.base_mip_level,
                     mip_levels: attachment.target.mip_levels,
@@ -243,17 +238,14 @@ fn run_render_pass(
 
     let depth_attachment = cmd.depth_stencil_attachment.as_ref().map(|attachment| {
         let texture = resources.textures.get(attachment.texture).unwrap();
-        let physical_texture = match &texture.data {
-            TextureData::Physical(data) => data,
-            TextureData::Virtual(data) => data.texture(),
-        };
 
         // Attachment must be kept alive until the render pass completes.
         tmp.textures.insert(attachment.texture);
 
         // Depth stencil attachment can only be a single mip.
         let view = attachment_views.insert(unsafe {
-            physical_texture
+            texture
+                .texture()
                 .create_view(&TextureViewDescriptor {
                     base_mip_level: 0,
                     mip_levels: 1,
@@ -278,25 +270,27 @@ fn run_render_pass(
         })
     };
 
+    let mut pipelines = Vec::new();
+
     for cmd in &cmd.cmds {
         match cmd {
             DrawCmd::SetPipeline(id) => {
                 let pipeline = resources.pipelines.get(*id).unwrap();
-                render_pass.bind_pipeline(&pipeline.inner);
+
+                // We store the pipeline.inner `Arc` value in a Vec,
+                // preventing it to get dropped for the duration of the following
+                // commands.
+                pipelines.push(pipeline.inner.clone());
+                render_pass.bind_pipeline(unsafe { &*Arc::as_ptr(&pipeline.inner) });
 
                 // Pipeline must be kept alive until the render pass
                 // completes.
                 tmp.pipelines.insert(*id);
             }
             DrawCmd::SetDescriptorSet(index, id) => {
-                let set = resources
-                    .descriptor_sets
-                    .get(*id)
-                    .unwrap()
-                    .descriptor_set
-                    .as_ref()
-                    .unwrap()
-                    .raw();
+                let set = resources.descriptor_sets.get(*id).unwrap();
+                let set = unsafe { set.descriptor_set.borrow() };
+                let set = set.as_ref().unwrap().raw();
                 render_pass.bind_descriptor_set(*index, set);
 
                 // Descriptor set must be kept alive until the render pass
@@ -305,7 +299,9 @@ fn run_render_pass(
             }
             DrawCmd::SetIndexBuffer(id, format) => {
                 let buffer = resources.buffers.get(*id).unwrap();
-                render_pass.bind_index_buffer(buffer.buffer.buffer_view(), *format);
+                unsafe {
+                    render_pass.bind_index_buffer(buffer.buffer.borrow().buffer_view(), *format);
+                }
 
                 // Index buffer must be kept alive until the render pass
                 // completes.
@@ -332,7 +328,7 @@ fn run_render_pass(
     tmp.texture_views.extend(attachment_views);
 }
 
-fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
+fn build_descriptor_set(resources: &Resources, id: DescriptorSetId) {
     let _span = trace_span!("build_descriptor_set").entered();
 
     let descriptor_set = resources.descriptor_sets.get(id).unwrap();
@@ -348,13 +344,17 @@ fn build_descriptor_set(resources: &mut Resources, id: DescriptorSetId) {
         .iter()
         .map(|(_, id)| resources.buffers.get(*id).unwrap())
         .collect::<Vec<_>>();
+    let buffers_refs = buffers
+        .iter()
+        .map(|buffer| unsafe { buffer.buffer.borrow() })
+        .collect::<Vec<_>>();
 
     let buffer_views = ScratchBuffer::new(descriptor_set.buffers.len());
     let texture_views = ScratchBuffer::new(descriptor_set.textures.len());
     let texture_array_views = ScratchBuffer::new(descriptor_set.texture_arrays.len());
 
-    for ((binding, id), buffer) in descriptor_set.buffers.iter().zip(&buffers) {
-        let view = buffer_views.insert(buffer.buffer.buffer_view());
+    for ((binding, id), buffer) in descriptor_set.buffers.iter().zip(&buffers_refs) {
+        let view = buffer_views.insert(buffer.buffer_view());
 
         match layout.inner.bindings()[*binding as usize].kind {
             DescriptorType::Uniform => {
@@ -454,22 +454,42 @@ fn insert_barriers(
     let mut buffer_barriers = Vec::new();
     let mut texture_barriers = Vec::new();
 
+    let mut buffers = Vec::new();
+    let mut textures = Vec::new();
     for barrier in barriers {
         match barrier.resource {
             ResourceId::Buffer(id) => {
                 let buffer = resources.buffers.get(id).unwrap();
+                unsafe {
+                    let buffer = buffer.buffer.borrow();
+                    buffers.push(&*(&*buffer as *const BufferAlloc));
+                }
+            }
+            ResourceId::Texture(tex) => {
+                let texture = resources.textures.get(tex.id).unwrap();
+                textures.push(unsafe { &*(&*texture.texture() as *const vulkan::Texture) });
+            }
+        }
+    }
+    let mut buffers = buffers.iter();
+    let mut textures = textures.iter();
+
+    for barrier in barriers {
+        match barrier.resource {
+            ResourceId::Buffer(id) => {
+                let buffer = buffers.next().unwrap();
                 buffer_barriers.push(BufferBarrier {
-                    buffer: buffer.buffer.buffer(),
-                    offset: buffer.buffer.buffer_view().offset(),
-                    size: buffer.buffer.buffer_view().len(),
+                    buffer: buffer.buffer(),
+                    offset: buffer.buffer_view().offset(),
+                    size: buffer.buffer_view().len(),
                     src_access: barrier.src_access,
                     dst_access: barrier.dst_access,
                 });
             }
             ResourceId::Texture(tex) => {
-                let texture = resources.textures.get(tex.id).unwrap();
+                let texture = textures.next().unwrap();
                 texture_barriers.push(TextureBarrier {
-                    texture: texture.texture(),
+                    texture: texture,
                     src_access: barrier.src_access,
                     dst_access: barrier.dst_access,
                     base_mip_level: tex.mip_level,

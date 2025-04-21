@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use crossbeam_queue::SegQueue;
 use game_common::cell::UnsafeRefCell;
@@ -72,7 +73,7 @@ impl<'a> ResourceMap for &'a Resources {
 
 #[derive(Debug)]
 pub struct BufferInner {
-    pub buffer: BufferAlloc,
+    pub buffer: UnsafeRefCell<BufferAlloc>,
     pub access: UnsafeRefCell<AccessFlags>,
     pub ref_count: RefCount,
 }
@@ -126,7 +127,7 @@ pub struct DescriptorSetInner {
 
 #[derive(Debug)]
 pub struct PipelineInner {
-    pub inner: vulkan::Pipeline,
+    pub inner: Arc<vulkan::Pipeline>,
     pub bindings: HashMap<BindingLocation, AccessFlags>,
     pub ref_count: RefCount,
 }

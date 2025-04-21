@@ -7,7 +7,6 @@ mod scheduler;
 
 use std::num::NonZeroU64;
 use std::ops::Range;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use bumpalo::Bump;
@@ -17,7 +16,7 @@ use commands::{
 };
 use crossbeam_queue::SegQueue;
 use executor::TemporaryResources;
-use game_common::collections::arena::{Arena, Key};
+use game_common::cell::UnsafeRefCell;
 use game_common::components::Color;
 use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
@@ -30,13 +29,10 @@ use resources::{
 };
 use scheduler::{Node, Resource, ResourceMap, Scheduler};
 use sharded_slab::Slab;
-use tracing::Instrument;
 
-use crate::backend::allocator::{
-    BufferAlloc, GeneralPurposeAllocator, MemoryManager, TextureAlloc, UsageFlags,
-};
-use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::shader::{BindingLocation, ShaderAccess};
+use crate::backend::allocator::{GeneralPurposeAllocator, MemoryManager, UsageFlags};
+use crate::backend::descriptors::DescriptorSetAllocator;
+use crate::backend::shader::ShaderAccess;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
@@ -119,99 +115,74 @@ impl CommandExecutor {
     fn cleanup(&mut self) {
         let _span = trace_span!("CommandExecutor::cleanup").entered();
 
-        while let Some(cmd) = self.resources.lifecycle_events.pop() {
+        while let Some(cmd) = self.resources.deletion_queue.pop() {
             match cmd {
                 DeletionEvent::Buffer(id) => {
-                    let buffer = self.resources.buffers.get_mut(id).unwrap();
-                    buffer.ref_count -= 1;
-                    if buffer.ref_count == 0 {
-                        self.resources.buffers.remove(id).unwrap();
-                    }
+                    self.resources.buffers.remove(id);
                 }
                 DeletionEvent::Texture(id) => {
-                    let texture = self.resources.textures.get_mut(id).unwrap();
-                    texture.ref_count -= 1;
-                    if texture.ref_count == 0 {
-                        self.resources.textures.remove(id).unwrap();
-                    }
+                    self.resources.textures.remove(id);
+                }
+                DeletionEvent::DescriptorSetLayout(id) => {
+                    self.resources.descriptor_set_layouts.remove(id);
+                }
+                DeletionEvent::Pipeline(id) => {
+                    self.resources.pipelines.remove(id);
                 }
                 DeletionEvent::Sampler(id) => {
-                    let sampler = self.resources.samplers.get_mut(id).unwrap();
-                    sampler.ref_count -= 1;
-                    if sampler.ref_count == 0 {
-                        self.resources.samplers.remove(id).unwrap();
-                    }
+                    self.resources.samplers.remove(id);
                 }
                 DeletionEvent::DescriptorSet(id) => {
-                    let set = self.resources.descriptor_sets.get_mut(id).unwrap();
-                    set.ref_count -= 1;
-                    if set.ref_count != 0 {
-                        continue;
-                    }
+                    let set = self.resources.descriptor_sets.take(id).unwrap();
 
                     for (_, id) in &set.buffers {
-                        self.resources
-                            .lifecycle_events
-                            .push(DeletionEvent::Buffer(*id));
+                        let buffer = self.resources.buffers.get(*id).unwrap();
+                        if buffer.ref_count.decrement() {
+                            self.resources
+                                .deletion_queue
+                                .push(DeletionEvent::Buffer(*id));
+                        }
                     }
 
                     for (_, view) in &set.textures {
-                        self.resources
-                            .lifecycle_events
-                            .push(DeletionEvent::Texture(view.texture));
-                    }
-
-                    for (_, views) in &set.texture_arrays {
-                        for view in views {
+                        let texture = self.resources.textures.get(view.texture).unwrap();
+                        if texture.ref_count.decrement() {
                             self.resources
-                                .lifecycle_events
+                                .deletion_queue
                                 .push(DeletionEvent::Texture(view.texture));
                         }
                     }
 
-                    self.resources
-                        .lifecycle_events
-                        .push(DeletionEvent::DescriptorSetLayout(set.layout));
+                    for (_, views) in &set.texture_arrays {
+                        for view in views {
+                            let texture = self.resources.textures.get(view.texture).unwrap();
+                            if texture.ref_count.decrement() {
+                                self.resources
+                                    .deletion_queue
+                                    .push(DeletionEvent::Texture(view.texture));
+                            }
+                        }
+                    }
 
-                    self.resources.descriptor_sets.remove(id);
-                }
-                DeletionEvent::Pipeline(id) => {
-                    let pipeline = self.resources.pipelines.get_mut(id).unwrap();
-                    pipeline.ref_count -= 1;
-                    if pipeline.ref_count == 0 {
-                        self.resources.pipelines.remove(id);
+                    for (_, id) in &set.samplers {
+                        let sampler = self.resources.samplers.get(*id).unwrap();
+                        if sampler.ref_count.decrement() {
+                            self.resources
+                                .deletion_queue
+                                .push(DeletionEvent::Sampler(*id));
+                        }
                     }
-                }
-                DeletionEvent::DescriptorSetLayout(id) => {
-                    let layout = self.resources.descriptor_set_layouts.get_mut(id).unwrap();
-                    layout.ref_count -= 1;
-                    if layout.ref_count == 0 {
-                        self.resources.descriptor_set_layouts.remove(id);
+
+                    let layout = self
+                        .resources
+                        .descriptor_set_layouts
+                        .get(set.layout)
+                        .unwrap();
+                    if layout.ref_count.decrement() {
+                        self.resources
+                            .deletion_queue
+                            .push(DeletionEvent::DescriptorSetLayout(id));
                     }
-                }
-                DeletionEvent::CloneBufferHandle(id) => {
-                    let buffer = self.resources.buffers.get_mut(id).unwrap();
-                    buffer.ref_count += 1;
-                }
-                DeletionEvent::CloneTextureHandle(id) => {
-                    let texture = self.resources.textures.get_mut(id).unwrap();
-                    texture.ref_count += 1;
-                }
-                DeletionEvent::CloneSamplerHandle(id) => {
-                    let sampler = self.resources.samplers.get_mut(id).unwrap();
-                    sampler.ref_count += 1;
-                }
-                DeletionEvent::ClonePipelineHandle(id) => {
-                    let pipeline = self.resources.pipelines.get_mut(id).unwrap();
-                    pipeline.ref_count += 1;
-                }
-                DeletionEvent::CloneDescriptorSetLayoutHandle(id) => {
-                    let layout = self.resources.descriptor_set_layouts.get_mut(id).unwrap();
-                    layout.ref_count += 1;
-                }
-                DeletionEvent::CloneDescriptorSetHandle(id) => {
-                    let set = self.resources.descriptor_sets.get_mut(id).unwrap();
-                    set.ref_count += 1;
                 }
             }
         }
@@ -222,30 +193,6 @@ impl CommandExecutor {
 enum ResourceId {
     Buffer(BufferId),
     Texture(TextureMip),
-}
-
-impl ResourceMap for Resources {
-    type Id = ResourceId;
-
-    fn access(&self, id: Self::Id) -> AccessFlags {
-        match id {
-            ResourceId::Buffer(id) => self.buffers.get(id).unwrap().access,
-            ResourceId::Texture(tex) => {
-                let texture = self.textures.get(tex.id).unwrap();
-                texture.mips[tex.mip_level as usize]
-            }
-        }
-    }
-
-    fn set_access(&mut self, id: Self::Id, access: AccessFlags) {
-        match id {
-            ResourceId::Buffer(id) => self.buffers.get_mut(id).unwrap().access = access,
-            ResourceId::Texture(tex) => {
-                let texture = self.textures.get_mut(tex.id).unwrap();
-                texture.mips[tex.mip_level as usize] = access;
-            }
-        }
-    }
 }
 
 /// A queue for encoding rendering commands.
@@ -280,8 +227,8 @@ impl<'a> CommandQueue<'a> {
             .resources
             .buffers
             .insert(BufferInner {
-                buffer,
-                access: AccessFlags::empty(),
+                buffer: UnsafeRefCell::new(buffer),
+                access: UnsafeRefCell::new(AccessFlags::empty()),
                 ref_count: RefCount::new(),
             })
             .unwrap();
@@ -391,13 +338,18 @@ impl<'a> CommandQueue<'a> {
             .allocator
             .create_texture(&descriptor, UsageFlags::empty());
 
+        let mut mip_access = Vec::with_capacity(descriptor.mip_levels as usize);
+        for _ in 0..descriptor.mip_levels {
+            mip_access.push(UnsafeRefCell::new(AccessFlags::empty()));
+        }
+
         let id = self
             .executor
             .resources
             .textures
             .insert(TextureInner {
                 texture: TextureData::Virtual(texture),
-                mip_access: vec![AccessFlags::empty(); descriptor.mip_levels as usize],
+                mip_access,
                 ref_count: RefCount::new(),
             })
             .unwrap();
@@ -424,13 +376,18 @@ impl<'a> CommandQueue<'a> {
         let format = texture.format();
         let mip_levels = texture.mip_levels();
 
+        let mut mip_access = Vec::with_capacity(mip_levels as usize);
+        for _ in 0..mip_levels {
+            mip_access.push(UnsafeRefCell::new(access));
+        }
+
         let id = self
             .executor
             .resources
             .textures
             .insert(TextureInner {
                 texture: TextureData::Physical(texture),
-                mip_access: vec![access; mip_levels as usize],
+                mip_access,
                 ref_count: RefCount::new(),
             })
             .unwrap();
@@ -668,9 +625,9 @@ impl<'a> CommandQueue<'a> {
                 samplers,
                 textures,
                 texture_arrays,
-                descriptor_set: None,
+                descriptor_set: UnsafeRefCell::new(None),
                 layout: descriptor.layout.id,
-                physical_texture_views: Vec::new(),
+                physical_texture_views: UnsafeRefCell::new(Vec::new()),
                 ref_count: RefCount::new(),
             })
             .unwrap();
@@ -786,7 +743,7 @@ impl<'a> CommandQueue<'a> {
             .resources
             .pipelines
             .insert(PipelineInner {
-                inner,
+                inner: Arc::new(inner),
                 bindings,
                 ref_count: RefCount::new(),
             })
@@ -1325,10 +1282,11 @@ impl<'a, 'b> RenderPass<'a, 'b> {
         };
 
         let buffer = self.ctx.executor.resources.buffers.get(buffer).unwrap();
+        let buffer_size = unsafe { buffer.buffer.borrow().size() };
         assert!(
-            buffer.buffer.size() >= min_size.into(),
+            buffer_size >= min_size.into(),
             "index buffer of size {} is too small for indices={:?} format={:?}",
-            buffer.buffer.size(),
+            buffer_size,
             indices,
             format,
         );
