@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::mem::transmute;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use game_tracing::trace_span;
 use parking_lot::Mutex;
@@ -15,6 +16,7 @@ const GROWTH_FACTOR: NonZeroU32 = NonZeroU32::new(2).unwrap();
 
 #[derive(Debug)]
 pub struct AllocatedDescriptorSet {
+    allocator: DescriptorSetAllocator,
     set: DescriptorSet<'static>,
     bucket: DescriptorSetResourceCount,
     pool: usize,
@@ -30,17 +32,26 @@ impl AllocatedDescriptorSet {
     }
 }
 
-#[derive(Debug)]
+impl Drop for AllocatedDescriptorSet {
+    fn drop(&mut self) {
+        unsafe {
+            self.allocator.dealloc(self);
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct DescriptorSetAllocator {
-    device: Device,
-    buckets: Mutex<HashMap<DescriptorSetResourceCount, DescriptorPoolBucket>>,
+    inner: Arc<DescriptorSetAllocatorInner>,
 }
 
 impl DescriptorSetAllocator {
     pub fn new(device: Device) -> Self {
         Self {
-            device,
-            buckets: Mutex::new(HashMap::new()),
+            inner: Arc::new(DescriptorSetAllocatorInner {
+                device,
+                buckets: Mutex::new(HashMap::new()),
+            }),
         }
     }
 
@@ -70,15 +81,16 @@ impl DescriptorSetAllocator {
             }
         }
 
-        let mut buckets = self.buckets.lock();
+        let mut buckets = self.inner.buckets.lock();
         let bucket = buckets
             .entry(count)
             .or_insert_with(|| DescriptorPoolBucket::new());
 
-        match unsafe { bucket.alloc(&self.device, &count, layout) } {
+        match unsafe { bucket.alloc(&self.inner.device, &count, layout) } {
             Ok((set, pool)) => {
                 let set = unsafe { transmute::<DescriptorSet<'_>, DescriptorSet<'static>>(set) };
                 Ok(AllocatedDescriptorSet {
+                    allocator: self.clone(),
                     set,
                     bucket: count,
                     pool,
@@ -92,16 +104,22 @@ impl DescriptorSetAllocator {
         }
     }
 
-    pub unsafe fn dealloc(&mut self, descriptor_set: AllocatedDescriptorSet) {
+    unsafe fn dealloc(&self, descriptor_set: &AllocatedDescriptorSet) {
         let _span = trace_span!("DescriptorSetAllocator::dealloc").entered();
 
-        let mut buckets = self.buckets.lock();
+        let mut buckets = self.inner.buckets.lock();
         let bucket = buckets.get_mut(&descriptor_set.bucket).unwrap();
 
         unsafe {
             bucket.dealloc(descriptor_set.pool);
         }
     }
+}
+
+#[derive(Debug)]
+struct DescriptorSetAllocatorInner {
+    device: Device,
+    buckets: Mutex<HashMap<DescriptorSetResourceCount, DescriptorPoolBucket>>,
 }
 
 #[derive(Debug)]

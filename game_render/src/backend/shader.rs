@@ -4,6 +4,7 @@ use bitflags::bitflags;
 use hashbrown::HashMap;
 use naga::back::spv::{self, PipelineOptions};
 use naga::front::wgsl;
+use naga::proc::{BoundsCheckPolicies, BoundsCheckPolicy};
 use naga::valid::{Capabilities, GlobalUse, ModuleInfo, ValidationFlags, Validator};
 use naga::{AddressSpace, ArraySize, Module, TypeInner};
 use thiserror::Error;

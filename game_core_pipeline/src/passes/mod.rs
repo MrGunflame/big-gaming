@@ -6,23 +6,26 @@ use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
+use bitflags::bitflags;
+use bytemuck::{NoUninit, Pod, Zeroable};
 use crossbeam::channel::Receiver;
 use forward::ForwardPass;
 use game_render::api::{
-    Buffer, BufferInitDescriptor, CommandQueue, DescriptorSet, DescriptorSetLayout, Texture,
-    TextureRegion,
+    Buffer, BufferInitDescriptor, CommandQueue, DescriptorSet, DescriptorSetLayout, TextureRegion,
+    TextureView, TextureViewDescriptor,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, ImageDataLayout,
     ShaderStages, TextureDescriptor, TextureFormat, TextureUsage,
 };
-use game_render::buffer::{DynamicBuffer, IndexBuffer};
+use game_render::buffer::slab::{SlabBuffer, SlabIndex};
+use game_render::buffer::{DynamicBuffer, GpuBuffer, IndexBuffer};
 use game_render::graph::{NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 use glam::UVec2;
 use parking_lot::Mutex;
 use post_process::PostProcessPass;
-use update::UpdatePass;
+use update::{TransformUniform, UpdatePass};
 
 use crate::camera::Camera;
 use crate::entities::{CameraId, Event, ImageId, LightId, MaterialId, MeshId, ObjectId, SceneId};
@@ -84,14 +87,16 @@ struct State {
     default_textures: DefaultTextures,
 
     mesh_descriptor_layout: DescriptorSetLayout,
-    material_descriptor_layout: DescriptorSetLayout,
     transform_descriptor_layout: DescriptorSetLayout,
 
     meshes: HashMap<MeshId, MeshState>,
-    images: HashMap<ImageId, Texture>,
-    materials: HashMap<MaterialId, DescriptorSet>,
+    images: HashMap<ImageId, TextureSlabIndex>,
+    materials: HashMap<MaterialId, SlabIndex>,
 
     scenes: HashMap<SceneId, SceneData>,
+
+    textures: TextureSlab,
+    material_slab: SlabBuffer<RawMaterialData>,
 }
 
 impl State {
@@ -129,47 +134,6 @@ impl State {
             ],
         });
 
-        let material_descriptor_layout =
-            queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
-                bindings: &[
-                    // CONSTANTS
-                    DescriptorBinding {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Uniform,
-                        count: NonZeroU32::MIN,
-                    },
-                    // BASE_COLOR
-                    DescriptorBinding {
-                        binding: 1,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Texture,
-                        count: NonZeroU32::MIN,
-                    },
-                    // NORMAL
-                    DescriptorBinding {
-                        binding: 2,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Texture,
-                        count: NonZeroU32::MIN,
-                    },
-                    // METALLIC/ROUGHNESS
-                    DescriptorBinding {
-                        binding: 3,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Texture,
-                        count: NonZeroU32::MIN,
-                    },
-                    // SPECULAR/GLOSSINESS
-                    DescriptorBinding {
-                        binding: 4,
-                        visibility: ShaderStages::FRAGMENT,
-                        kind: DescriptorType::Texture,
-                        count: NonZeroU32::MIN,
-                    },
-                ],
-            });
-
         let transform_descriptor_layout =
             queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
                 bindings: &[DescriptorBinding {
@@ -180,29 +144,42 @@ impl State {
                 }],
             });
 
+        let placeholder_texture = queue.create_texture(&TextureDescriptor {
+            size: UVec2::ONE,
+            mip_levels: 1,
+            format: TextureFormat::Rgba8UnormSrgb,
+            usage: TextureUsage::TEXTURE_BINDING,
+        });
+
+        let mut textures =
+            TextureSlab::new(placeholder_texture.create_view(&TextureViewDescriptor::default()));
+
+        let default_textures = DefaultTextures::new(queue, &mut textures);
+
         Self {
-            default_textures: DefaultTextures::new(queue),
+            default_textures,
             mesh_descriptor_layout,
-            material_descriptor_layout,
             transform_descriptor_layout,
             meshes: HashMap::new(),
             materials: HashMap::new(),
             scenes: HashMap::new(),
             images: HashMap::new(),
+            textures,
+            material_slab: SlabBuffer::new(),
         }
     }
 }
 
 #[derive(Debug)]
 struct DefaultTextures {
-    base_color: Texture,
-    normal: Texture,
-    metallic_roughness: Texture,
-    specular_glossiness: Texture,
+    base_color: TextureSlabIndex,
+    normal: TextureSlabIndex,
+    metallic_roughness: TextureSlabIndex,
+    specular_glossiness: TextureSlabIndex,
 }
 
 impl DefaultTextures {
-    fn new(queue: &mut CommandQueue<'_>) -> Self {
+    fn new(queue: &mut CommandQueue<'_>, textures: &mut TextureSlab) -> Self {
         let [base_color, normal, metallic_roughness, specular_glossiness] = [
             // Base color: white
             (TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]),
@@ -237,7 +214,7 @@ impl DefaultTextures {
                 },
             );
 
-            texture
+            textures.insert(texture.create_view(&TextureViewDescriptor::default()))
         });
 
         Self {
@@ -298,6 +275,105 @@ impl SceneData {
 #[derive(Debug)]
 struct ObjectState {
     mesh: MeshId,
-    material: MaterialId,
     transform: DescriptorSet,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+#[repr(transparent)]
+pub struct TextureSlabIndex(u32);
+
+#[derive(Debug)]
+pub struct TextureSlab {
+    default: TextureView,
+    entries: Vec<Option<TextureView>>,
+    free_list: Vec<u32>,
+}
+
+impl TextureSlab {
+    pub fn new(default: TextureView) -> Self {
+        Self {
+            default,
+            entries: Vec::new(),
+            free_list: Vec::new(),
+        }
+    }
+
+    pub fn insert(&mut self, texture: TextureView) -> TextureSlabIndex {
+        let index = match self.free_list.pop() {
+            Some(index) => index as usize,
+            None => {
+                let index = self.entries.len();
+                self.entries.resize(index + 1, None);
+                index
+            }
+        };
+
+        let slot = &mut self.entries[index];
+        debug_assert!(slot.is_none());
+        *slot = Some(texture);
+
+        TextureSlabIndex(index as u32)
+    }
+
+    pub fn remove(&mut self, index: TextureSlabIndex) {
+        let entry = &mut self.entries[index.0 as usize];
+        debug_assert!(entry.is_some());
+        *entry = None;
+
+        self.free_list.push(index.0);
+        // TODO: We may want to compact the entries when the last
+        // entry is removed.
+        // This will require to iteratively pop entries from the
+        // back of the entries Vec AND remove the index from
+        // the free list.
+    }
+
+    pub fn views(&self) -> Vec<&TextureView> {
+        self.entries
+            .iter()
+            .map(|view| view.as_ref().unwrap_or(&self.default))
+            .collect()
+    }
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+struct RawMaterialData {
+    flags: MaterialFlags,
+    _pad0: [u32; 3],
+    base_color: [f32; 4],
+    roughness: f32,
+    metallic: f32,
+    reflectance: f32,
+    specular_strength: f32,
+    specular_color: [f32; 4],
+    base_color_texture_index: TextureSlabIndex,
+    normal_texture_index: TextureSlabIndex,
+    metallic_roughness_texture_index: TextureSlabIndex,
+    specular_glossiness_texture_index: TextureSlabIndex,
+}
+
+impl GpuBuffer for RawMaterialData {
+    const SIZE: usize = size_of::<Self>();
+    const ALIGN: usize = 16;
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
+    #[repr(transparent)]
+    struct MaterialFlags: u32 {
+        const UNLIT = 1 << 0;
+        const FLIP_NORMAL_Y = 1 << 1;
+        const METALLIC_FROM_SPECULAR = 1 << 2;
+        const ROUGHNESS_FROM_GLOSSINESS = 1 << 3;
+        const NORMAL_ENCODING_TWO_CHANNEL = 1 << 4;
+    }
+}
+
+#[derive(Copy, Clone, Debug, NoUninit)]
+#[repr(C)]
+struct RawObjectData {
+    pub transform: TransformUniform,
+    pub material: SlabIndex,
+    _pad0: [u32; 3],
 }

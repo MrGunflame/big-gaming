@@ -5,7 +5,6 @@ pub mod executor;
 mod resources;
 mod scheduler;
 
-use std::any::Any;
 use std::num::NonZeroU64;
 use std::ops::Range;
 use std::sync::Arc;
@@ -33,13 +32,13 @@ use sharded_slab::Slab;
 
 use crate::backend::allocator::{GeneralPurposeAllocator, MemoryManager, UsageFlags};
 use crate::backend::descriptors::DescriptorSetAllocator;
-use crate::backend::shader::ShaderAccess;
+use crate::backend::shader::{ShaderAccess, ShaderBinding};
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
-    Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
-    PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor,
-    TextureFormat, TextureUsage,
+    DescriptorType, Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage,
+    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp,
+    TextureDescriptor, TextureFormat, TextureUsage,
 };
 use crate::statistics::Statistics;
 
@@ -322,6 +321,12 @@ impl<'a> CommandQueue<'a> {
             "unsupported texture usages: {:?} (supported are {:?})",
             descriptor.usage,
             self.supported_texture_usages(descriptor.format),
+        );
+
+        assert!(
+            descriptor.size.x != 0 && descriptor.size.y != 0,
+            "texture size must not be zero (size is {})",
+            descriptor.size
         );
 
         let supported_usages = self
@@ -670,6 +675,7 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
+    #[track_caller]
     pub fn create_pipeline(&mut self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
         let layouts: Vec<_> = descriptor
             .descriptors
@@ -684,6 +690,23 @@ impl<'a> CommandQueue<'a> {
             .collect();
         let descriptors: Vec<_> = layouts.iter().map(|layout| &layout.inner).collect();
 
+        let validate_shader_binding = |binding: &ShaderBinding| {
+            let get_descriptor_kind = |group: u32, binding: u32| -> Option<DescriptorType> {
+                let descriptor = descriptors.get(group as usize)?;
+                let binding = descriptor.bindings().get(binding as usize)?;
+                Some(binding.kind)
+            };
+
+            assert!(
+                get_descriptor_kind(binding.group, binding.binding)
+                    .is_some_and(|kind| kind == binding.kind),
+                "shader expects {:?} in location {:?}, but {:?} was provided",
+                binding.kind,
+                binding.location(),
+                get_descriptor_kind(binding.group, binding.binding),
+            );
+        };
+
         let mut bindings = BindingMap::default();
         for stage in descriptor.stages {
             match stage {
@@ -695,6 +718,8 @@ impl<'a> CommandQueue<'a> {
                     });
 
                     for binding in instance.bindings() {
+                        validate_shader_binding(binding);
+
                         let mut access = AccessFlags::empty();
                         if binding.access.contains(ShaderAccess::READ) {
                             access |= AccessFlags::VERTEX_SHADER_READ;
@@ -720,6 +745,8 @@ impl<'a> CommandQueue<'a> {
                     });
 
                     for binding in instance.bindings() {
+                        validate_shader_binding(binding);
+
                         let mut access = AccessFlags::empty();
                         if binding.access.contains(ShaderAccess::READ) {
                             access |= AccessFlags::FRAGMENT_SHADER_READ;

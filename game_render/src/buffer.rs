@@ -1,3 +1,5 @@
+pub mod slab;
+
 use std::marker::PhantomData;
 
 #[cfg(target_endian = "big")]
@@ -64,6 +66,15 @@ impl From<Mat3> for Mat3F32 {
 pub trait GpuBuffer: Zeroable + Pod {
     const SIZE: usize;
     const ALIGN: usize;
+
+    /// Returns the size of `Self` aligned to `Self::ALIGN`.
+    fn pad_to_align() -> usize {
+        // Implementation from `Layout::pad_to_align`:
+        // https://doc.rust-lang.org/stable/src/core/alloc/layout.rs.html#333-342
+        let align_m1 = Self::ALIGN - 1;
+        let size_rounded_up = (Self::SIZE + align_m1) & !align_m1;
+        size_rounded_up
+    }
 }
 
 ///

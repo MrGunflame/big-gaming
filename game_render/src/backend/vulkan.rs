@@ -3706,11 +3706,11 @@ impl<'a> DescriptorSet<'a> {
         // minimum needed (1 for header, 1 for info).
         let mut infos = Vec::with_capacity(op.bindings.len() * 2);
 
-        for (index, binding) in op.bindings.iter().enumerate() {
-            let Some(layout_binding) = self.bindings.get(index) else {
+        for binding in op.bindings {
+            let Some(layout_binding) = self.bindings.get(binding.binding as usize) else {
                 panic!(
                     "attempted to write to index {} of descriptor set with layout of {} elements",
-                    index,
+                    binding.binding,
                     self.bindings.len()
                 );
             };
@@ -3736,7 +3736,7 @@ impl<'a> DescriptorSet<'a> {
             assert_eq!(
                 layout_binding.kind, kind,
                 "type missmatch at index {}: op = {:?}, layout = {:?}",
-                index, kind, layout_binding.kind,
+                binding.binding, kind, layout_binding.kind,
             );
 
             infos.push(Info {
