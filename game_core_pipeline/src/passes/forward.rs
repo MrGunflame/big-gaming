@@ -4,13 +4,14 @@ use std::sync::Arc;
 
 use game_common::components::Color;
 use game_render::api::{
-    BindingResource, CommandQueue, DepthStencilAttachment, DescriptorSetDescriptor,
-    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
-    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
-    TextureViewDescriptor,
+    BindingResource, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
+    DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
+    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
+    RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
 };
+use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    AddressMode, BlendFactor, BlendOp, BlendState, ColorTargetState, CompareOp, DepthStencilState,
+    AddressMode, BlendState, BufferUsage, ColorTargetState, CompareOp, DepthStencilState,
     DescriptorBinding, DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage,
     PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderModule, ShaderStages, StoreOp,
     TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
@@ -79,6 +80,19 @@ impl ForwardPass {
                     DescriptorBinding {
                         binding: 3,
                         visibility: ShaderStages::FRAGMENT,
+                        kind: DescriptorType::Storage,
+                        count: NonZeroU32::MIN,
+                    },
+                    DescriptorBinding {
+                        binding: 4,
+                        visibility: ShaderStages::FRAGMENT,
+                        kind: DescriptorType::Texture,
+                        // TODO: Grow when needed instead of initializing this to a value.
+                        count: NonZeroU32::new(8192).unwrap(),
+                    },
+                    DescriptorBinding {
+                        binding: 5,
+                        visibility: ShaderStages::FRAGMENT,
                         kind: DescriptorType::Sampler,
                         count: NonZeroU32::MIN,
                     },
@@ -91,7 +105,6 @@ impl ForwardPass {
             pipeline = PipelineCache::new(
                 BuildForwardPipeline {
                     mesh_descriptor: state.mesh_descriptor_layout.clone(),
-                    material_descriptor: state.material_descriptor_layout.clone(),
                     model_descriptor: state.transform_descriptor_layout.clone(),
                     lights_and_sampler_descriptor: lights_and_sampler_descriptor.clone(),
                 },
@@ -154,6 +167,13 @@ impl ForwardPass {
 
         let depth_stencils = self.depth_stencils.read();
 
+        let textures = state.textures.views();
+        let materials = ctx.queue.create_buffer_init(&BufferInitDescriptor {
+            contents: state.material_slab.as_bytes(),
+            usage: BufferUsage::STORAGE,
+            flags: UsageFlags::empty(),
+        });
+
         let lights_and_sampler_descriptor =
             ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
                 layout: &self.lights_and_sampler_descriptor,
@@ -172,6 +192,14 @@ impl ForwardPass {
                     },
                     DescriptorSetEntry {
                         binding: 3,
+                        resource: BindingResource::Buffer(&materials),
+                    },
+                    DescriptorSetEntry {
+                        binding: 4,
+                        resource: BindingResource::TextureArray(&textures),
+                    },
+                    DescriptorSetEntry {
+                        binding: 5,
                         resource: BindingResource::Sampler(&self.linear_sampler),
                     },
                 ],
@@ -212,16 +240,13 @@ impl ForwardPass {
             &push_constants,
         );
 
-        render_pass.set_descriptor_set(3, &lights_and_sampler_descriptor);
+        render_pass.set_descriptor_set(2, &lights_and_sampler_descriptor);
 
-        dbg!(scene.objects.len());
         for object in scene.objects.values() {
             let mesh = state.meshes.get(&object.mesh).unwrap();
-            let material_descriptor = state.materials.get(&object.material).unwrap();
 
             render_pass.set_descriptor_set(0, &object.transform);
             render_pass.set_descriptor_set(1, &mesh.descriptor);
-            render_pass.set_descriptor_set(2, material_descriptor);
 
             render_pass.set_index_buffer(&mesh.indices.buffer, mesh.indices.format);
             render_pass.draw_indexed(0..mesh.indices.len, 0, 0..1);
@@ -278,7 +303,6 @@ impl Node for ForwardPass {
 #[derive(Debug)]
 struct BuildForwardPipeline {
     mesh_descriptor: DescriptorSetLayout,
-    material_descriptor: DescriptorSetLayout,
     model_descriptor: DescriptorSetLayout,
     lights_and_sampler_descriptor: DescriptorSetLayout,
 }
@@ -297,7 +321,6 @@ impl PipelineBuilder for BuildForwardPipeline {
             descriptors: &[
                 &self.model_descriptor,
                 &self.mesh_descriptor,
-                &self.material_descriptor,
                 &self.lights_and_sampler_descriptor,
             ],
             stages: &[

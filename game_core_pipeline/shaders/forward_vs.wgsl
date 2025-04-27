@@ -12,15 +12,16 @@ struct Camera {
     view_proj: mat4x4<f32>,
 }
 
-struct Model {
+struct ObjectData {
     transform: mat4x4<f32>,
     normal: mat3x3<f32>,
+    material_index: u32,
 }
 
 var<push_constant> push_constants: PushConstants;
 
 @group(0) @binding(0)
-var<uniform> model: Model;
+var<uniform> model: ObjectData;
 
 // Note that the storage buffers are dense, hence they are
 // array<T, N>, not vecN<T>, so they are aligned to T.
@@ -43,6 +44,7 @@ struct VertexOutput {
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) world_tangent: vec4<f32>,
+    @location(4) material_index: u32,
 }
 
 @vertex
@@ -60,6 +62,8 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.world_position = (model.transform * vec4<f32>(position, 1.0)).xyz;
     out.world_normal = model.normal * normal;
     out.world_tangent = vec4((model.normal * tangent.xyz), tangent.w);
+
+    out.material_index = model.material_index;
 
     return out;
 }

@@ -1,6 +1,6 @@
 #include pbr.wgsl
 
-struct MaterialConstants {
+struct MaterialData {
     flags: u32,
     // pad0: [u32; 3]
     base_color: vec4<f32>,
@@ -9,6 +9,10 @@ struct MaterialConstants {
     reflectance: f32,
     specular_strength: f32,
     specular_color: vec4<f32>,
+    base_color_texture_index: u32,
+    normal_texture_index: u32,
+    metallic_roughness_texture_index: u32,
+    specular_glossiness_texture_index: u32,
 }
 
 const MATERIAL_FLAGS_UNLIT: u32 = 1u << 0;
@@ -43,23 +47,16 @@ struct Camera {
 }
 
 @group(2) @binding(0)
-var<uniform> constants: MaterialConstants;
-@group(2) @binding(1)
-var base_color_texture: texture_2d<f32>;
-@group(2) @binding(2)
-var normal_texture: texture_2d<f32>;
-@group(2) @binding(3)
-var metallic_roughness_texture: texture_2d<f32>;
-@group(2) @binding(4)
-var specular_glossiness_texture: texture_2d<f32>;
-
-@group(3) @binding(0)
 var<storage> directional_lights: DirectionalLights;
-@group(3) @binding(1)
+@group(2) @binding(1)
 var<storage> point_lights: PointLights;
-@group(3) @binding(2)
+@group(2) @binding(2)
 var<storage> spot_lights: SpotLights;
-@group(3) @binding(3)
+@group(2) @binding(3)
+var<storage> materials: array<MaterialData>;
+@group(2) @binding(4)
+var textures: binding_array<texture_2d<f32>>;
+@group(2) @binding(5)
 var linear_sampler: sampler;
 
 struct FragInput {
@@ -69,56 +66,59 @@ struct FragInput {
     @location(1) world_normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) world_tangent: vec4<f32>,
+    @location(4) material_index: u32,
 }
 
 @fragment
 fn fs_main(in: FragInput) -> @location(0) vec4<f32> {
-    var color = constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+    var color = get_base_color(in);
     color.a = 1.0;
 
-    if (constants.flags & MATERIAL_FLAGS_UNLIT) != 0 {
+    let material = materials[in.material_index];
+
+    if (material.flags & MATERIAL_FLAGS_UNLIT) != 0 {
         return color;
     }
 
-    let specular_strength = constants.specular_strength * get_specular_strength(in);
-    let specular_color = constants.specular_color.rgb;
+    let specular_strength = material.specular_strength * get_specular_strength(in);
+    let specular_color = material.specular_color.rgb;
 
     var roughness = get_roughness(in);
-    if (constants.flags & MATERIAL_FLAGS_ROUGHNESS_FROM_GLOSSINESS) != 0 {
+    if (material.flags & MATERIAL_FLAGS_ROUGHNESS_FROM_GLOSSINESS) != 0 {
         roughness = get_roughness_from_glossiness(in);
     }
 
     var metallic = get_metallic(in);
-    if (constants.flags & MATERIAL_FLAGS_METALLIC_FROM_SPECULAR) != 0 {
+    if (material.flags & MATERIAL_FLAGS_METALLIC_FROM_SPECULAR) != 0 {
         metallic = compute_metallic_from_specular_color(specular_color * specular_strength);
     }
 
     // BRDF parameters
     let view_dir = normalize(push_constants.camera.position - in.world_position);
-    var material: Material;
-    material.base_color = get_base_color(in);
-    material.normal = get_normal(in);
-    material.metallic = metallic;
-    material.roughness = roughness;
-    material.reflectance = constants.reflectance;
-    material.specular_color = specular_color;
-    material.specular_strength = specular_strength;
+    var pbr_material: Material;
+    pbr_material.base_color = get_base_color(in);
+    pbr_material.normal = get_normal(in);
+    pbr_material.metallic = metallic;
+    pbr_material.roughness = roughness;
+    pbr_material.reflectance = material.reflectance;
+    pbr_material.specular_color = specular_color;
+    pbr_material.specular_strength = specular_strength;
 
     var luminance: vec3<f32> = vec3(0.0, 0.0, 0.0);
 
     for (var i: u32 = 0u; i < directional_lights.count; i++) {
         let light = compute_directional_light(in, directional_lights.lights[i]);
-        luminance += surface_shading(material, view_dir, light);
+        luminance += surface_shading(pbr_material, view_dir, light);
     }
 
     for (var i: u32 = 0u; i < point_lights.count; i++) {
         let light = compute_point_light(in, point_lights.lights[i]);
-        luminance += surface_shading(material, view_dir, light);
+        luminance += surface_shading(pbr_material, view_dir, light);
     }
 
     for (var i: u32 = 0u; i < spot_lights.count; i++) {
         let light = compute_spot_light(in, spot_lights.lights[i]);
-        luminance += surface_shading(material, view_dir, light);
+        luminance += surface_shading(pbr_material, view_dir, light);
     }
 
     return vec4<f32>(luminance.r, luminance.g, luminance.b, color.a);
@@ -210,19 +210,27 @@ struct SpotLight {
 }
 
 fn get_specular_strength(in: FragInput) -> f32 {
-    return constants.specular_strength * textureSample(specular_glossiness_texture, linear_sampler, in.uv).r;
+    let material = materials[in.material_index];
+    let texture = textures[material.specular_glossiness_texture_index];
+    return material.specular_strength * textureSample(texture, linear_sampler, in.uv).r;
 }
 
 fn get_roughness_from_glossiness(in: FragInput) -> f32 {
-    return constants.roughness * (1.0 - textureSample(specular_glossiness_texture, linear_sampler, in.uv).g);
+    let material = materials[in.material_index];
+    let texture = textures[material.specular_glossiness_texture_index];
+    return material.roughness * (1.0 - textureSample(texture, linear_sampler, in.uv).g);
 }
 
 fn get_base_color(in: FragInput) -> vec4<f32> {
-    return constants.base_color * textureSample(base_color_texture, linear_sampler, in.uv);
+    let material = materials[in.material_index];
+    let texture = textures[material.base_color_texture_index];
+    return material.base_color * textureSample(texture, linear_sampler, in.uv);
 }
 
 fn get_albedo(in: FragInput) -> vec3<f32> {
-    return constants.base_color.rgb * textureSample(base_color_texture, linear_sampler, in.uv).rgb;
+    let material = materials[in.material_index];
+    let texture = textures[material.base_color_texture_index];
+    return material.base_color.rgb * textureSample(texture, linear_sampler, in.uv).rgb;
 }
 
 fn get_normal(in: FragInput) -> vec3<f32> {
@@ -231,15 +239,16 @@ fn get_normal(in: FragInput) -> vec3<f32> {
     let bitangent = cross(normal_norm, tangent_norm) * in.world_tangent.w;
     let tbn = mat3x3(tangent_norm, bitangent, normal_norm);
 
-    var normal = textureSample(normal_texture, linear_sampler, in.uv).rgb;
+    let material = materials[in.material_index];
+    var normal = textureSample(textures[material.normal_texture_index], linear_sampler, in.uv).rgb;
 
-    if (constants.flags & MATERIAL_FLAGS_FLIP_NORMAL_Y) != 0 {
+    if (material.flags & MATERIAL_FLAGS_FLIP_NORMAL_Y) != 0 {
         normal.g = 1.0 - normal.g;
     }
 
     normal = normal * 2.0 - 1.0;
 
-    if (constants.flags & MATERIAL_FLAGS_NORMAL_ENCODING_TWO_COMPONENT) != 0 {
+    if (material.flags & MATERIAL_FLAGS_NORMAL_ENCODING_TWO_COMPONENT) != 0 {
         normal.z = sqrt(1.0 - dot(normal.xy, normal.xy));
     }
 
@@ -257,11 +266,15 @@ fn get_normal(in: FragInput) -> vec3<f32> {
 }
 
 fn get_roughness(in: FragInput) -> f32 {
-    return constants.roughness * textureSample(metallic_roughness_texture, linear_sampler, in.uv).g;
+    let material = materials[in.material_index];
+    let texture = textures[material.metallic_roughness_texture_index];
+    return material.roughness * textureSample(texture, linear_sampler, in.uv).g;
 }
 
 fn get_metallic(in: FragInput) -> f32 {
-    return constants.metallic * textureSample(metallic_roughness_texture, linear_sampler, in.uv).b;
+    let material = materials[in.material_index];
+    let texture = textures[material.metallic_roughness_texture_index];
+    return material.metallic * textureSample(texture, linear_sampler, in.uv).b;
 }
 
 fn get_distance_attenuation(distance_square: f32, inv_range_squared: f32) -> f32 {

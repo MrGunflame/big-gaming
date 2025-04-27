@@ -1,23 +1,22 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use crossbeam::channel::Receiver;
 use game_common::components::Transform;
 use game_render::api::{
     BindingResource, BufferInitDescriptor, CommandQueue, DescriptorSet, DescriptorSetDescriptor,
-    DescriptorSetEntry, DescriptorSetLayout, Texture, TextureRegion, TextureViewDescriptor,
+    DescriptorSetEntry, DescriptorSetLayout, TextureRegion, TextureViewDescriptor,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, ImageDataLayout, IndexFormat, TextureDescriptor, TextureUsage, max_mips_2d,
 };
+use game_render::buffer::slab::{SlabBuffer, SlabIndex};
 use game_render::buffer::{DynamicBuffer, IndexBuffer};
 use game_render::graph::{Node, RenderContext};
 use game_render::mesh::{Indices, Mesh};
 use game_render::mipmap::MipMapGenerator;
-use game_render::texture::Image;
 use game_render::texture::image::MipImage;
 use game_tracing::trace_span;
 use glam::{Mat3, Mat4, UVec2, Vec4};
@@ -27,7 +26,10 @@ use crate::StandardMaterial;
 use crate::entities::{Event, ImageId};
 use crate::lights::{DirectionalLightUniform, Light, PointLightUniform, SpotLightUniform};
 
-use super::{DefaultTextures, MeshState, ObjectState, SceneData, State};
+use super::{
+    DefaultTextures, MaterialFlags, MeshState, ObjectState, RawMaterialData, RawObjectData,
+    SceneData, State, TextureSlab, TextureSlabIndex,
+};
 
 #[derive(Debug)]
 pub(super) struct UpdatePass {
@@ -76,30 +78,42 @@ impl Node for UpdatePass {
                     state.meshes.remove(&id);
                 }
                 Event::CreateImage(id, image) => {
-                    let texture = create_image(ctx.queue, &self.mipgen, &image);
+                    let texture =
+                        create_image(ctx.queue, &mut state.textures, &self.mipgen, &image);
                     state.images.insert(id, texture);
                 }
                 Event::DestroyImage(id) => {
-                    state.images.remove(&id);
+                    if let Some(index) = state.images.remove(&id) {
+                        state.textures.remove(index);
+                    }
                 }
                 Event::CreateMaterial(id, material) => {
+                    let state = &mut *state;
                     let material = create_material(
-                        ctx.queue,
+                        &mut state.material_slab,
                         &state.default_textures,
                         &state.images,
-                        &state.material_descriptor_layout,
                         material,
                     );
                     state.materials.insert(id, material);
                 }
                 Event::DestroyMaterial(id) => {
-                    state.materials.remove(&id);
+                    if let Some(index) = state.materials.remove(&id) {
+                        state.material_slab.remove(index);
+                    }
                 }
                 Event::CreateObject(id, object) => {
-                    let transform = create_object_transform(
+                    let state = &mut *state;
+
+                    let Some(material) = state.materials.get(&object.material.id()).copied() else {
+                        continue;
+                    };
+
+                    let transform = create_object(
                         ctx.queue,
                         &state.transform_descriptor_layout,
                         object.transform,
+                        material,
                     );
                     if let Some(scene) = state.scenes.get_mut(&object.scene.id()) {
                         scene.objects.insert(
@@ -107,7 +121,6 @@ impl Node for UpdatePass {
                             ObjectState {
                                 transform,
                                 mesh: object.mesh.id(),
-                                material: object.material.id(),
                             },
                         );
                     }
@@ -319,9 +332,10 @@ fn create_mesh(
 
 fn create_image(
     queue: &mut CommandQueue<'_>,
+    textures: &mut TextureSlab,
     mipgen: &MipMapGenerator,
     image: &MipImage,
-) -> Texture {
+) -> TextureSlabIndex {
     let _span = trace_span!("create_image").entered();
 
     let supported_usages = queue.supported_texture_usages(image.format());
@@ -357,7 +371,6 @@ fn create_image(
     for (mip_level, mip) in image.mips().iter().enumerate() {
         let bytes_per_row = u32::max(1, mip.width() / 4) * mip.format().bytes_per_block();
         let rows_per_image = u32::max(1, mip.height() / 4);
-        dbg!(&mip.width(), &mip.height());
 
         queue.write_texture(
             TextureRegion {
@@ -376,16 +389,16 @@ fn create_image(
         mipgen.generate_mipmaps(queue, &texture);
     }
 
-    texture
+    let view = texture.create_view(&TextureViewDescriptor::default());
+    textures.insert(view)
 }
 
 fn create_material(
-    queue: &mut CommandQueue<'_>,
+    materials: &mut SlabBuffer<RawMaterialData>,
     default_textures: &DefaultTextures,
-    images: &HashMap<ImageId, Texture>,
-    layout: &DescriptorSetLayout,
+    images: &HashMap<ImageId, TextureSlabIndex>,
     material: StandardMaterial,
-) -> DescriptorSet {
+) -> SlabIndex {
     let _span = trace_span!("create_material").entered();
 
     let mut flags = MaterialFlags::empty();
@@ -408,134 +421,80 @@ fn create_material(
         flags |= MaterialFlags::ROUGHNESS_FROM_GLOSSINESS;
     }
 
-    let data = queue.create_buffer_init(&BufferInitDescriptor {
-        contents: bytemuck::bytes_of(&RawMaterialData {
-            flags,
-            base_color: material.base_color.as_rgba(),
-            roughness: material.roughness,
-            metallic: material.metallic,
-            reflectance: material.reflectance,
-            specular_color: material.specular_color.as_rgba(),
-            specular_strength: material.specular_strength,
-            _pad0: [0; 3],
-        }),
-        usage: BufferUsage::UNIFORM,
-        flags: UsageFlags::empty(),
-    });
-
     let base_color = match material.base_color_texture {
-        Some(handle) => match images.get(&handle.id()) {
+        Some(handle) => match images.get(&handle.id()).copied() {
             Some(texture) => texture,
             None => {
                 tracing::warn!("missing base color image: {:?}", handle);
-                &default_textures.base_color
+                default_textures.base_color
             }
         },
-        None => &default_textures.base_color,
+        None => default_textures.base_color,
     };
 
     let normal = match material.normal_texture {
-        Some(handle) => match images.get(&handle.id()) {
+        Some(handle) => match images.get(&handle.id()).copied() {
             Some(texture) => texture,
             None => {
                 tracing::warn!("missing normal image: {:?}", handle);
-                &default_textures.normal
+                default_textures.normal
             }
         },
-        None => &default_textures.normal,
+        None => default_textures.normal,
     };
 
     let metallic_roughness = match material.metallic_roughness_texture {
-        Some(handle) => match images.get(&handle.id()) {
+        Some(handle) => match images.get(&handle.id()).copied() {
             Some(texture) => texture,
             None => {
                 tracing::warn!("missing metallic/roughness image: {:?}", handle);
-                &default_textures.metallic_roughness
+                default_textures.metallic_roughness
             }
         },
-        None => &default_textures.metallic_roughness,
+        None => default_textures.metallic_roughness,
     };
 
     let specular_glossiness = match material.specular_glossiness_texture {
-        Some(handle) => match images.get(&handle.id()) {
+        Some(handle) => match images.get(&handle.id()).copied() {
             Some(texture) => texture,
             None => {
                 tracing::warn!("missing specular/glossiness image: {:?}", handle);
-                &default_textures.specular_glossiness
+                default_textures.specular_glossiness
             }
         },
-        None => &default_textures.specular_glossiness,
+        None => default_textures.specular_glossiness,
     };
 
-    queue.create_descriptor_set(&DescriptorSetDescriptor {
-        layout,
-        entries: &[
-            DescriptorSetEntry {
-                binding: 0,
-                resource: BindingResource::Buffer(&data),
-            },
-            DescriptorSetEntry {
-                binding: 1,
-                resource: BindingResource::Texture(
-                    &base_color.create_view(&TextureViewDescriptor::default()),
-                ),
-            },
-            DescriptorSetEntry {
-                binding: 2,
-                resource: BindingResource::Texture(
-                    &normal.create_view(&TextureViewDescriptor::default()),
-                ),
-            },
-            DescriptorSetEntry {
-                binding: 3,
-                resource: BindingResource::Texture(
-                    &metallic_roughness.create_view(&TextureViewDescriptor::default()),
-                ),
-            },
-            DescriptorSetEntry {
-                binding: 4,
-                resource: BindingResource::Texture(
-                    &specular_glossiness.create_view(&TextureViewDescriptor::default()),
-                ),
-            },
-        ],
+    materials.insert(&RawMaterialData {
+        flags,
+        _pad0: [0; 3],
+        base_color: material.base_color.as_rgba(),
+        roughness: material.roughness,
+        metallic: material.metallic,
+        reflectance: material.reflectance,
+        specular_strength: material.specular_strength,
+        specular_color: material.specular_color.as_rgba(),
+        base_color_texture_index: base_color,
+        normal_texture_index: normal,
+        metallic_roughness_texture_index: metallic_roughness,
+        specular_glossiness_texture_index: specular_glossiness,
     })
 }
 
-#[derive(Copy, Clone, Debug, Zeroable, Pod)]
-#[repr(C)]
-struct RawMaterialData {
-    flags: MaterialFlags,
-    _pad0: [u32; 3],
-    base_color: [f32; 4],
-    roughness: f32,
-    metallic: f32,
-    reflectance: f32,
-    specular_strength: f32,
-    specular_color: [f32; 4],
-}
-
-bitflags! {
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
-    #[repr(transparent)]
-    struct MaterialFlags: u32 {
-        const UNLIT = 1 << 0;
-        const FLIP_NORMAL_Y = 1 << 1;
-        const METALLIC_FROM_SPECULAR = 1 << 2;
-        const ROUGHNESS_FROM_GLOSSINESS = 1 << 3;
-        const NORMAL_ENCODING_TWO_CHANNEL = 1 << 4;
-    }
-}
-
-fn create_object_transform(
+fn create_object(
     queue: &mut CommandQueue<'_>,
     layout: &DescriptorSetLayout,
     transform: Transform,
+    material: SlabIndex,
 ) -> DescriptorSet {
     let _span = trace_span!("create_object_transform").entered();
 
     let transform_buffer = queue.create_buffer_init(&BufferInitDescriptor {
-        contents: bytemuck::bytes_of(&TransformUniform::from(transform)),
+        contents: bytemuck::bytes_of(&RawObjectData {
+            transform: TransformUniform::from(transform),
+            material,
+            _pad0: [0; 3],
+        }),
         usage: BufferUsage::UNIFORM,
         flags: UsageFlags::empty(),
     });
