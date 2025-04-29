@@ -166,10 +166,22 @@ impl RenderThread {
 
         // Wait until all presentations have completed.
         // Only then is it safe to destroy the swapchain.
-        for (fence, used) in &mut surface.present_done {
-            if *used {
-                fence.wait(None).unwrap();
-                *used = false;
+        // Note that if we have `VK_EXT_swapchain_maintenance1` we can wait
+        // for the present fence to be signaled and all is well.
+        // If we do not have this extension it is technically never safe to
+        // destroy the swapchain. Waiting for the device to become idle is
+        // the best we can do.
+        // See https://github.com/KhronosGroup/Vulkan-Docs/issues/1678
+        if self.shared.device.extensions().swapchain_maintenance1 {
+            for (fence, used) in &mut surface.present_done {
+                if *used {
+                    fence.wait(None).unwrap();
+                    *used = false;
+                }
+            }
+        } else {
+            unsafe {
+                self.shared.device.wait_idle();
             }
         }
     }
@@ -272,10 +284,12 @@ impl RenderThread {
 
             surface.window.pre_present_notify();
 
-            if *present_done_used {
-                present_done.wait(None).unwrap();
+            if self.shared.device.extensions().swapchain_maintenance1 {
+                if *present_done_used {
+                    present_done.wait(None).unwrap();
+                }
+                *present_done_used = true;
             }
-            *present_done_used = true;
 
             // SAFETY:
             // We have manually inserted a barrier to transition the texture
