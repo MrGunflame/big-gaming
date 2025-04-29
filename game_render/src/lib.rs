@@ -89,10 +89,19 @@ impl Renderer {
 
         let instance = Instance::new(config).unwrap();
 
+        let preferred_adapter_id = std::env::var("RENDER_ADAPTER_ID")
+            .map(|v| v.parse::<usize>().ok())
+            .ok()
+            .flatten();
         let preferred_adapter_name = std::env::var("RENDER_ADAPTER").ok();
 
         let mut adapter = None;
-        for a in instance.adapters().unwrap() {
+        for (adapter_id, a) in instance.adapters().unwrap().into_iter().enumerate() {
+            if Some(adapter_id) == preferred_adapter_id {
+                adapter = Some(a);
+                break;
+            }
+
             let Some(current_adapter) = &adapter else {
                 adapter = Some(a);
                 continue;

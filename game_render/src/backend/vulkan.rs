@@ -143,18 +143,6 @@ impl<'a> FromIterator<&'a CStr> for InstanceExtensions {
     }
 }
 
-const DEVICE_EXTENSIONS: &[&CStr] = &[
-    // VK_KHR_swapchain
-    ash::khr::swapchain::NAME,
-    // VK_KHR_dynamic_rendering
-    // Core in Vulkan 1.3
-    ash::khr::dynamic_rendering::NAME,
-    // `VK_KHR_synchronization2`
-    // Core in Vulkan 1.3
-    ash::khr::synchronization2::NAME,
-    ash::ext::swapchain_maintenance1::NAME,
-];
-
 const fn make_api_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
@@ -569,6 +557,21 @@ impl Adapter {
         formats
     }
 
+    fn get_supported_extensions(&self) -> DeviceExtensions {
+        let ext_props = unsafe {
+            self.instance
+                .instance
+                .enumerate_device_extension_properties(self.physical_device)
+                .unwrap()
+        };
+        ext_props
+            .iter()
+            .map(|props| {
+                CStr::from_bytes_until_nul(bytemuck::bytes_of(&props.extension_name)).unwrap()
+            })
+            .collect()
+    }
+
     /// Queries and returns information about this `Adapter`'s memories.
     pub fn memory_properties(&self) -> AdapterMemoryProperties {
         let props = unsafe {
@@ -742,8 +745,19 @@ impl Adapter {
             layers.push(InstanceLayers::VALIDATION.as_ptr());
         }
 
+        let supported_extensions = self.get_supported_extensions();
+        if !supported_extensions.swapchain {
+            return Err(Error::MissingExtension(DeviceExtensions::SWAPCHAIN));
+        }
+        if !supported_extensions.dynamic_rendering {
+            return Err(Error::MissingExtension(DeviceExtensions::DYNAMIC_RENDERING));
+        }
+        if !supported_extensions.synchronization2 {
+            return Err(Error::MissingExtension(DeviceExtensions::SYNCHRONIZATION2));
+        }
+
         let mut extensions = Vec::new();
-        extensions.extend(DEVICE_EXTENSIONS.iter().map(|v| v.as_ptr()));
+        extensions.extend(supported_extensions.names().iter().map(|v| v.as_ptr()));
 
         let features = vk::PhysicalDeviceFeatures::default();
 
@@ -777,7 +791,7 @@ impl Adapter {
 
         // Allow passing deprecated `enabled_layer_names`.
         #[allow(deprecated)]
-        let create_info = vk::DeviceCreateInfo::default()
+        let mut create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_infos)
             // Device layers are deprecated, but the Vulkan spec still recommends
             // applications to pass layers.
@@ -787,8 +801,11 @@ impl Adapter {
             .enabled_features(&features)
             .push_next(&mut dynamic_rendering)
             .push_next(&mut synchronization2)
-            .push_next(&mut descriptor_indexing)
-            .push_next(&mut swapchain_maintenance1);
+            .push_next(&mut descriptor_indexing);
+
+        if supported_extensions.swapchain_maintenance1 {
+            create_info = create_info.push_next(&mut swapchain_maintenance1);
+        }
 
         let device = unsafe {
             self.instance
@@ -815,6 +832,7 @@ impl Adapter {
                 instance: self.instance.clone(),
                 device,
                 limits: self.device_limits(),
+                extensions: supported_extensions,
                 memory_properties: self.memory_properties(),
                 num_allocations: Arc::new(AtomicU32::new(0)),
                 queues,
@@ -894,6 +912,22 @@ impl Device {
         // buffer and linear features are uninteresting as we never
         // use them.
         props.format_properties.optimal_tiling_features
+    }
+
+    /// Returns the enabled device extensions.
+    pub fn extensions(&self) -> DeviceExtensions {
+        self.device.extensions
+    }
+
+    ///
+    /// # Safety
+    ///
+    /// All queues of this `Device` must be externally synchronized, i.e. no call to any function
+    /// of any [`Queue`] must be currently active on another thread.
+    pub unsafe fn wait_idle(&self) {
+        unsafe {
+            self.device.device_wait_idle().unwrap();
+        }
     }
 
     /// Creates a new [`Queue`], bound to this `Device`.
@@ -1942,7 +1976,7 @@ impl SurfaceShared {
         let mut present_modes_info =
             vk::SwapchainPresentModesCreateInfoEXT::default().present_modes(present_modes);
 
-        let info = vk::SwapchainCreateInfoKHR::default()
+        let mut info = vk::SwapchainCreateInfoKHR::default()
             // - Surface must be supported. This is checked by the call to `get_capabilities` above.
             .surface(self.surface)
             // - `minImageCount` must be less than or equal to the `maxImageCount`. Checked above.
@@ -1985,8 +2019,11 @@ impl SurfaceShared {
             .clipped(true)
             // - `oldSwapchain` must be null or a non-retired swapchain.
             // This is guaranteed by the caller.
-            .old_swapchain(old_swapchain)
-            .push_next(&mut present_modes_info);
+            .old_swapchain(old_swapchain);
+
+        if device.extensions().swapchain_maintenance1 {
+            info = info.push_next(&mut present_modes_info);
+        }
 
         let khr_device = ash::khr::swapchain::Device::new(&self.instance.instance, &device.device);
         let swapchain = unsafe { khr_device.create_swapchain(&info, None)? };
@@ -3291,6 +3328,9 @@ impl<'a> SwapchainTexture<'a> {
     ///
     /// The operation will happen on the given [`Queue`] when the given [`Semaphore`] is signaled.
     ///
+    /// Note that [`QueuePresent::signal`] is ignored if the `VK_EXT_swapchain_maintenance1`
+    /// extension is not enabled.
+    ///
     /// # Safety
     ///
     /// When the operation occurs the texture must have the [`PRESENT`] set.
@@ -3305,7 +3345,10 @@ impl<'a> SwapchainTexture<'a> {
             ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
 
         let signal_fences = cmd.signal.map(|fence| {
-            fence.register();
+            if self.device.extensions().swapchain_maintenance1 {
+                fence.register();
+            }
+
             [fence.fence]
         });
         let mut present_fence_info = signal_fences
@@ -3323,8 +3366,16 @@ impl<'a> SwapchainTexture<'a> {
             // - Every image must be in `VK_IMAGE_LAYOUT_PRESENT_SRC_KHR` once this is executed.
             .image_indices(image_indices);
 
-        if let Some(present_fence_info) = &mut present_fence_info {
-            info = info.push_next(present_fence_info);
+        // Present fence must only be present if `VK_EXT_swapchain_maintenance1` is enabled.
+        // We ignore the parameter if the extnesion is not present.
+        if self.device.device.extensions.swapchain_maintenance1 {
+            if let Some(present_fence_info) = &mut present_fence_info {
+                info = info.push_next(present_fence_info);
+            }
+        } else if cfg!(debug_assertions) && present_fence_info.is_some() {
+            tracing::warn!(
+                "QueuePresent::signal exists, but VK_EXT_swapchain_maintenance1 is not enabled"
+            );
         }
 
         // Safety:
@@ -4031,6 +4082,7 @@ struct DeviceShared {
     instance: Arc<InstanceShared>,
     device: ash::Device,
     limits: DeviceLimits,
+    extensions: DeviceExtensions,
     memory_properties: AdapterMemoryProperties,
     /// Number of currently active allocations.
     num_allocations: Arc<AtomicU32>,
@@ -4100,6 +4152,63 @@ struct DeviceLimits {
     // VkPhysicalDeviceMaintenance3Properties
     max_per_set_descriptors: u32,
     max_memory_allocation_size: u64,
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DeviceExtensions {
+    /// `VK_KHR_swapchain`
+    pub swapchain: bool,
+    /// `VK_EXT_swapchain_maintenance1`
+    pub swapchain_maintenance1: bool,
+    /// `VK_KHR_synchronization2`
+    pub synchronization2: bool,
+    /// `VK_KHR_dynamic_rendering`
+    pub dynamic_rendering: bool,
+}
+
+impl DeviceExtensions {
+    const SWAPCHAIN_MAINTENANCE1: &CStr = ash::ext::swapchain_maintenance1::NAME;
+    const SYNCHRONIZATION2: &CStr = ash::khr::synchronization2::NAME;
+    const DYNAMIC_RENDERING: &CStr = ash::khr::dynamic_rendering::NAME;
+    const SWAPCHAIN: &CStr = ash::khr::swapchain::NAME;
+
+    fn names(&self) -> Vec<&'static CStr> {
+        let mut names = Vec::new();
+
+        for (enabled, name) in [
+            (self.swapchain_maintenance1, Self::SWAPCHAIN_MAINTENANCE1),
+            (self.synchronization2, Self::SYNCHRONIZATION2),
+            (self.dynamic_rendering, Self::DYNAMIC_RENDERING),
+            (self.swapchain, Self::SWAPCHAIN),
+        ] {
+            if enabled {
+                names.push(name);
+            }
+        }
+
+        names
+    }
+}
+
+impl<'a> FromIterator<&'a CStr> for DeviceExtensions {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = &'a CStr>,
+    {
+        let mut extensions = Self::default();
+        for name in iter {
+            match name {
+                name if name == Self::SWAPCHAIN_MAINTENANCE1 => {
+                    extensions.swapchain_maintenance1 = true
+                }
+                name if name == Self::SYNCHRONIZATION2 => extensions.synchronization2 = true,
+                name if name == Self::DYNAMIC_RENDERING => extensions.dynamic_rendering = true,
+                name if name == Self::SWAPCHAIN => extensions.swapchain = true,
+                _ => (),
+            }
+        }
+        extensions
+    }
 }
 
 trait RangeBoundsExt {
