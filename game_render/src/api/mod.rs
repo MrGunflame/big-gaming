@@ -2,6 +2,7 @@
 
 mod commands;
 pub mod executor;
+mod range_map;
 mod resources;
 mod scheduler;
 
@@ -22,10 +23,12 @@ use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
 use hashbrown::HashMap;
+use parking_lot::Mutex;
+use range_map::RangeMap;
 use resources::{
     BufferId, BufferInner, DescriptorSetId, DescriptorSetInner, DescriptorSetLayoutId,
     DescriptorSetLayoutInner, PipelineId, PipelineInner, RefCount, Resources, SamplerId,
-    SamplerInner, TextureData, TextureId, TextureInner,
+    SamplerInner, TextureData, TextureId, TextureInner, TextureState, Trackers,
 };
 use scheduler::{Node, Resource, ResourceMap, Scheduler};
 use sharded_slab::Slab;
@@ -75,6 +78,7 @@ impl CommandExecutor {
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
                 samplers: Slab::new(),
                 deletion_queue: SegQueue::new(),
+                trackers: Mutex::new(Trackers::default()),
             }),
             cmds: CommandStream::new(),
             device,
@@ -119,9 +123,15 @@ impl CommandExecutor {
             match cmd {
                 DeletionEvent::Buffer(id) => {
                     self.resources.buffers.remove(id);
+
+                    let mut trackers = self.resources.trackers.lock();
+                    trackers.buffers.remove(&id).unwrap();
                 }
                 DeletionEvent::Texture(id) => {
                     self.resources.textures.remove(id);
+
+                    let mut trackers = self.resources.trackers.lock();
+                    trackers.textures.remove(&id).unwrap();
                 }
                 DeletionEvent::DescriptorSetLayout(id) => {
                     self.resources.descriptor_set_layouts.remove(id);
@@ -192,7 +202,7 @@ impl CommandExecutor {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum ResourceId {
     Buffer(BufferId),
-    Texture(TextureMip),
+    Texture(TextureMips),
 }
 
 /// A queue for encoding rendering commands.
@@ -232,6 +242,9 @@ impl<'a> CommandQueue<'a> {
                 ref_count: RefCount::new(),
             })
             .unwrap();
+
+        let mut trackers = self.executor.resources.trackers.lock();
+        trackers.buffers.insert(id, AccessFlags::empty());
 
         Buffer {
             id,
@@ -328,6 +341,10 @@ impl<'a> CommandQueue<'a> {
             "texture size must not be zero (size is {})",
             descriptor.size
         );
+        assert!(
+            descriptor.mip_levels > 0,
+            "texture must contain at least one mip level"
+        );
 
         let supported_usages = self
             .executor
@@ -359,6 +376,17 @@ impl<'a> CommandQueue<'a> {
                 ref_count: RefCount::new(),
             })
             .unwrap();
+
+        let mut trackers = self.executor.resources.trackers.lock();
+        trackers.textures.insert(
+            id,
+            TextureState {
+                mips: RangeMap::from_full_range(
+                    0..descriptor.mip_levels as u8,
+                    AccessFlags::empty(),
+                ),
+            },
+        );
 
         Texture {
             id,
@@ -397,6 +425,14 @@ impl<'a> CommandQueue<'a> {
                 ref_count: RefCount::new(),
             })
             .unwrap();
+
+        let mut trackers = self.executor.resources.trackers.lock();
+        trackers.textures.insert(
+            id,
+            TextureState {
+                mips: RangeMap::from_full_range(0..mip_levels as u8, access),
+            },
+        );
 
         Texture {
             id,
@@ -887,9 +923,10 @@ impl<'a> CommandQueue<'a> {
         self.executor.cmds.push(
             &self.executor.resources,
             Command::TextureTransition(TextureTransition {
-                texture: TextureMip {
+                texture: TextureMips {
                     id: texture.texture.id,
-                    mip_level: texture.mip_level,
+                    base_mip: texture.mip_level as u8,
+                    mip_count: 1,
                 },
                 access: to,
             }),
@@ -1166,9 +1203,10 @@ impl RawTextureView {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-struct TextureMip {
+struct TextureMips {
     id: TextureId,
-    mip_level: u32,
+    base_mip: u8,
+    mip_count: u8,
 }
 
 #[derive(Debug)]

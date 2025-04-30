@@ -3,14 +3,15 @@ use std::sync::Arc;
 
 use crossbeam_queue::SegQueue;
 use game_common::cell::UnsafeRefCell;
-use hashbrown::HashMap;
+use nohash_hasher::IntMap;
+use parking_lot::Mutex;
 use sharded_slab::Slab;
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::shader::BindingLocation;
 use crate::backend::{vulkan, AccessFlags};
 
+use super::range_map::RangeMap;
 use super::{BindingMap, DeletionEvent, RawTextureView, ResourceId, ResourceMap};
 
 pub type BufferId = usize;
@@ -31,6 +32,7 @@ pub struct Resources {
     pub allocator: GeneralPurposeAllocator,
     pub descriptor_allocator: DescriptorSetAllocator,
     pub deletion_queue: SegQueue<DeletionEvent>,
+    pub trackers: Mutex<Trackers>,
 }
 
 impl<'a> ResourceMap for &'a Resources {
@@ -162,4 +164,15 @@ impl RefCount {
         self.0.load(Ordering::Acquire);
         true
     }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Trackers {
+    pub buffers: IntMap<BufferId, AccessFlags>,
+    pub textures: IntMap<TextureId, TextureState>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TextureState {
+    pub mips: RangeMap<u8, AccessFlags>,
 }

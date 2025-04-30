@@ -6,9 +6,10 @@ use hashbrown::{HashMap, HashSet};
 
 use crate::backend::{AccessFlags, ImageDataLayout};
 
+use super::range_map::RangeMap;
 use super::{
     BufferId, ColorAttachmentOwned, DepthStencilAttachmentOwned, DrawCmd, Node, Resource,
-    ResourceId, Resources, TextureId, TextureMip,
+    ResourceId, Resources, TextureId, TextureMips,
 };
 
 #[derive(Debug)]
@@ -130,7 +131,7 @@ impl Command {
                         access: AccessFlags::TRANSFER_READ,
                     },
                     Resource {
-                        id: ResourceId::Texture(TextureMip {
+                        id: ResourceId::Texture(TextureMips {
                             id: cmd.dst,
                             mip_level: cmd.dst_mip_level,
                         }),
@@ -141,14 +142,14 @@ impl Command {
             Self::CopyTextureToTexture(cmd) => {
                 accesses.extend([
                     Resource {
-                        id: ResourceId::Texture(TextureMip {
+                        id: ResourceId::Texture(TextureMips {
                             id: cmd.src,
                             mip_level: cmd.src_mip_level,
                         }),
                         access: AccessFlags::TRANSFER_READ,
                     },
                     Resource {
-                        id: ResourceId::Texture(TextureMip {
+                        id: ResourceId::Texture(TextureMips {
                             id: cmd.dst,
                             mip_level: cmd.dst_mip_level,
                         }),
@@ -163,7 +164,9 @@ impl Command {
                 });
             }
             Self::RenderPass(cmd) => {
-                let mut access_flags = HashMap::<ResourceId, AccessFlags, _, &Bump>::new_in(alloc);
+                let mut buffer_flags = HashMap::<ResourceId, AccessFlags, _, &Bump>::new_in(alloc);
+                let mut texture_flags =
+                    HashMap::<TextureId, RangeMap<u8, AccessFlags>, _, &Bump>::new_in(alloc);
                 // The same descriptor set may get bound multiple times,
                 // but this has no effect on the access flags.
                 // As such it is cheaper to track visited descriptor sets
@@ -178,7 +181,7 @@ impl Command {
                             pipeline = Some(resources.pipelines.get(*id).unwrap());
                         }
                         DrawCmd::SetIndexBuffer(buffer, _) => {
-                            *access_flags.entry(ResourceId::Buffer(*buffer)).or_default() |=
+                            *buffer_flags.entry(ResourceId::Buffer(*buffer)).or_default() |=
                                 AccessFlags::INDEX;
                         }
                         DrawCmd::SetDescriptorSet(group, id) => {
@@ -194,7 +197,7 @@ impl Command {
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
                             for (binding, buffer) in &descriptor_set.buffers {
                                 if let Some(access) = pipeline.bindings.get(*group, *binding) {
-                                    *access_flags
+                                    *buffer_flags
                                         .entry(ResourceId::Buffer(*buffer))
                                         .or_default() |= access;
                                 }
@@ -202,13 +205,19 @@ impl Command {
 
                             for (binding, view) in &descriptor_set.textures {
                                 if let Some(access) = pipeline.bindings.get(*group, *binding) {
-                                    for mip in view.mips() {
-                                        *access_flags
-                                            .entry(ResourceId::Texture(TextureMip {
-                                                id: view.texture,
-                                                mip_level: mip,
-                                            }))
-                                            .or_default() |= access;
+                                    let range = view.base_mip_level as u8
+                                        ..view.base_mip_level as u8 + view.mip_levels as u8;
+
+                                    match texture_flags.get_mut(&view.texture) {
+                                        Some(mips) => {
+                                            mips.insert(range, access);
+                                        }
+                                        None => {
+                                            texture_flags.insert(
+                                                view.texture,
+                                                RangeMap::from_full_range(range, access),
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -216,13 +225,19 @@ impl Command {
                             for (binding, views) in &descriptor_set.texture_arrays {
                                 if let Some(access) = pipeline.bindings.get(*group, *binding) {
                                     for view in views {
-                                        for mip in view.mips() {
-                                            *access_flags
-                                                .entry(ResourceId::Texture(TextureMip {
-                                                    id: view.texture,
-                                                    mip_level: mip,
-                                                }))
-                                                .or_default() |= access;
+                                        let range = view.base_mip_level as u8
+                                            ..view.base_mip_level as u8 + view.mip_levels as u8;
+
+                                        match texture_flags.get_mut(&view.texture) {
+                                            Some(mips) => {
+                                                mips.insert(range, access);
+                                            }
+                                            None => {
+                                                texture_flags.insert(
+                                                    view.texture,
+                                                    RangeMap::from_full_range(range, access),
+                                                );
+                                            }
                                         }
                                     }
                                 }
@@ -234,33 +249,61 @@ impl Command {
                 }
 
                 for attachment in &cmd.color_attachments {
-                    for mip in attachment.target.mips() {
-                        *access_flags
-                            .entry(ResourceId::Texture(TextureMip {
-                                id: attachment.target.texture,
-                                mip_level: mip,
-                            }))
-                            .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
+                    let range = attachment.target.base_mip_level as u8
+                        ..attachment.target.base_mip_level as u8
+                            + attachment.target.mip_levels as u8;
+
+                    match texture_flags.get_mut(&attachment.target.texture) {
+                        Some(mips) => {
+                            mips.insert(range, AccessFlags::COLOR_ATTACHMENT_WRITE);
+                        }
+                        None => {
+                            texture_flags.insert(
+                                attachment.target.texture,
+                                RangeMap::from_full_range(
+                                    range,
+                                    AccessFlags::COLOR_ATTACHMENT_WRITE,
+                                ),
+                            );
+                        }
                     }
                 }
 
                 if let Some(attachment) = &cmd.depth_stencil_attachment {
-                    *access_flags
-                        .entry(ResourceId::Texture(TextureMip {
-                            id: attachment.texture,
-                            mip_level: 0,
-                        }))
-                        .or_default() |=
-                        AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
+                    match texture_flags.get_mut(&attachment.texture) {
+                        Some(mips) => {
+                            mips.insert(
+                                0..1,
+                                AccessFlags::DEPTH_ATTACHMENT_READ
+                                    | AccessFlags::DEPTH_ATTACHMENT_WRITE,
+                            );
+                        }
+                        None => {
+                            texture_flags.insert(
+                                attachment.texture,
+                                RangeMap::from_full_range(
+                                    0..1,
+                                    AccessFlags::DEPTH_ATTACHMENT_READ
+                                        | AccessFlags::DEPTH_ATTACHMENT_WRITE,
+                                ),
+                            );
+                        }
+                    }
                 }
 
-                for (id, access) in access_flags {
+                for (id, access) in buffer_flags {
                     // We should never require a resource without any flags.
                     // This could result in a texture transition into UNDEFINED
                     // which is always invalid.
                     debug_assert!(!access.is_empty());
 
                     accesses.push(Resource { id, access });
+                }
+
+                for (id, mut mips) in texture_flags {
+                    mips.compact();
+
+                    for (range, flags) in mips.iter() {}
                 }
             }
         }
@@ -301,7 +344,7 @@ pub struct CopyTextureToTexture {
 
 #[derive(Copy, Clone, Debug)]
 pub struct TextureTransition {
-    pub texture: TextureMip,
+    pub texture: TextureMips,
     pub access: AccessFlags,
 }
 
