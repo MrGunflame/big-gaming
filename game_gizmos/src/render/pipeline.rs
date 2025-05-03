@@ -11,19 +11,19 @@ use game_render::api::{
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, ColorTargetState, DescriptorBinding, DescriptorType, Face, FragmentStage,
-    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, ShaderModule, ShaderStages, StoreOp,
-    TextureFormat, VertexStage,
+    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, ShaderStages, StoreOp, TextureFormat,
+    VertexStage,
 };
 use game_render::camera::{Camera, CameraUniform};
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
-use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use game_render::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 use parking_lot::{Mutex, RwLock};
 
 use super::DrawCommand;
 
-const SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR", "/shaders/line.wgsl"));
+const SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/line.wgsl");
 
 pub struct GizmoPipeline {
     descriptor_set_layout: DescriptorSetLayout,
@@ -76,7 +76,7 @@ impl PipelineBuilder for GizmoPipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
@@ -90,7 +90,7 @@ impl PipelineBuilder for GizmoPipelineBuilder {
                     entry: "vs_main",
                 }),
                 PipelineStage::Fragment(FragmentStage {
-                    shader: &shaders[1],
+                    shader: &shaders[0],
                     entry: "fs_main",
                     targets: &[ColorTargetState {
                         format,
@@ -150,7 +150,7 @@ impl Node for GizmoPass {
     fn render(&self, ctx: &mut RenderContext<'_, '_>) {
         let _span = trace_span!("GizmoPass::render").entered();
 
-        let Some(camera) = *self.camera.lock() else {
+        let Some(camera) = &*self.camera.lock() else {
             return;
         };
 

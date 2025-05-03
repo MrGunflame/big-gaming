@@ -3,12 +3,10 @@ use std::sync::Arc;
 
 use crossbeam_queue::SegQueue;
 use game_common::cell::UnsafeRefCell;
-use hashbrown::HashMap;
 use sharded_slab::Slab;
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::shader::BindingLocation;
 use crate::backend::{vulkan, AccessFlags};
 
 use super::{BindingMap, DeletionEvent, RawTextureView, ResourceId, ResourceMap};

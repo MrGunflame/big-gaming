@@ -7,12 +7,12 @@ use crate::api::{CommandQueue, DescriptorSetLayout, Pipeline, PipelineDescriptor
 use crate::backend::{
     AddressMode, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
     DescriptorSetDescriptor, DescriptorType, Face, FilterMode, FragmentStage, FrontFace,
-    PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderModule,
-    ShaderStages, TextureFormat, VertexStage,
+    PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages,
+    TextureFormat, VertexStage,
 };
 use crate::entities::{Event, Resources};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
-use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use crate::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 
 const VS_SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs.wgsl");
 const FS_SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_fs.wgsl");
@@ -196,7 +196,7 @@ impl PipelineBuilder for ForwardPipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {

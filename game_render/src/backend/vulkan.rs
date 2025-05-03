@@ -22,8 +22,8 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
 use crate::backend::{mip_level_size_2d, DescriptorType, SurfaceFormat, TextureLayout};
+use crate::shader::{self, BindingInfo, Shader};
 
-use super::shader::{self, BindingInfo, Shader};
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BlendFactor,
     BlendOp, BufferUsage, BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
@@ -1490,7 +1490,7 @@ impl Device {
             let vk_stage = match stage {
                 PipelineStage::Vertex(stage) => {
                     let spirv = create_pipeline_shader_module(
-                        &stage.shader.shader,
+                        &stage.shader,
                         stage.entry,
                         ShaderStage::Vertex,
                         descriptor.descriptors,
@@ -1539,7 +1539,7 @@ impl Device {
                     }
 
                     let spirv = create_pipeline_shader_module(
-                        &stage.shader.shader,
+                        &stage.shader,
                         stage.entry,
                         ShaderStage::Fragment,
                         descriptor.descriptors,
@@ -4436,8 +4436,8 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
     transfer | graphics
 }
 
-fn validate_shader_bindings(shader: &super::ShaderModule, descriptors: &[&DescriptorSetLayout]) {
-    for shader_binding in &shader.shader.bindings() {
+fn validate_shader_bindings(shader: &Shader, descriptors: &[&DescriptorSetLayout]) {
+    for shader_binding in &shader.bindings() {
         if shader_binding.group >= descriptors.len() as u32 {
             panic!(
                 "shader requires descriptor set bound to group {} (only {} descriptor sets were bound)",

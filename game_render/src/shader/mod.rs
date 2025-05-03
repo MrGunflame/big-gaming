@@ -1,16 +1,114 @@
+mod spirv;
+mod wgsl;
+
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::num::NonZeroU32;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, OnceLock};
 
+use bitflags::bitflags;
+use hashbrown::HashMap;
 use notify::{RecursiveMode, Watcher};
 use thiserror::Error;
 
-use crate::backend::shader::{self, Shader};
-use crate::backend::ShaderModule;
+use crate::backend::{DescriptorType, ShaderStage};
+
+#[derive(Clone, Debug)]
+pub enum Shader {
+    Wgsl(wgsl::Shader),
+}
+
+impl Shader {
+    pub fn from_wgsl(s: &str) -> Result<Self, wgsl::Error> {
+        wgsl::Shader::from_wgsl(s).map(Self::Wgsl)
+    }
+
+    pub fn instantiate(&self, options: &Options<'_>) -> ShaderInstance<'_> {
+        match self {
+            Self::Wgsl(s) => ShaderInstance::Wgsl(s.instantiate(options)),
+        }
+    }
+
+    pub fn bindings(&self) -> Vec<ShaderBinding> {
+        match self {
+            Self::Wgsl(s) => s.bindings(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Options<'a> {
+    pub entry_point: &'a str,
+    pub stage: ShaderStage,
+    pub bindings: HashMap<BindingLocation, BindingInfo>,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BindingLocation {
+    pub group: u32,
+    pub binding: u32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ShaderBinding {
+    pub group: u32,
+    pub binding: u32,
+    pub kind: DescriptorType,
+    pub access: ShaderAccess,
+    /// If the binding point is an binding array this will be greater than 1.
+    ///
+    /// This is always 1 for non-array types.
+    ///
+    /// `None` indicates that the count is still undefined and needs to specialized on
+    /// instantiation.
+    pub count: Option<NonZeroU32>,
+}
+
+impl ShaderBinding {
+    pub fn location(&self) -> BindingLocation {
+        BindingLocation {
+            group: self.group,
+            binding: self.binding,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct BindingInfo {
+    pub count: NonZeroU32,
+}
+
+#[derive(Clone, Debug)]
+pub enum ShaderInstance<'a> {
+    Wgsl(wgsl::ShaderInstance<'a>),
+}
+
+impl<'a> ShaderInstance<'a> {
+    pub fn bindings(&self) -> &[ShaderBinding] {
+        match self {
+            Self::Wgsl(s) => s.bindings(),
+        }
+    }
+
+    pub fn to_spirv(&self) -> Vec<u32> {
+        match self {
+            Self::Wgsl(s) => s.to_spirv(),
+        }
+    }
+}
+
+bitflags! {
+    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+    pub struct ShaderAccess: u8 {
+        /// The resource will be read from.
+        const READ = 1 << 0;
+        /// The resource will be written to.
+        const WRITE = 1 << 1;
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct ShaderConfig {
@@ -43,7 +141,7 @@ pub enum Error {
     #[error(transparent)]
     Io(io::Error),
     #[error(transparent)]
-    Compilation(shader::Error),
+    Wgsl(wgsl::Error),
 }
 
 #[derive(Debug)]
@@ -66,7 +164,7 @@ impl ReloadableShaderSource {
         self.cell.swap(false, Ordering::SeqCst)
     }
 
-    pub fn compile(&mut self) -> Result<ShaderModule, Error> {
+    pub fn compile(&mut self) -> Result<Shader, Error> {
         for source in self.sources.drain(..) {
             match source {
                 ShaderSource::File(path) => {
@@ -99,9 +197,9 @@ impl ReloadableShaderSource {
             }
         }
 
-        let shader = Shader::from_wgsl(&combined).map_err(Error::Compilation)?;
+        let shader = Shader::from_wgsl(&combined).map_err(Error::Wgsl)?;
 
-        Ok(ShaderModule { shader })
+        Ok(shader)
     }
 }
 

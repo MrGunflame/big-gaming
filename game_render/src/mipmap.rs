@@ -11,10 +11,10 @@ use crate::api::{
 use crate::backend::{
     AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, Face, FilterMode,
     FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor,
-    ShaderModule, ShaderStages, StoreOp, TextureFormat, VertexStage,
+    ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
-use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use crate::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 
 const SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/mipmap.wgsl");
 
@@ -124,7 +124,7 @@ impl PipelineBuilder for BlitPipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {

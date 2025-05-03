@@ -13,13 +13,13 @@ use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     AddressMode, BufferUsage, ColorTargetState, DescriptorBinding, DescriptorType, Face,
     FilterMode, FragmentStage, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage,
-    PrimitiveTopology, SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureDescriptor,
-    TextureFormat, TextureUsage, VertexStage,
+    PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage, VertexStage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
-use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use game_render::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::{Mutex, RwLock};
@@ -110,7 +110,7 @@ impl PipelineBuilder for UiPipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {

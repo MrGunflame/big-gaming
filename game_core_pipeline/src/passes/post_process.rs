@@ -8,12 +8,12 @@ use game_render::api::{
 };
 use game_render::backend::{
     AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, FilterMode, FragmentStage,
-    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderModule,
-    ShaderStages, StoreOp, TextureFormat, VertexStage,
+    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp,
+    TextureFormat, VertexStage,
 };
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
-use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use game_render::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 
 const SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/post_process.wgsl");
@@ -124,7 +124,7 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         let _span = trace_span!("PostProcessPipelineBuilder::build").entered();

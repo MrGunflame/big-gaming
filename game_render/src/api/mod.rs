@@ -32,7 +32,6 @@ use sharded_slab::Slab;
 
 use crate::backend::allocator::{GeneralPurposeAllocator, MemoryManager, UsageFlags};
 use crate::backend::descriptors::DescriptorSetAllocator;
-use crate::backend::shader::{ShaderAccess, ShaderBinding};
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
@@ -40,6 +39,7 @@ use crate::backend::{
     PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp,
     TextureDescriptor, TextureFormat, TextureUsage,
 };
+use crate::shader::{self, ShaderAccess, ShaderBinding};
 use crate::statistics::Statistics;
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
@@ -711,7 +711,7 @@ impl<'a> CommandQueue<'a> {
         for stage in descriptor.stages {
             match stage {
                 PipelineStage::Vertex(stage) => {
-                    let instance = stage.shader.shader.instantiate(&backend::shader::Options {
+                    let instance = stage.shader.instantiate(&shader::Options {
                         bindings: HashMap::new(),
                         stage: ShaderStage::Vertex,
                         entry_point: &stage.entry,
@@ -738,7 +738,7 @@ impl<'a> CommandQueue<'a> {
                     }
                 }
                 PipelineStage::Fragment(stage) => {
-                    let instance = stage.shader.shader.instantiate(&backend::shader::Options {
+                    let instance = stage.shader.instantiate(&shader::Options {
                         bindings: HashMap::new(),
                         stage: ShaderStage::Fragment,
                         entry_point: &stage.entry,

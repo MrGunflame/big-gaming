@@ -13,13 +13,13 @@ use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     AddressMode, BlendState, BufferUsage, ColorTargetState, CompareOp, DepthStencilState,
     DescriptorBinding, DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderModule, ShaderStages, StoreOp,
+    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp,
     TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
-use game_render::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use game_render::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::{Mutex, RwLock};
@@ -311,7 +311,7 @@ impl PipelineBuilder for BuildForwardPipeline {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {

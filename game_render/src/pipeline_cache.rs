@@ -4,8 +4,8 @@ use std::ops::Deref;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 
 use crate::api::{CommandQueue, Pipeline};
-use crate::backend::{ShaderModule, TextureFormat};
-use crate::shader::{ReloadableShaderSource, ShaderConfig};
+use crate::backend::TextureFormat;
+use crate::shader::{ReloadableShaderSource, Shader, ShaderConfig};
 
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]
@@ -13,7 +13,7 @@ pub struct PipelineCache<T> {
     pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
     builder: T,
     shaders: RwLock<Vec<ReloadableShaderSource>>,
-    compiled_shaders: Mutex<Vec<ShaderModule>>,
+    compiled_shaders: Mutex<Vec<Shader>>,
 }
 
 impl<T> PipelineCache<T> {
@@ -153,7 +153,7 @@ pub trait PipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline;
 }

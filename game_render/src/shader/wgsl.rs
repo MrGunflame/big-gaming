@@ -1,15 +1,15 @@
 use std::num::NonZeroU32;
 
-use bitflags::bitflags;
 use hashbrown::HashMap;
 use naga::back::spv::{self, PipelineOptions};
 use naga::front::wgsl;
-use naga::proc::{BoundsCheckPolicies, BoundsCheckPolicy};
 use naga::valid::{Capabilities, GlobalUse, ModuleInfo, ValidationFlags, Validator};
 use naga::{AddressSpace, ArraySize, Module, TypeInner};
 use thiserror::Error;
 
-use super::{DescriptorType, ShaderStage};
+use crate::backend::{DescriptorType, ShaderStage};
+
+use super::{BindingInfo, BindingLocation, Options, ShaderAccess, ShaderBinding};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -199,56 +199,4 @@ impl<'a> ShaderInstance<'a> {
         )
         .unwrap()
     }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct ShaderBinding {
-    pub group: u32,
-    pub binding: u32,
-    pub kind: DescriptorType,
-    pub access: ShaderAccess,
-    /// If the binding point is an binding array this will be greater than 1.
-    ///
-    /// This is always 1 for non-array types.
-    ///
-    /// `None` indicates that the count is still undefined and needs to specialized on
-    /// instantiation.
-    pub count: Option<NonZeroU32>,
-}
-
-impl ShaderBinding {
-    pub fn location(&self) -> BindingLocation {
-        BindingLocation {
-            group: self.group,
-            binding: self.binding,
-        }
-    }
-}
-
-bitflags! {
-    #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-    pub struct ShaderAccess: u8 {
-        /// The resource will be read from.
-        const READ = 1 << 0;
-        /// The resource will be written to.
-        const WRITE = 1 << 1;
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Options<'a> {
-    pub entry_point: &'a str,
-    pub stage: ShaderStage,
-    pub bindings: HashMap<BindingLocation, BindingInfo>,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct BindingLocation {
-    pub group: u32,
-    pub binding: u32,
-}
-
-#[derive(Clone, Debug)]
-pub struct BindingInfo {
-    pub count: NonZeroU32,
 }
