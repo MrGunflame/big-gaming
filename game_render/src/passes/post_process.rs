@@ -11,11 +11,11 @@ use crate::api::{
 use crate::backend::{
     AddressMode, ColorTargetState, DescriptorBinding, DescriptorSetDescriptor, DescriptorType,
     FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology,
-    SamplerDescriptor, ShaderModule, ShaderStages, StoreOp, TextureFormat, VertexStage,
+    SamplerDescriptor, ShaderStages, StoreOp, TextureFormat, VertexStage,
 };
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
-use crate::shader::{ShaderConfig, ShaderLanguage, ShaderSource};
+use crate::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 
 const SHADER: &'static str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/post_process.wgsl");
 
@@ -126,7 +126,7 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
     fn build(
         &self,
         queue: &mut CommandQueue<'_>,
-        shaders: &[ShaderModule],
+        shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
         let _span = trace_span!("PostProcessPipelineBuilder::build").entered();

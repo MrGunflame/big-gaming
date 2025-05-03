@@ -1,6 +1,5 @@
 pub mod allocator;
 pub mod descriptors;
-pub mod shader;
 pub mod vulkan;
 
 use std::num::{NonZeroU32, NonZeroU64};
@@ -12,8 +11,9 @@ use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
 use glam::UVec2;
 use hashbrown::HashMap;
-use shader::Shader;
 use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, TextureView};
+
+use crate::shader::Shader;
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -265,13 +265,13 @@ pub enum PipelineStage<'a> {
 
 #[derive(Debug)]
 pub struct VertexStage<'a> {
-    pub shader: &'a ShaderModule,
+    pub shader: &'a Shader,
     pub entry: &'static str,
 }
 
 #[derive(Debug)]
 pub struct FragmentStage<'a> {
-    pub shader: &'a ShaderModule,
+    pub shader: &'a Shader,
     pub entry: &'static str,
     pub targets: &'a [ColorTargetState],
 }
@@ -713,11 +713,6 @@ impl IndexFormat {
             Self::U32 => 4,
         }
     }
-}
-
-#[derive(Debug)]
-pub struct ShaderModule {
-    pub shader: Shader,
 }
 
 pub struct ShaderModuleDescriptor {}
