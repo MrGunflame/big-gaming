@@ -19,6 +19,7 @@ use crate::backend::{DescriptorType, ShaderStage};
 #[derive(Clone, Debug)]
 pub enum Shader {
     Wgsl(wgsl::Shader),
+    Spirv(spirv::Module),
 }
 
 impl Shader {
@@ -26,15 +27,21 @@ impl Shader {
         wgsl::Shader::from_wgsl(s).map(Self::Wgsl)
     }
 
+    pub fn from_spirv(b: &[u8]) -> Result<Self, spirv::Error> {
+        spirv::Module::new(b).map(Self::Spirv)
+    }
+
     pub fn instantiate(&self, options: &Options<'_>) -> ShaderInstance<'_> {
         match self {
             Self::Wgsl(s) => ShaderInstance::Wgsl(s.instantiate(options)),
+            Self::Spirv(s) => ShaderInstance::Spirv(s.instantiate(options).unwrap()),
         }
     }
 
     pub fn bindings(&self) -> Vec<ShaderBinding> {
         match self {
             Self::Wgsl(s) => s.bindings(),
+            Self::Spirv(s) => s.bindings(),
         }
     }
 }
@@ -84,18 +91,21 @@ pub struct BindingInfo {
 #[derive(Clone, Debug)]
 pub enum ShaderInstance<'a> {
     Wgsl(wgsl::ShaderInstance<'a>),
+    Spirv(spirv::Instance),
 }
 
 impl<'a> ShaderInstance<'a> {
     pub fn bindings(&self) -> &[ShaderBinding] {
         match self {
             Self::Wgsl(s) => s.bindings(),
+            Self::Spirv(s) => s.bindings(),
         }
     }
 
     pub fn to_spirv(&self) -> Vec<u32> {
         match self {
             Self::Wgsl(s) => s.to_spirv(),
+            Self::Spirv(s) => s.to_spirv(),
         }
     }
 }
