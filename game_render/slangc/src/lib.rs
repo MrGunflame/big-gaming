@@ -7,10 +7,7 @@ use std::process::{Command, Stdio};
 
 use thiserror::Error;
 
-const SLANGC: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/vendor/slang/build/Release/bin/slangc"
-);
+const SLANGC_PATH: &str = concat!(env!("OUT_DIR"), "/slangc");
 
 #[derive(Clone, Debug, Error)]
 #[error("{0}")]
@@ -51,9 +48,9 @@ pub fn compile(input: &Path, opt_level: OptLevel) -> Result<Vec<u8>, Error> {
     args.extend(["-o", path.to_str().unwrap()]);
     args.extend([input.to_str().unwrap()]);
 
-    tracing::info!("{} {}", SLANGC, args.join(" "));
+    tracing::info!("{} {}", SLANGC_PATH, args.join(" "));
 
-    match Command::new(SLANGC)
+    match Command::new(SLANGC_PATH)
         .args(&args)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
