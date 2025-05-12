@@ -28,7 +28,7 @@ use crate::camera::{Camera, CameraUniform};
 
 use super::{DEPTH_FORMAT, HDR_FORMAT, SceneData, State};
 
-const VS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs.wgsl");
+const VS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs.slang");
 const FS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_fs.wgsl");
 
 #[derive(Debug)]
@@ -111,7 +111,7 @@ impl ForwardPass {
                 vec![
                     ShaderConfig {
                         source: ShaderSource::File(VS_SHADER.into()),
-                        language: ShaderLanguage::Wgsl,
+                        language: ShaderLanguage::Slang,
                     },
                     ShaderConfig {
                         source: ShaderSource::File(FS_SHADER.into()),
@@ -326,7 +326,7 @@ impl PipelineBuilder for BuildForwardPipeline {
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
-                    entry: "vs_main",
+                    entry: "main",
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],

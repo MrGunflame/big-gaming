@@ -74,4 +74,5 @@ exceptions = [
     { allow = ["GPL-3.0"], name = "gltf2model" },
     { allow = ["GPL-3.0"], name = "json2dat" },
     { allow = ["GPL-3.0"], name = "make" },
+    { allow = ["GPL-3.0"], name = "slangc" },
 ]
