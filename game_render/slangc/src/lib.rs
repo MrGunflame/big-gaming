@@ -83,7 +83,7 @@ impl Deref for RemoveOnDrop {
 
 impl Drop for RemoveOnDrop {
     fn drop(&mut self) {
-        // std::fs::remove_file(&self.0).ok();
+        std::fs::remove_file(&self.0).ok();
     }
 }
 

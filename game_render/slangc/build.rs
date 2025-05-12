@@ -15,7 +15,8 @@ fn main() {
         return;
     }
 
-    spawn("cmake --preset default");
+    // Disable tests, since they come with rendering dependencies.
+    spawn("cmake --preset default -DSLANG_ENABLE_TESTS=FALSE -DSLANG_ENABLE_SLANG_RHI=FALSE");
     spawn("cmake --build --preset release");
 }
 
