@@ -2,7 +2,6 @@ mod spirv;
 mod wgsl;
 
 use std::borrow::Cow;
-use std::ffi::OsStr;
 use std::io;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -144,6 +143,7 @@ impl ShaderSource {
 #[derive(Clone, Debug)]
 pub enum ShaderLanguage {
     Wgsl,
+    Slang,
 }
 
 #[derive(Debug, Error)]
@@ -152,19 +152,23 @@ pub enum Error {
     Io(io::Error),
     #[error(transparent)]
     Wgsl(wgsl::Error),
+    #[error(transparent)]
+    Slang(slangc::Error),
+    #[error(transparent)]
+    Spirv(spirv::Error),
 }
 
 #[derive(Debug)]
 pub struct ReloadableShaderSource {
-    source: ShaderSource,
+    config: ShaderConfig,
     cell: Arc<AtomicBool>,
     sources: Vec<ShaderSource>,
 }
 
 impl ReloadableShaderSource {
-    pub fn new(source: ShaderSource) -> Self {
+    pub fn new(config: ShaderConfig) -> Self {
         Self {
-            source,
+            config,
             cell: Arc::new(AtomicBool::new(false)),
             sources: Vec::new(),
         }
@@ -184,30 +188,53 @@ impl ReloadableShaderSource {
             }
         }
 
-        let sources = load_files(self.source.clone()).map_err(Error::Io)?;
-        for source in sources.sources {
-            match source {
-                ShaderSource::File(path) => {
-                    FileWatcher::register(path, self.cell.clone());
+        let shader = match self.config.language {
+            ShaderLanguage::Wgsl => {
+                let sources = wgsl::load_files(self.config.source.clone()).map_err(Error::Io)?;
+
+                let mut combined = String::new();
+                for data in sources.data {
+                    for line in data.lines() {
+                        // Preprocessor macros start with #
+                        if line.starts_with("#") {
+                            continue;
+                        }
+
+                        combined.push_str(line);
+                        combined.push('\n');
+                    }
                 }
-                _ => (),
-            }
-        }
 
-        let mut combined = String::new();
-        for data in sources.data {
-            for line in data.lines() {
-                // Preprocessor macros start with #
-                if line.starts_with("#") {
-                    continue;
+                let shader = Shader::from_wgsl(&combined).map_err(Error::Wgsl)?;
+
+                for source in sources.sources {
+                    match source {
+                        ShaderSource::File(path) => {
+                            FileWatcher::register(path, self.cell.clone());
+                        }
+                        _ => (),
+                    }
                 }
 
-                combined.push_str(line);
-                combined.push('\n');
+                shader
             }
-        }
+            ShaderLanguage::Slang => {
+                let path = match &self.config.source {
+                    ShaderSource::File(path) => path,
+                    _ => panic!("Only file sources are supported for slang shaders"),
+                };
 
-        let shader = Shader::from_wgsl(&combined).map_err(Error::Wgsl)?;
+                let bytes = slangc::compile(&path, slangc::OptLevel::Max).map_err(Error::Slang)?;
+                let module = spirv::Module::new(&bytes).map_err(Error::Spirv)?;
+
+                let sources = slangc::load_imported_files(&path).map_err(Error::Io)?;
+                for source in sources {
+                    FileWatcher::register(source, self.cell.clone());
+                }
+
+                Shader::Spirv(module)
+            }
+        };
 
         Ok(shader)
     }
@@ -217,45 +244,6 @@ enum WatchEvent {
     Register(PathBuf, Arc<AtomicBool>),
     Unregister(PathBuf, Arc<AtomicBool>),
     Changed(PathBuf),
-}
-
-fn load_files(root: ShaderSource) -> io::Result<ShaderSources> {
-    let root_dir = match &root {
-        ShaderSource::File(path) => path.parent().map(|s| s.as_os_str()).unwrap_or_default(),
-        _ => <&OsStr>::default(),
-    };
-
-    let mut files = Vec::new();
-    let mut sources = Vec::new();
-    let mut queue = vec![root.clone()];
-
-    while let Some(src) = queue.pop() {
-        let data = src.load()?;
-        sources.push(src);
-
-        for line in data.lines() {
-            if line.starts_with("//") {
-                continue;
-            }
-
-            let Some(path) = line.strip_prefix("#include") else {
-                continue;
-            };
-
-            let mut file_path = PathBuf::from(root_dir);
-            file_path.push(PathBuf::from(path.trim()));
-            if !path.is_empty() {
-                queue.push(ShaderSource::File(file_path));
-            }
-        }
-
-        files.push(data);
-    }
-
-    Ok(ShaderSources {
-        sources,
-        data: files,
-    })
 }
 
 struct ShaderSources {

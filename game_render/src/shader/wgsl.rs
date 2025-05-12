@@ -1,4 +1,7 @@
+use std::ffi::OsStr;
+use std::io;
 use std::num::NonZeroU32;
+use std::path::PathBuf;
 
 use hashbrown::HashMap;
 use naga::back::spv::{self, PipelineOptions};
@@ -9,7 +12,9 @@ use thiserror::Error;
 
 use crate::backend::{DescriptorType, ShaderStage};
 
-use super::{BindingInfo, BindingLocation, Options, ShaderAccess, ShaderBinding};
+use super::{
+    BindingInfo, BindingLocation, Options, ShaderAccess, ShaderBinding, ShaderSource, ShaderSources,
+};
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -199,4 +204,43 @@ impl<'a> ShaderInstance<'a> {
         )
         .unwrap()
     }
+}
+
+pub fn load_files(root: ShaderSource) -> io::Result<ShaderSources> {
+    let root_dir = match &root {
+        ShaderSource::File(path) => path.parent().map(|s| s.as_os_str()).unwrap_or_default(),
+        _ => <&OsStr>::default(),
+    };
+
+    let mut files = Vec::new();
+    let mut sources = Vec::new();
+    let mut queue = vec![root.clone()];
+
+    while let Some(src) = queue.pop() {
+        let data = src.load()?;
+        sources.push(src);
+
+        for line in data.lines() {
+            if line.starts_with("//") {
+                continue;
+            }
+
+            let Some(path) = line.strip_prefix("#include") else {
+                continue;
+            };
+
+            let mut file_path = PathBuf::from(root_dir);
+            file_path.push(PathBuf::from(path.trim()));
+            if !path.is_empty() {
+                queue.push(ShaderSource::File(file_path));
+            }
+        }
+
+        files.push(data);
+    }
+
+    Ok(ShaderSources {
+        sources,
+        data: files,
+    })
 }

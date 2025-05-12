@@ -7,6 +7,7 @@
 mod ops;
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 
@@ -19,7 +20,7 @@ use ops::{
     OpSpecConstantComposite, OpSpecConstantFalse, OpSpecConstantOp, OpSpecConstantTrue,
     OpTypeArray, OpTypeBool, OpTypeFloat, OpTypeFunction, OpTypeImage, OpTypeInt, OpTypeMatrix,
     OpTypePointer, OpTypeRuntimeArray, OpTypeSampledImage, OpTypeSampler, OpTypeStruct,
-    OpTypeVector, OpTypeVoid, OpVariable, Parse,
+    OpTypeVector, OpTypeVoid, OpVariable,
 };
 use spirv::{Capability, ExecutionModel, StorageClass, MAGIC_NUMBER};
 use thiserror::Error;
@@ -43,8 +44,8 @@ enum ErrorImpl {
     BadMagic(u32),
     #[error("invalid instruction: {0}")]
     InvalidArgumentCount(InvalidArgumentCount),
-    #[error("unknown type: {0}")]
-    UnknownType(Id),
+    #[error("unknown type: {0:?}")]
+    UnknownId(Id),
     #[error("invalid type value: {found:?}, expected: {expected:?}")]
     InvalidTypeValue {
         found: OpTypeKind,
@@ -111,7 +112,7 @@ impl Module {
         let mut bindings = HashMap::new();
         for global in module.globals.values() {
             let Some(ty) = module.types.get(&global.result_type) else {
-                return Err(ErrorImpl::UnknownType(global.result_type).into());
+                return Err(ErrorImpl::UnknownId(global.result_type).into());
             };
 
             // Global is a `OpVariable` and `Result Type` msut be an `OpTypePointer`.
@@ -131,12 +132,16 @@ impl Module {
             match global.storage_class {
                 // Input and Output classes are vertex attributes.
                 StorageClass::Input | StorageClass::Output => continue,
+                StorageClass::PushConstant => continue,
+                StorageClass::Uniform => {
+                    kind = DescriptorType::Uniform;
+                }
                 StorageClass::StorageBuffer => {
                     kind = DescriptorType::Storage;
                 }
                 StorageClass::UniformConstant => {
                     let Some(ty) = module.types.get(&ptr.type_) else {
-                        return Err(ErrorImpl::UnknownType(ptr.type_).into());
+                        return Err(ErrorImpl::UnknownId(ptr.type_).into());
                     };
 
                     let mut next_ty = ty;
@@ -146,13 +151,24 @@ impl Module {
                             OpType::Sampler => DescriptorType::Sampler,
                             OpType::Array(ty) => {
                                 if let Some(count) = &mut count {
-                                    *count = count
-                                        .checked_mul(NonZeroU32::new(ty.length).unwrap())
-                                        .unwrap();
+                                    let Some(len) = module.constants.get(&ty.length) else {
+                                        return Err(Error(ErrorImpl::UnknownId(ty.length)));
+                                    };
+
+                                    let len = match len {
+                                        Constant::Constant(len) if len.value.len() > 0 => {
+                                            len.value[0]
+                                        }
+                                        Constant::ConstantNull(_) => 0,
+                                        _ => todo!(),
+                                    };
+
+                                    *count =
+                                        count.checked_mul(NonZeroU32::new(len).unwrap()).unwrap();
                                 }
 
                                 let Some(ty) = module.types.get(&ty.element_type) else {
-                                    return Err(ErrorImpl::UnknownType(ty.element_type).into());
+                                    return Err(ErrorImpl::UnknownId(ty.element_type).into());
                                 };
 
                                 next_ty = ty;
@@ -162,7 +178,7 @@ impl Module {
                                 count = None;
 
                                 let Some(ty) = module.types.get(&ty.element_type) else {
-                                    return Err(ErrorImpl::UnknownType(ty.element_type).into());
+                                    return Err(ErrorImpl::UnknownId(ty.element_type).into());
                                 };
 
                                 next_ty = ty;
@@ -255,15 +271,11 @@ impl Module {
             }
         }
 
-        let len_type_id = module.header.allocate_id();
-        module.types.insert(
-            len_type_id,
-            OpType::Int(OpTypeInt {
-                result: len_type_id,
-                width: 32,
-                is_signed: false,
-            }),
-        );
+        let len_type_id = module.create_type(OpType::Int(OpTypeInt {
+            result: Id::DUMMY,
+            width: 32,
+            is_signed: false,
+        }));
 
         for (location, info) in &options.bindings {
             let Some((var_id, binding)) = bindings.iter_mut().find(|(_, binding)| {
@@ -288,35 +300,23 @@ impl Module {
             // Create a new `OpConstant` and `OpArray` with the new
             // array length. We avoid modifying the original `OpTypeRuntimeArray`
             // and `OpTypePointer` since they may still be used by other variables.
-            let new_array_len_id = module.header.allocate_id();
-            module.constants.insert(
-                new_array_len_id,
-                Constant::Constant(OpConstant {
-                    result_type: len_type_id,
-                    result: new_array_len_id,
-                    value: vec![info.count.get()],
-                }),
-            );
+            let new_array_len_id = module.create_constant(Constant::Constant(OpConstant {
+                result_type: len_type_id,
+                result: Id::DUMMY,
+                value: vec![info.count.get()],
+            }));
 
-            let new_array_type_id = module.header.allocate_id();
-            module.types.insert(
-                new_array_type_id,
-                OpType::Array(OpTypeArray {
-                    result: new_array_type_id,
-                    length: new_array_len_id,
-                    element_type: array_type.element_type,
-                }),
-            );
+            let new_array_type_id = module.create_type(OpType::Array(OpTypeArray {
+                result: Id::DUMMY,
+                length: new_array_len_id,
+                element_type: array_type.element_type,
+            }));
 
-            let new_ptr_type_id = module.header.allocate_id();
-            module.types.insert(
-                new_ptr_type_id,
-                OpType::Pointer(OpTypePointer {
-                    result: new_ptr_type_id,
-                    storage_class: ptr_type.storage_class,
-                    type_: new_array_type_id,
-                }),
-            );
+            let new_ptr_type_id = module.create_type(OpType::Pointer(OpTypePointer {
+                result: Id::DUMMY,
+                storage_class: ptr_type.storage_class,
+                type_: new_array_type_id,
+            }));
 
             // Update the original `OpVariable` to point to the new `OpTypePointer`
             // which now points to `OpTypeArray`.
@@ -346,8 +346,8 @@ struct SpirvModule {
     member_decorations: HashMap<Id, Vec<OpMemberDecorate>>,
     types: HashMap<Id, OpType>,
     constants: HashMap<Id, Constant>,
-    globals: HashMap<Id, OpVariable>,
-    functions: HashMap<Id, Function>,
+    globals: BTreeMap<Id, OpVariable>,
+    functions: BTreeMap<Id, Function>,
 }
 
 impl SpirvModule {
@@ -393,8 +393,8 @@ impl SpirvModule {
         let mut member_decorations = HashMap::<_, Vec<_>>::new();
         let mut types = HashMap::new();
         let mut constants = HashMap::new();
-        let mut globals = HashMap::new();
-        let mut functions = HashMap::new();
+        let mut globals = BTreeMap::new();
+        let mut functions = BTreeMap::new();
 
         while reader.len() != 0 {
             let instruction = Instruction::read(&mut reader)?;
@@ -597,47 +597,147 @@ impl SpirvModule {
 
         for (_, decorations) in &self.member_decorations {
             for ins in decorations {
-                ins.write(writer);
+                Instruction::MemberDecorate(ins.clone()).write(writer);
             }
         }
 
-        for (id, ty) in &self.types {
-            let ins = match ty {
-                OpType::Void => Instruction::TypeVoid(OpTypeVoid { result: *id }),
-                OpType::Bool => Instruction::TypeBool(OpTypeBool { result: *id }),
-                OpType::Int(ty) => Instruction::TypeInt(*ty),
-                OpType::Float(ty) => Instruction::TypeFloat(*ty),
-                OpType::Vector(ty) => Instruction::TypeVector(*ty),
-                OpType::Matrix(ty) => Instruction::TypeMatrix(*ty),
-                OpType::Image(ty) => Instruction::TypeImage(*ty),
-                OpType::Sampler => Instruction::TypeSampler(OpTypeSampler { result: *id }),
-                OpType::SampledImage(ty) => Instruction::TypeSampledImage(*ty),
-                OpType::Array(ty) => Instruction::TypeArray(*ty),
-                OpType::RuntimeArray(ty) => Instruction::TypeRuntimeArray(*ty),
-                OpType::Struct(ty) => Instruction::TypeStruct(ty.clone()),
-                OpType::Pointer(ty) => Instruction::TypePointer(*ty),
-                OpType::Function(ty) => Instruction::TypeFunction(ty.clone()),
-            };
+        {
+            // Section that contains all `OpType*` and `OpConstant`.
+            // Instructions can be in any order, except that they
+            // must be defined before being referenced elsewhere.
+            // We must interleave `OpType*` and `OpConstant` instructions
+            // for `OpArray` types which reference
+            // `OpConstant` values that must be be defined before.
 
-            ins.write(writer);
+            let mut instructions = HashMap::new();
+            let mut requires = HashMap::<_, Vec<_>>::new();
+
+            for (id, ty) in &self.types {
+                let (ins, reqs) = match ty {
+                    OpType::Void => (
+                        Instruction::TypeVoid(OpTypeVoid { result: *id }),
+                        Vec::new(),
+                    ),
+                    OpType::Bool => (
+                        Instruction::TypeBool(OpTypeBool { result: *id }),
+                        Vec::new(),
+                    ),
+                    OpType::Int(ty) => (Instruction::TypeInt(*ty), Vec::new()),
+                    OpType::Float(ty) => (Instruction::TypeFloat(*ty), Vec::new()),
+                    OpType::Vector(ty) => (Instruction::TypeVector(*ty), vec![ty.component_type]),
+                    OpType::Matrix(ty) => (Instruction::TypeMatrix(*ty), vec![ty.column_type]),
+                    OpType::Image(ty) => (Instruction::TypeImage(*ty), vec![ty.sampled_type]),
+                    OpType::Sampler => (
+                        Instruction::TypeSampler(OpTypeSampler { result: *id }),
+                        Vec::new(),
+                    ),
+                    OpType::SampledImage(ty) => {
+                        (Instruction::TypeSampledImage(*ty), vec![ty.image_type])
+                    }
+                    OpType::Array(ty) => (
+                        Instruction::TypeArray(*ty),
+                        vec![ty.element_type, ty.length],
+                    ),
+                    OpType::RuntimeArray(ty) => {
+                        (Instruction::TypeRuntimeArray(*ty), vec![ty.element_type])
+                    }
+                    OpType::Struct(ty) => (Instruction::TypeStruct(ty.clone()), ty.members.clone()),
+                    OpType::Pointer(ty) => (Instruction::TypePointer(*ty), vec![ty.type_]),
+                    OpType::Function(ty) => {
+                        let mut requires = ty.parameters.clone();
+                        requires.push(ty.return_type);
+                        (Instruction::TypeFunction(ty.clone()), requires)
+                    }
+                };
+
+                instructions.insert(*id, ins);
+                requires.insert(*id, reqs);
+            }
+
+            for (id, constant) in &self.constants {
+                let (ins, reqs) = match constant {
+                    Constant::ConstantTrue(v) => {
+                        (Instruction::ConstantTrue(*v), vec![v.result_type])
+                    }
+                    Constant::ConstantFalse(v) => {
+                        (Instruction::ConstantFalse(*v), vec![v.result_type])
+                    }
+                    Constant::Constant(v) => {
+                        (Instruction::Constant(v.clone()), vec![v.result_type])
+                    }
+                    Constant::ConstantComposite(v) => {
+                        let mut reqs = v.constituents.clone();
+                        reqs.push(v.result_type);
+                        (Instruction::ConstantComposite(v.clone()), reqs)
+                    }
+                    Constant::ConstantSampler(v) => {
+                        (Instruction::ConstantSampler(*v), vec![v.result_type])
+                    }
+                    Constant::ConstantNull(v) => {
+                        (Instruction::ConstantNull(*v), vec![v.result_type])
+                    }
+                    Constant::SpecConstantTrue(v) => {
+                        (Instruction::SpecConstantTrue(*v), vec![v.result_type])
+                    }
+                    Constant::SpecConstantFalse(v) => {
+                        (Instruction::SpecConstantFalse(*v), vec![v.result_type])
+                    }
+                    Constant::SpecConstant(v) => {
+                        (Instruction::SpecConstant(*v), vec![v.result_type])
+                    }
+                    Constant::SpecConstantComposite(v) => {
+                        let mut reqs = v.constituents.clone();
+                        reqs.push(v.result_type);
+                        (Instruction::SpecConstantComposite(v.clone()), reqs)
+                    }
+                    Constant::SpecConstantOp(v) => {
+                        (Instruction::SpecConstantOp(v.clone()), vec![v.result_type])
+                    }
+                };
+
+                instructions.insert(*id, ins);
+                requires.insert(*id, reqs);
+            }
+
+            for reqs in requires.values() {
+                for req in reqs {
+                    assert!(instructions.contains_key(req), "undeclared type {:?}", req);
+                }
+            }
+
+            loop {
+                let len_before_loop = instructions.len();
+
+                for (id, reqs) in &requires {
+                    if !reqs.is_empty() {
+                        continue;
+                    }
+
+                    let id = *id;
+                    requires.remove(&id);
+                    let ins = instructions.remove(&id).unwrap();
+
+                    ins.write(writer);
+
+                    for (_, reqs) in &mut requires {
+                        reqs.retain(|v| *v != id);
+                    }
+
+                    break;
+                }
+
+                if instructions.is_empty() {
+                    break;
+                }
+
+                if instructions.len() == len_before_loop {
+                    panic!("OpType/OpConstant dependency cycle");
+                }
+            }
         }
 
-        for constant in self.constants.values() {
-            let ins = match constant {
-                Constant::ConstantTrue(v) => Instruction::ConstantTrue(*v),
-                Constant::ConstantFalse(v) => Instruction::ConstantFalse(*v),
-                Constant::Constant(v) => Instruction::Constant(v.clone()),
-                Constant::ConstantComposite(v) => Instruction::ConstantComposite(v.clone()),
-                Constant::ConstantSampler(v) => Instruction::ConstantSampler(*v),
-                Constant::ConstantNull(v) => Instruction::ConstantNull(*v),
-                Constant::SpecConstantTrue(v) => Instruction::SpecConstantTrue(*v),
-                Constant::SpecConstantFalse(v) => Instruction::SpecConstantFalse(*v),
-                Constant::SpecConstant(v) => Instruction::SpecConstant(*v),
-                Constant::SpecConstantComposite(v) => Instruction::SpecConstantComposite(v.clone()),
-                Constant::SpecConstantOp(v) => Instruction::SpecConstantOp(v.clone()),
-            };
-
-            ins.write(writer);
+        for variable in self.globals.values() {
+            Instruction::Variable(*variable).write(writer);
         }
 
         for function in self.functions.values() {
@@ -715,6 +815,144 @@ impl SpirvModule {
 
         variables
     }
+
+    fn create_type(&mut self, mut ty: OpType) -> Id {
+        // We are not allowed to have duplicate equivalent types.
+        // We check whether an equivalent type already exists.
+        for (id, other) in &self.types {
+            let is_equivalent = match (&ty, other) {
+                (OpType::Void, OpType::Void) => true,
+                (OpType::Bool, OpType::Bool) => true,
+                (OpType::Int(lhs), OpType::Int(rhs)) => {
+                    lhs.width == lhs.width && lhs.is_signed == rhs.is_signed
+                }
+                (OpType::Float(lhs), OpType::Float(rhs)) => lhs.width == rhs.width,
+                (OpType::Vector(lhs), OpType::Vector(rhs)) => {
+                    lhs.component_type == rhs.component_type
+                        && lhs.component_count == rhs.component_count
+                }
+                (OpType::Matrix(lhs), OpType::Matrix(rhs)) => {
+                    lhs.column_type == rhs.column_type && lhs.column_count == rhs.column_count
+                }
+                (OpType::Image(lhs), OpType::Image(rhs)) => {
+                    lhs.sampled_type == rhs.sampled_type
+                        && lhs.dim == rhs.dim
+                        && lhs.depth == rhs.depth
+                        && lhs.arrayed == rhs.arrayed
+                        && lhs.ms == rhs.ms
+                        && lhs.sampled == rhs.sampled
+                        && lhs.format == rhs.format
+                }
+                (OpType::Sampler, OpType::Sampler) => true,
+                (OpType::Array(lhs), OpType::Array(rhs)) => {
+                    lhs.element_type == rhs.element_type && lhs.length == rhs.length
+                }
+                (OpType::RuntimeArray(lhs), OpType::RuntimeArray(rhs)) => {
+                    lhs.element_type == rhs.element_type
+                }
+                (OpType::Struct(lhs), OpType::Struct(rhs)) => lhs.members == rhs.members,
+                (OpType::Pointer(lhs), OpType::Pointer(rhs)) => {
+                    lhs.storage_class == rhs.storage_class && lhs.type_ == rhs.type_
+                }
+                (OpType::Function(lhs), OpType::Function(rhs)) => {
+                    lhs.return_type == rhs.return_type && lhs.parameters == rhs.parameters
+                }
+                _ => false,
+            };
+
+            if is_equivalent {
+                return *id;
+            }
+        }
+
+        let id = self.header.allocate_id();
+        match &mut ty {
+            OpType::Void | OpType::Bool | OpType::Sampler => (),
+            OpType::Int(ty) => ty.result = id,
+            OpType::Float(ty) => ty.result = id,
+            OpType::Vector(ty) => ty.result = id,
+            OpType::Matrix(ty) => ty.result = id,
+            OpType::Image(ty) => ty.result = id,
+            OpType::SampledImage(ty) => ty.result = id,
+            OpType::Array(ty) => ty.result = id,
+            OpType::RuntimeArray(ty) => ty.result = id,
+            OpType::Struct(ty) => ty.result = id,
+            OpType::Pointer(ty) => ty.result = id,
+            OpType::Function(ty) => ty.result = id,
+        }
+
+        self.types.insert(id, ty);
+        id
+    }
+
+    fn create_constant(&mut self, mut constant: Constant) -> Id {
+        for (id, other) in &self.constants {
+            let is_equivalent = match (&constant, other) {
+                (Constant::ConstantTrue(lhs), Constant::ConstantTrue(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                }
+                (Constant::ConstantFalse(lhs), Constant::ConstantFalse(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                }
+                (Constant::Constant(lhs), Constant::Constant(rhs)) => {
+                    lhs.result_type == rhs.result_type && lhs.value == rhs.value
+                }
+                (Constant::ConstantComposite(lhs), Constant::ConstantComposite(rhs)) => {
+                    lhs.result_type == rhs.result_type && lhs.constituents == rhs.constituents
+                }
+                (Constant::ConstantSampler(lhs), Constant::ConstantSampler(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                        && lhs.sampler_addressing_mode == rhs.sampler_addressing_mode
+                        && lhs.sampler_filter_mode == rhs.sampler_filter_mode
+                        && lhs.param == rhs.param
+                }
+                (Constant::ConstantNull(lhs), Constant::ConstantNull(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                }
+                (Constant::SpecConstantTrue(lhs), Constant::SpecConstantTrue(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                }
+                (Constant::SpecConstantFalse(lhs), Constant::SpecConstantFalse(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                }
+                (Constant::SpecConstant(lhs), Constant::SpecConstant(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                }
+                (Constant::SpecConstantComposite(lhs), Constant::SpecConstantComposite(rhs)) => {
+                    lhs.result_type == rhs.result_type && lhs.constituents == rhs.constituents
+                }
+                (Constant::SpecConstantOp(lhs), Constant::SpecConstantOp(rhs)) => {
+                    lhs.result_type == rhs.result_type
+                        && lhs.opcode == rhs.opcode
+                        && lhs.operands == rhs.operands
+                }
+                _ => false,
+            };
+
+            if is_equivalent {
+                return *id;
+            }
+        }
+
+        let id = self.header.allocate_id();
+        match &mut constant {
+            Constant::ConstantTrue(v) => v.result = id,
+            Constant::ConstantFalse(v) => v.result = id,
+            Constant::Constant(v) => v.result = id,
+            Constant::ConstantComposite(v) => v.result = id,
+            Constant::ConstantSampler(v) => v.result = id,
+            Constant::ConstantNull(v) => v.result = id,
+            Constant::SpecConstantTrue(v) => v.result = id,
+            Constant::SpecConstantFalse(v) => v.result = id,
+            Constant::SpecConstant(v) => v.result = id,
+            Constant::SpecConstantComposite(v) => v.result = id,
+            Constant::SpecConstantOp(v) => v.result = id,
+        }
+
+        self.constants.insert(id, constant);
+
+        id
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -758,12 +996,15 @@ impl Header {
 
         writer.push(self.generator_magic);
         writer.push(self.bound);
+
+        // Reserved
+        writer.push(0);
     }
 
     fn allocate_id(&mut self) -> Id {
         let id = self.bound;
         self.bound += 1;
-        id
+        Id(id)
     }
 }
 
@@ -904,6 +1145,7 @@ impl Instance {
     pub fn to_spirv(&self) -> Vec<u32> {
         let mut words = Vec::new();
         self.data.write(&mut words);
+        std::fs::write("/tmp/x.spv", bytemuck::cast_slice(&words)).unwrap();
         words
     }
 }
@@ -1038,6 +1280,7 @@ mod tests {
     use spirv_tools::assembler::{Assembler, AssemblerOptions};
 
     use crate::backend::ShaderStage;
+    use crate::shader::spirv::ops::Id;
     use crate::shader::{BindingInfo, BindingLocation, Options, ShaderAccess};
 
     use super::{Constant, Module, OpType, SpirvModule};
@@ -1089,13 +1332,13 @@ mod tests {
 
         let bytes = assemble(text);
         let module = SpirvModule::read(&bytes).unwrap();
-        let access = module.compute_global_accesses(3);
+        let access = module.compute_global_accesses(Id(3));
         assert_eq!(
             access,
             [
-                (0, ShaderAccess::READ),
-                (1, ShaderAccess::READ | ShaderAccess::WRITE),
-                (2, ShaderAccess::WRITE),
+                (Id(0), ShaderAccess::READ),
+                (Id(1), ShaderAccess::READ | ShaderAccess::WRITE),
+                (Id(2), ShaderAccess::WRITE),
             ]
             .into_iter()
             .collect()
@@ -1133,10 +1376,10 @@ mod tests {
 
         let bytes = assemble(text);
         let module = SpirvModule::read(&bytes).unwrap();
-        let access = module.compute_global_accesses(2);
+        let access = module.compute_global_accesses(Id(1));
         assert_eq!(
             access,
-            [(0, ShaderAccess::READ), (1, ShaderAccess::WRITE)]
+            [(Id(0), ShaderAccess::READ), (Id(1), ShaderAccess::WRITE)]
                 .into_iter()
                 .collect()
         );
@@ -1186,7 +1429,7 @@ mod tests {
             })
             .unwrap();
 
-        let variable = instance.data.globals.get(&0).unwrap();
+        let variable = instance.data.globals.get(&Id(0)).unwrap();
         let ptr_type = match instance.data.types.get(&variable.result_type).unwrap() {
             OpType::Pointer(v) => v,
             _ => unreachable!(),

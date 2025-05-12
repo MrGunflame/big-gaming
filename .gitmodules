@@ -1,0 +1,3 @@
+[submodule "game_render/slangc/vendor/slang"]
+	path = game_render/slangc/vendor/slang
+	url = https://github.com/shader-slang/slang

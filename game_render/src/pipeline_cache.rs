@@ -26,7 +26,7 @@ impl<T> PipelineCache<T> {
             shaders: RwLock::new(
                 shaders
                     .into_iter()
-                    .map(|shader| ReloadableShaderSource::new(shader.source))
+                    .map(|shader| ReloadableShaderSource::new(shader))
                     .collect(),
             ),
         }

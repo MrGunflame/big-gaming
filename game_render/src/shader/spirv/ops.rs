@@ -23,6 +23,12 @@ pub enum Instruction {
     ModuleProcessed(OpModuleProcessed),
     Decorate(OpDecorate),
     MemberDecorate(OpMemberDecorate),
+    DecorationGroup(OpDecorationGroup),
+    GroupDecorate(OpGroupDecorate),
+    GroupMemberDecorate(OpGroupMemberDecorate),
+    DecorateId(OpDecorateId),
+    DecorateString(OpDecorateString),
+    MemberDecorateString(OpMemberDecorateString),
     Extension(OpExtension),
     ExtInstImport(OpExtInstImport),
     ExtInst(OpExtInst),
@@ -248,6 +254,12 @@ impl Instruction {
             ModuleProcessed => ModuleProcessed,
             Decorate => Decorate,
             MemberDecorate => MemberDecorate,
+            DecorationGroup => DecorationGroup,
+            GroupDecorate => GroupDecorate,
+            GroupMemberDecorate => GroupMemberDecorate,
+            DecorateId => DecorateId,
+            DecorateString => DecorateString,
+            MemberDecorateString => MemberDecorateString,
             Extension => Extension,
             ExtInstImport => ExtInstImport,
             ExtInst => ExtInst,
@@ -467,6 +479,12 @@ impl Instruction {
             ModuleProcessed => ModuleProcessed,
             Decorate => Decorate,
             MemberDecorate => MemberDecorate,
+            DecorationGroup => DecorationGroup,
+            GroupDecorate => GroupDecorate,
+            GroupMemberDecorate => GroupMemberDecorate,
+            DecorateId => DecorateId,
+            DecorateString => DecorateString,
+            MemberDecorateString => MemberDecorateString,
             Extension => Extension,
             ExtInstImport => ExtInstImport,
             ExtInst => ExtInst,
@@ -656,7 +674,9 @@ impl Instruction {
         // The word count is the number of words we have written
         // since this function invocation.
         let word_count = (writer.len() - prev_len) as u32;
-        writer[prev_len] = opcode as u32 | (word_count >> 16);
+        debug_assert_ne!(word_count, 0);
+        writer[prev_len] = opcode as u32 | (word_count << 16);
+        debug_assert_ne!(writer[prev_len], 0);
     }
 }
 
@@ -711,6 +731,16 @@ pub trait Parse: Sized {
     fn write(&self, writer: &mut Vec<u32>);
 }
 
+impl Parse for u32 {
+    fn parse(reader: &mut InstructionReader<'_, '_>) -> Result<Self, Error> {
+        reader.consume()
+    }
+
+    fn write(&self, writer: &mut Vec<u32>) {
+        writer.push(*self);
+    }
+}
+
 impl Parse for bool {
     fn parse(reader: &mut InstructionReader<'_, '_>) -> Result<Self, Error> {
         u32::parse(reader).map(|v| v != 0)
@@ -723,11 +753,11 @@ impl Parse for bool {
 
 impl Parse for Id {
     fn parse(reader: &mut InstructionReader<'_, '_>) -> Result<Self, Error> {
-        reader.consume()
+        reader.consume().map(Self)
     }
 
     fn write(&self, writer: &mut Vec<u32>) {
-        writer.push(*self);
+        self.0.write(writer);
     }
 }
 
@@ -793,10 +823,23 @@ impl Parse for String {
             arr[..chunk.len()].copy_from_slice(chunk);
             writer.push(u32::from_le_bytes(arr));
         }
+
+        // The string must be nul terminated, which is indicated
+        // by a single nul byte.
+        // If all words are occupied with string data we need to
+        // extend with a 4 nul bytes.
+        if self.as_bytes().len() % 4 == 0 {
+            writer.push(0);
+        }
     }
 }
 
-pub type Id = u32;
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Id(pub u32);
+
+impl Id {
+    pub const DUMMY: Self = Self(u32::MAX);
+}
 
 macro_rules! spirv_enum {
     ($enum_ty:ty) => {
@@ -1039,6 +1082,7 @@ spirv_op! {
 #[derive(Copy, Clone, Debug)]
 pub enum Decoration {
     RelaxedPrecision,
+    Block,
     RowMajor,
     ColMajor,
     ArrayStride(u32),
@@ -1073,6 +1117,7 @@ impl Parse for Decoration {
         let dec = spirv::Decoration::parse(reader)?;
         match dec {
             spirv::Decoration::RelaxedPrecision => Ok(Self::RelaxedPrecision),
+            spirv::Decoration::Block => Ok(Self::Block),
             spirv::Decoration::RowMajor => Ok(Self::RowMajor),
             spirv::Decoration::ColMajor => Ok(Self::ColMajor),
             spirv::Decoration::ArrayStride => {
@@ -1148,6 +1193,10 @@ impl Parse for Decoration {
             Self::RelaxedPrecision => {
                 spirv::Decoration::RelaxedPrecision.write(writer);
             }
+            Self::Block => {
+                spirv::Decoration::Block.write(writer);
+            }
+
             Self::RowMajor => {
                 spirv::Decoration::RowMajor.write(writer);
             }
@@ -1251,6 +1300,54 @@ spirv_op! {
     pub struct OpMemberDecorate {
         pub structure_type: Id,
         pub member: u32,
+        pub decoration: Decoration,
+    }
+}
+
+spirv_op! {
+    #[derive(Copy, Clone, Debug)]
+    pub struct OpDecorationGroup {
+        pub result: Id,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpGroupDecorate {
+        pub decoration_group: Id,
+        pub targets: Vec<Id>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpGroupMemberDecorate {
+        pub decoration_group: Id,
+        // FIXME: Change to Vec<(Id, u32)>.
+        pub targets: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Copy, Clone, Debug)]
+    pub struct OpDecorateId {
+        pub target: Id,
+        pub decoration: Decoration,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpDecorateString {
+        pub target: Id,
+        pub decoration: Decoration,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpMemberDecorateString {
+        pub target: Id,
         pub decoration: Decoration,
     }
 }
@@ -1569,7 +1666,7 @@ spirv_op! {
     #[derive(Copy, Clone, Debug)]
     pub struct OpVariable {
         pub result_type: Id,
-        pub result: u32,
+        pub result: Id,
         pub storage_class: StorageClass,
     }
 }
