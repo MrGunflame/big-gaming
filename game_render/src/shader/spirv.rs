@@ -1376,7 +1376,7 @@ mod tests {
 
         let bytes = assemble(text);
         let module = SpirvModule::read(&bytes).unwrap();
-        let access = module.compute_global_accesses(Id(1));
+        let access = module.compute_global_accesses(Id(2));
         assert_eq!(
             access,
             [(Id(0), ShaderAccess::READ), (Id(1), ShaderAccess::WRITE)]
