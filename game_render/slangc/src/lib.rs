@@ -7,7 +7,18 @@ use std::process::{Command, Stdio};
 
 use thiserror::Error;
 
-const SLANGC_PATH: &str = concat!(env!("OUT_DIR"), "/slangc");
+#[cfg(target_os = "linux")]
+const SLANGC_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../external/slang/linux-x86_64/bin/slangc"
+);
+#[cfg(target_os = "windows")]
+const SLANGC_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../external/slang/windows-x86_64/bin/slangc"
+);
+#[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
+compile_error!("no slangc available on this OS");
 
 #[derive(Clone, Debug, Error)]
 #[error("{0}")]
@@ -22,7 +33,10 @@ pub enum OptLevel {
     Max = 3,
 }
 
-pub fn compile(input: &Path, opt_level: OptLevel) -> Result<Vec<u8>, Error> {
+pub fn compile<P>(input: P, opt_level: OptLevel) -> Result<Vec<u8>, Error>
+where
+    P: AsRef<Path>,
+{
     let name = format!("{}{}", std::process::id(), rand::random::<u64>());
     let mut path = temp_dir().join(name);
     path.set_extension("spv");
@@ -46,7 +60,7 @@ pub fn compile(input: &Path, opt_level: OptLevel) -> Result<Vec<u8>, Error> {
     args.push(&opt_level);
 
     args.extend(["-o", path.to_str().unwrap()]);
-    args.extend([input.to_str().unwrap()]);
+    args.extend([input.as_ref().to_str().unwrap()]);
 
     tracing::info!("{} {}", SLANGC_PATH, args.join(" "));
 
