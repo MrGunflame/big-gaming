@@ -9,3 +9,7 @@ license = "GPL-3.0-or-later"
 thiserror = "2.0.12"
 rand = "0.9.1"
 tracing = "0.1.41"
+
+[[test]]
+name = "compile"
+path = "tests/compile.rs"
