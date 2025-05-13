@@ -27,7 +27,6 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-        lfs: true
     - run: rustup update stable --no-self-update && rustup default stable
     - run: cargo install cargo-deny
     - run: cargo deny check bans
@@ -38,7 +37,6 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-        lfs: true
     - run: rustup update stable --no-self-update && rustup default stable
     - run: cargo install cargo-deny
     - run: cargo deny check licenses
@@ -49,7 +47,6 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-        lfs: true
     - run: rustup update stable --no-self-update && rustup default stable
     - run: cargo install cargo-deny
     - run: cargo deny check sources
