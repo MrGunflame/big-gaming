@@ -1,7 +1,13 @@
 use std::marker::PhantomData;
 
 use bytemuck::NoUninit;
+use hashbrown::HashMap;
+use slab::Slab;
 
+use crate::api::{Buffer, CommandQueue};
+use crate::backend::BufferUsage;
+
+use super::block::BlockBuffer;
 use super::GpuBuffer;
 
 /// Index for a [`SlabBuffer`].
@@ -14,10 +20,9 @@ pub struct SlabIndex(u32);
 /// A `SlabBuffer` is the CPU equivalent of a array of `T` on the GPU side. It allows for
 /// insertion and removal while the returned [`SlabIndex`] values remain stable until the value
 /// is removed.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug)]
 pub struct SlabBuffer<T> {
-    bytes: Vec<u8>,
-    free_list: Vec<u32>,
+    buffer: BlockBuffer,
     _marker: PhantomData<T>,
 }
 
@@ -25,30 +30,16 @@ impl<T> SlabBuffer<T>
 where
     T: GpuBuffer,
 {
-    pub fn new() -> Self {
+    pub fn new(usage: BufferUsage) -> Self {
         Self {
-            bytes: Vec::new(),
-            free_list: Vec::new(),
+            buffer: BlockBuffer::new(T::pad_to_align(), usage),
             _marker: PhantomData,
         }
     }
 
     pub fn insert(&mut self, value: &T) -> SlabIndex {
-        let index = match self.free_list.pop() {
-            Some(index) => index as usize,
-            None => {
-                let index = self.bytes.len() / T::pad_to_align();
-                self.bytes.resize((index + 1) * T::pad_to_align(), 0);
-                index
-            }
-        };
-
-        let offset = index * T::pad_to_align();
-
-        debug_assert!(self.bytes.len() >= offset + T::SIZE);
-        self.bytes[offset..offset + T::SIZE].copy_from_slice(bytemuck::bytes_of(value));
-
-        SlabIndex(index as u32)
+        let index = self.buffer.insert(bytemuck::bytes_of(value));
+        SlabIndex(index)
     }
 
     /// Removes the value at the given `index` from the `SlabBuffer`.
@@ -56,10 +47,59 @@ where
     /// Note that it is considered invalid to call `remove` with an [`SlabIndex`] that does not
     /// currently reside in the `SlabBuffer`.
     pub fn remove(&mut self, index: SlabIndex) {
-        self.free_list.push(index.0 as u32);
+        self.buffer.remove(index.0);
     }
 
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.bytes
+    pub fn compact<F>(&mut self, mut rekey: F)
+    where
+        F: FnMut(SlabIndex, SlabIndex),
+    {
+        self.buffer
+            .compact(|src, dst| rekey(SlabIndex(src), SlabIndex(dst)));
+    }
+
+    pub fn buffer(&mut self, queue: &mut CommandQueue<'_>) -> &Buffer {
+        self.buffer.buffer(queue)
+    }
+}
+
+#[derive(Debug)]
+pub struct CompactSlabBuffer<T> {
+    buffer: SlabBuffer<T>,
+    physical_to_logical: HashMap<SlabIndex, u32>,
+    logical_to_physical: Slab<SlabIndex>,
+}
+
+impl<T> CompactSlabBuffer<T>
+where
+    T: GpuBuffer,
+{
+    pub fn new(usage: BufferUsage) -> Self {
+        Self {
+            buffer: SlabBuffer::new(usage),
+            logical_to_physical: Slab::new(),
+            physical_to_logical: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, value: &T) -> SlabIndex {
+        let physical_index = self.buffer.insert(value);
+        let logical_index = self.logical_to_physical.insert(physical_index) as u32;
+        self.physical_to_logical
+            .insert(physical_index, logical_index);
+        SlabIndex(logical_index)
+    }
+
+    pub fn remove(&mut self, index: SlabIndex) {
+        self.buffer.remove(index);
+        self.buffer.compact(|src, dst| {
+            let logical = self.physical_to_logical.remove(&src).unwrap();
+            self.physical_to_logical.insert(dst, logical);
+            self.logical_to_physical[logical as usize] = dst;
+        });
+    }
+
+    pub fn buffer(&mut self, queue: &mut CommandQueue<'_>) -> &Buffer {
+        self.buffer.buffer(queue)
     }
 }

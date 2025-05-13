@@ -1,9 +1,5 @@
 import types;
-
-struct Camera {
-    vector<f32, 3> position;
-    matrix<f32, 4, 4> view_proj;
-}
+import camera;
 
 struct ObjectData {
     matrix<f32, 4, 4> transform;
@@ -32,16 +28,11 @@ struct Input {
 
 struct Output {
     vector<f32, 4> clip_position : SV_Position;
-    [[vk::location(0)]]
-    vector<f32, 3> world_position;
-    [[vk::location(1)]]
-    vector<f32, 3> world_normal;
-    [[vk::location(2)]]
-    vector<f32, 2> uv;
-    [[vk::location(3)]]
-    vector<f32, 4> world_tangent;
-    [[vk::location(4)]]
-    u32 material_index;
+    [[vk::location(0)]] vector<f32, 3> world_position;
+    [[vk::location(1)]] vector<f32, 3> world_normal;
+    [[vk::location(2)]] vector<f32, 2> uv;
+    [[vk::location(3)]] vector<f32, 4> world_tangent;
+    [[vk::location(4)]] u32 material_index;
 }
 
 [shader("vertex")]

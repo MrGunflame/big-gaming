@@ -12,8 +12,8 @@ use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, ImageDataLayout, IndexFormat, TextureDescriptor, TextureUsage, max_mips_2d,
 };
+use game_render::buffer::IndexBuffer;
 use game_render::buffer::slab::{SlabBuffer, SlabIndex};
-use game_render::buffer::{DynamicBuffer, IndexBuffer};
 use game_render::graph::{Node, RenderContext};
 use game_render::mesh::{Indices, Mesh};
 use game_render::mipmap::MipMapGenerator;
@@ -58,14 +58,10 @@ impl Node for UpdatePass {
 
         let mut state = self.state.lock();
 
-        let mut directional_lights_changed = false;
-        let mut point_lights_changed = false;
-        let mut spot_lights_changed = false;
-
         while let Ok(event) = self.events.try_recv() {
             match event {
                 Event::CreateScene(id) => {
-                    state.scenes.insert(id, SceneData::new(ctx.queue));
+                    state.scenes.insert(id, SceneData::new());
                 }
                 Event::DestroyScene(id) => {
                     state.scenes.remove(&id);
@@ -145,89 +141,48 @@ impl Node for UpdatePass {
                         continue;
                     };
 
-                    scene.directional_lights.insert(id, light);
-                    directional_lights_changed = true;
+                    let index = scene
+                        .directional_lights_buffer
+                        .insert(&DirectionalLightUniform::new(&light));
+                    scene.directional_lights.insert(id, index);
                 }
                 Event::CreateLight(id, Light::Point(light)) => {
                     let Some(scene) = state.scenes.get_mut(&light.scene.id()) else {
                         continue;
                     };
 
-                    scene.point_lights.insert(id, light);
-                    point_lights_changed = true;
+                    let index = scene
+                        .point_lights_buffer
+                        .insert(&PointLightUniform::new(&light));
+                    scene.point_lights.insert(id, index);
                 }
                 Event::CreateLight(id, Light::Spot(light)) => {
                     let Some(scene) = state.scenes.get_mut(&light.scene.id()) else {
                         continue;
                     };
 
-                    scene.spot_lights.insert(id, light);
-                    spot_lights_changed = true;
+                    let index = scene
+                        .spot_lights_buffer
+                        .insert(&SpotLightUniform::new(&light));
+                    scene.spot_lights.insert(id, index);
                 }
-                Event::DestroyLight(id) => {
-                    for scene in state.scenes.values_mut() {
-                        if scene.directional_lights.remove(&id).is_some() {
-                            directional_lights_changed = true;
-                            break;
-                        }
+                Event::DestroyLight(scene, id) => {
+                    let Some(scene) = state.scenes.get_mut(&scene) else {
+                        continue;
+                    };
 
-                        if scene.point_lights.remove(&id).is_some() {
-                            point_lights_changed = true;
-                            break;
-                        }
+                    if let Some(index) = scene.directional_lights.remove(&id) {
+                        scene.directional_lights_buffer.remove(index);
+                    }
 
-                        if scene.spot_lights.remove(&id).is_some() {
-                            spot_lights_changed = true;
-                            break;
-                        }
+                    if let Some(index) = scene.spot_lights.remove(&id) {
+                        scene.spot_lights_buffer.remove(index);
+                    }
+
+                    if let Some(index) = scene.spot_lights.remove(&id) {
+                        scene.spot_lights_buffer.remove(index);
                     }
                 }
-            }
-        }
-
-        // Recreate buffers for lights that have been updated.
-        for scene in state.scenes.values_mut() {
-            if directional_lights_changed {
-                let buffer = scene
-                    .directional_lights
-                    .values()
-                    .map(DirectionalLightUniform::new)
-                    .collect::<DynamicBuffer<_>>();
-
-                scene.directional_light_buffer =
-                    ctx.queue.create_buffer_init(&BufferInitDescriptor {
-                        contents: buffer.as_bytes(),
-                        usage: BufferUsage::STORAGE,
-                        flags: UsageFlags::empty(),
-                    })
-            }
-
-            if point_lights_changed {
-                let buffer = scene
-                    .point_lights
-                    .values()
-                    .map(PointLightUniform::new)
-                    .collect::<DynamicBuffer<_>>();
-
-                scene.point_light_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
-                    contents: buffer.as_bytes(),
-                    usage: BufferUsage::STORAGE,
-                    flags: UsageFlags::empty(),
-                });
-            }
-
-            if spot_lights_changed {
-                let buffer = scene
-                    .spot_lights
-                    .values()
-                    .map(SpotLightUniform::new)
-                    .collect::<DynamicBuffer<_>>();
-
-                scene.spot_light_buffer = ctx.queue.create_buffer_init(&BufferInitDescriptor {
-                    contents: buffer.as_bytes(),
-                    usage: BufferUsage::STORAGE,
-                    flags: UsageFlags::empty(),
-                });
             }
         }
     }

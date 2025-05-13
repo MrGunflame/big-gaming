@@ -4,17 +4,16 @@ use std::sync::Arc;
 
 use game_common::components::Color;
 use game_render::api::{
-    BindingResource, BufferInitDescriptor, CommandQueue, DepthStencilAttachment,
-    DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
-    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
-    RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
+    BindingResource, CommandQueue, DepthStencilAttachment, DescriptorSetDescriptor,
+    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
+    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
+    TextureViewDescriptor,
 };
-use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    AddressMode, BlendState, BufferUsage, ColorTargetState, CompareOp, DepthStencilState,
-    DescriptorBinding, DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp,
-    TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
+    AddressMode, BlendState, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
+    DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage, VertexStage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
@@ -24,12 +23,13 @@ use game_tracing::trace_span;
 use glam::UVec2;
 use parking_lot::{Mutex, RwLock};
 
-use crate::camera::{Camera, CameraUniform};
+use crate::camera::CameraUniform;
+use crate::entities::{CameraId, SceneId};
 
-use super::{DEPTH_FORMAT, HDR_FORMAT, SceneData, State};
+use super::{DEPTH_FORMAT, HDR_FORMAT, State};
 
 const VS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs.slang");
-const FS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_fs.wgsl");
+const FS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_frag.slang");
 
 #[derive(Debug)]
 pub(super) struct ForwardPass {
@@ -115,7 +115,7 @@ impl ForwardPass {
                     },
                     ShaderConfig {
                         source: ShaderSource::File(FS_SHADER.into()),
-                        language: ShaderLanguage::Wgsl,
+                        language: ShaderLanguage::Slang,
                     },
                 ],
             )
@@ -158,21 +158,23 @@ impl ForwardPass {
     fn render_scene_with_camera(
         &self,
         ctx: &mut RenderContext<'_, '_>,
-        state: &State,
-        scene: &SceneData,
-        camera: &Camera,
+        state: &mut State,
+        scene: SceneId,
+        camera: CameraId,
         size: UVec2,
     ) {
         let _span = trace_span!("ForwardPass::render_scene_with_camera").entered();
 
+        let scene = state.scenes.get_mut(&scene).unwrap();
+        let camera = scene.cameras.get(&camera).unwrap();
         let depth_stencils = self.depth_stencils.read();
 
         let textures = state.textures.views();
-        let materials = ctx.queue.create_buffer_init(&BufferInitDescriptor {
-            contents: state.material_slab.as_bytes(),
-            usage: BufferUsage::STORAGE,
-            flags: UsageFlags::empty(),
-        });
+        let materials = state.material_slab.buffer(ctx.queue);
+
+        let directional_lights = scene.directional_lights_buffer.buffer(ctx.queue);
+        let point_lights = scene.point_lights_buffer.buffer(ctx.queue);
+        let spot_lights = scene.spot_lights_buffer.buffer(ctx.queue);
 
         let lights_and_sampler_descriptor =
             ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
@@ -180,15 +182,15 @@ impl ForwardPass {
                 entries: &[
                     DescriptorSetEntry {
                         binding: 0,
-                        resource: BindingResource::Buffer(&scene.directional_light_buffer),
+                        resource: BindingResource::Buffer(&directional_lights),
                     },
                     DescriptorSetEntry {
                         binding: 1,
-                        resource: BindingResource::Buffer(&scene.point_light_buffer),
+                        resource: BindingResource::Buffer(&point_lights),
                     },
                     DescriptorSetEntry {
                         binding: 2,
-                        resource: BindingResource::Buffer(&scene.spot_light_buffer),
+                        resource: BindingResource::Buffer(&spot_lights),
                     },
                     DescriptorSetEntry {
                         binding: 3,
@@ -232,6 +234,10 @@ impl ForwardPass {
             camera.transform,
             camera.projection,
         )));
+        push_constants[80..84]
+            .copy_from_slice(&(scene.directional_lights.len() as u32).to_ne_bytes());
+        push_constants[84..88].copy_from_slice(&(scene.spot_lights.len() as u32).to_ne_bytes());
+        push_constants[88..92].copy_from_slice(&(scene.spot_lights.len() as u32).to_ne_bytes());
 
         render_pass.set_pipeline(&pipeline);
         render_pass.set_push_constants(
@@ -283,12 +289,14 @@ impl Node for ForwardPass {
 
         let size = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().size();
 
-        let state = self.state.lock();
-        for scene in state.scenes.values() {
-            for camera in scene.cameras.values() {
+        let mut state = self.state.lock();
+        for (scene_id, scene) in state.scenes.iter() {
+            for (camera_id, camera) in scene.cameras.iter() {
                 if camera.target == ctx.render_target {
                     self.update_depth_stencil(ctx.queue, ctx.render_target, size);
-                    self.render_scene_with_camera(ctx, &state, scene, camera, size);
+                    let scene_id = *scene_id;
+                    let camera_id = *camera_id;
+                    self.render_scene_with_camera(ctx, &mut state, scene_id, camera_id, size);
                     return;
                 }
             }
@@ -330,7 +338,7 @@ impl PipelineBuilder for BuildForwardPipeline {
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
-                    entry: "fs_main",
+                    entry: "main",
                     targets: &[ColorTargetState {
                         format,
                         blend: Some(BlendState::PREMULTIPLIED_ALPHA),

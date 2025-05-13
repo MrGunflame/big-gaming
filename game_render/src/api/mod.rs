@@ -6,7 +6,7 @@ mod resources;
 mod scheduler;
 
 use std::num::NonZeroU64;
-use std::ops::Range;
+use std::ops::{Bound, Range, RangeBounds};
 use std::sync::Arc;
 
 use bumpalo::Bump;
@@ -253,31 +253,50 @@ impl<'a> CommandQueue<'a> {
         buffer
     }
 
+    /// Writes `data` to the destination buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any following preconditions are violated:
+    /// - The destination buffer does not have [`TRANSFER_DST`] set.
+    /// - The destination buffer slice is smaller than `data`.
+    ///
+    /// [`TRANSFER_DST`]: BufferUsage::TRANSFER_DST
     #[track_caller]
-    pub fn write_buffer(&mut self, buffer: &Buffer, data: &[u8]) {
+    pub fn write_buffer<Dst>(&mut self, buffer: Dst, data: &[u8])
+    where
+        Dst: IntoBufferSlice,
+    {
+        self.write_buffer_inner(buffer.into_buffer_slice(), data);
+    }
+
+    #[track_caller]
+    fn write_buffer_inner(&mut self, buffer: BufferSlice<'_>, data: &[u8]) {
         assert!(
-            buffer.usage.contains(BufferUsage::TRANSFER_DST),
+            buffer.buffer.usage.contains(BufferUsage::TRANSFER_DST),
             "Buffer cannot be written to: TRANSFER_DST not set",
         );
 
+        let buffer_len = buffer.end - buffer.start;
         assert!(
-            buffer.size as usize >= data.len(),
-            "Buffer size of {} too small to copy {} bytes",
-            buffer.size,
+            buffer_len as usize >= data.len(),
+            "destination buffer slice ({}) is too small for write of {} bytes",
+            buffer_len,
             data.len(),
         );
 
         // If the buffer is host visible we can map and write
         // to it directly.
-        if buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
+        if buffer.buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
             // The destination buffer must be kept alive until
             // the memcpy is complete.
-            buffer.increment_ref_count();
+            buffer.buffer.increment_ref_count();
 
             self.executor.cmds.push(
                 &self.executor.resources,
                 Command::WriteBuffer(WriteBuffer {
-                    buffer: buffer.id,
+                    buffer: buffer.buffer.id,
+                    offset: buffer.start,
                     data: data.to_vec(),
                 }),
             );
@@ -290,7 +309,7 @@ impl<'a> CommandQueue<'a> {
                 flags: UsageFlags::HOST_VISIBLE,
             });
 
-            debug_assert!(buffer.size >= staging_buffer.size);
+            debug_assert!(buffer.buffer.size >= staging_buffer.size);
 
             // The staging buffer must be kept alive until
             // the memcpy is complete.
@@ -301,6 +320,7 @@ impl<'a> CommandQueue<'a> {
                 &self.executor.resources,
                 Command::WriteBuffer(WriteBuffer {
                     buffer: staging_buffer.id,
+                    offset: 0,
                     data: data.to_vec(),
                 }),
             );
@@ -444,41 +464,82 @@ impl<'a> CommandQueue<'a> {
         self.copy_buffer_to_texture(&staging_buffer, texture, layout);
     }
 
-    pub fn copy_buffer_to_buffer(&mut self, src: &Buffer, dst: &Buffer) {
+    /// Copies bytes from a source to a destination buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the following preconditions are violated:
+    /// - The source buffer does not have [`TRANSFER_SRC`] set.
+    /// - The destination buffer does not have [`TRANSFER_DST`] set.
+    /// - The source slice has a different length than the destination slice.
+    ///
+    /// If source and desination buffers are the same:
+    /// - The source and destination regions overlap.
+    ///
+    /// [`TRANSFER_SRC`]: BufferUsage::TRANSFER_SRC
+    /// [`TRANSFER_DST`]: BufferUsage::TRANSFER_DST
+    #[track_caller]
+    pub fn copy_buffer_to_buffer<Src, Dst>(&mut self, src: Src, dst: Dst)
+    where
+        Src: IntoBufferSlice,
+        Dst: IntoBufferSlice,
+    {
+        self.copy_buffer_to_buffer_inner(src.into_buffer_slice(), dst.into_buffer_slice());
+    }
+
+    #[track_caller]
+    fn copy_buffer_to_buffer_inner(&mut self, src: BufferSlice<'_>, dst: BufferSlice<'_>) {
         assert!(
-            src.usage.contains(BufferUsage::TRANSFER_SRC),
+            src.buffer.usage.contains(BufferUsage::TRANSFER_SRC),
             "Buffer cannot be read from: TRANSFER_SRC usage not set",
         );
         assert!(
-            dst.usage.contains(BufferUsage::TRANSFER_DST),
+            dst.buffer.usage.contains(BufferUsage::TRANSFER_DST),
             "Buffer cannot be written to: TRANSFER_DST not set",
         );
 
-        assert!(
-            src.size >= dst.size,
-            "invalid buffer copy: source buffer (size={}) is smaller than destination buffer (size={})",
-            src.size,
-            dst.size,
+        let src_len = src.end - src.start;
+        let dst_len = dst.end - dst.start;
+        assert_eq!(
+            src_len, dst_len,
+            "invalid buffer copy: source len {} must be equal to destination len {}",
+            src_len, dst_len
         );
+
+        // If copying within the same buffer we must ensure that
+        // source and destination do not overlap.
+        if src.buffer.id == dst.buffer.id {
+            assert!(
+                src.start > dst.end || dst.start > src.end,
+                "if copying within the same buffer source {:?} and destination {:?} must not overlap",
+                src.start..src.end,
+                dst.start..dst.end,
+            );
+        }
+
+        // Ensure that both buffers are big enough for the copy.
+        // This invariant is guaranteed by the `BufferSlice` impl.
+        debug_assert!(src.buffer.size >= src.start + src_len);
+        debug_assert!(dst.buffer.size >= dst.start + dst_len);
 
         // We don't actually have to copy anything if the destination is
         // empty.
-        let Some(count) = NonZeroU64::new(dst.size) else {
+        let Some(count) = NonZeroU64::new(dst_len) else {
             return;
         };
 
         // The source and destination buffer must be kept alive
         // for this command.
-        src.increment_ref_count();
-        dst.increment_ref_count();
+        src.buffer.increment_ref_count();
+        dst.buffer.increment_ref_count();
 
         self.executor.cmds.push(
             &self.executor.resources,
             Command::CopyBufferToBuffer(CopyBufferToBuffer {
-                src: src.id,
-                src_offset: 0,
-                dst: dst.id,
-                dst_offset: 0,
+                src: src.buffer.id,
+                src_offset: src.start,
+                dst: dst.buffer.id,
+                dst_offset: dst.start,
                 count,
             }),
         );
@@ -1079,9 +1140,49 @@ pub struct Buffer {
 }
 
 impl Buffer {
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
+    pub fn slice<T>(&self, range: T) -> BufferSlice<'_>
+    where
+        T: RangeBounds<u64>,
+    {
+        let start = match range.start_bound() {
+            Bound::Included(index) => *index,
+            Bound::Excluded(index) => *index + 1,
+            Bound::Unbounded => 0,
+        };
+        let end = match range.end_bound() {
+            Bound::Included(index) => *index + 1,
+            Bound::Excluded(index) => *index,
+            Bound::Unbounded => self.size,
+        };
+
+        assert!(start <= self.size && end <= self.size && start <= end);
+
+        BufferSlice {
+            buffer: self,
+            start,
+            end,
+        }
+    }
+
     fn increment_ref_count(&self) {
         let buffer = self.resources.buffers.get(self.id).unwrap();
         buffer.ref_count.increment();
+    }
+}
+
+impl IntoBufferSlice for Buffer {
+    fn into_buffer_slice(&self) -> BufferSlice<'_> {
+        self.slice(..)
+    }
+}
+
+impl<'a> IntoBufferSlice for &'a Buffer {
+    fn into_buffer_slice(&self) -> BufferSlice<'_> {
+        self.slice(..)
     }
 }
 
@@ -1123,6 +1224,23 @@ pub struct BufferInitDescriptor<'a> {
     pub contents: &'a [u8],
     pub usage: BufferUsage,
     pub flags: UsageFlags,
+}
+
+pub trait IntoBufferSlice {
+    fn into_buffer_slice(&self) -> BufferSlice<'_>;
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct BufferSlice<'a> {
+    buffer: &'a Buffer,
+    start: u64,
+    end: u64,
+}
+
+impl<'a> IntoBufferSlice for BufferSlice<'a> {
+    fn into_buffer_slice(&self) -> BufferSlice<'_> {
+        *self
+    }
 }
 
 pub struct DescriptorSetDescriptor<'a> {
