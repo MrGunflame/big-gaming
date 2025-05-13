@@ -121,10 +121,17 @@ impl Entities {
         let mut lights = self.inner.lights.lock();
         let id = LightId(lights.insert(1));
 
+        let scene = match &light {
+            Light::Directional(light) => light.scene.id(),
+            Light::Point(light) => light.scene.id(),
+            Light::Spot(light) => light.scene.id(),
+        };
+
         self.inner.events.send(Event::CreateLight(id, light)).ok();
         LightHandle {
             inner: self.inner.clone(),
             id,
+            scene,
         }
     }
 }
@@ -375,6 +382,7 @@ impl Drop for CameraHandle {
 pub struct LightHandle {
     inner: Arc<Inner>,
     id: LightId,
+    scene: SceneId,
 }
 
 impl Clone for LightHandle {
@@ -387,6 +395,7 @@ impl Clone for LightHandle {
         Self {
             inner: self.inner.clone(),
             id: self.id,
+            scene: self.scene,
         }
     }
 }
@@ -400,7 +409,10 @@ impl Drop for LightHandle {
             return;
         }
 
-        self.inner.events.send(Event::DestroyLight(self.id)).ok();
+        self.inner
+            .events
+            .send(Event::DestroyLight(self.scene, self.id))
+            .ok();
     }
 }
 
@@ -448,5 +460,5 @@ pub(crate) enum Event {
     CreateCamera(CameraId, Camera),
     DestroyCamera(CameraId),
     CreateLight(LightId, Light),
-    DestroyLight(LightId),
+    DestroyLight(SceneId, LightId),
 }

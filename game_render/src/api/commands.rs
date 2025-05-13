@@ -270,6 +270,7 @@ impl Command {
 #[derive(Debug)]
 pub struct WriteBuffer {
     pub buffer: BufferId,
+    pub offset: u64,
     pub data: Vec<u8>,
 }
 

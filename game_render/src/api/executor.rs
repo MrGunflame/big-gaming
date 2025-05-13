@@ -89,7 +89,8 @@ fn write_buffer(resources: &Resources, tmp: &mut TemporaryResources, cmd: &Write
     let buffer = resources.buffers.get(cmd.buffer).unwrap();
 
     let mut buffer = unsafe { buffer.buffer.borrow_mut() };
-    buffer.map().copy_from_slice(&cmd.data);
+    buffer.map()[cmd.offset as usize..cmd.offset as usize + cmd.data.len()]
+        .copy_from_slice(&cmd.data);
 
     // If the memory of the buffer is not HOST_COHERENT it needs to
     // be flushed, otherwise it may never become visible to the device.

@@ -1,3 +1,4 @@
+pub mod block;
 pub mod slab;
 
 use std::marker::PhantomData;

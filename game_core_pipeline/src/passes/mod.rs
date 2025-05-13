@@ -11,16 +11,15 @@ use bytemuck::{NoUninit, Pod, Zeroable};
 use crossbeam::channel::Receiver;
 use forward::ForwardPass;
 use game_render::api::{
-    Buffer, BufferInitDescriptor, CommandQueue, DescriptorSet, DescriptorSetLayout, TextureRegion,
-    TextureView, TextureViewDescriptor,
+    CommandQueue, DescriptorSet, DescriptorSetLayout, TextureRegion, TextureView,
+    TextureViewDescriptor,
 };
-use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, ImageDataLayout,
     ShaderStages, TextureDescriptor, TextureFormat, TextureUsage,
 };
-use game_render::buffer::slab::{SlabBuffer, SlabIndex};
-use game_render::buffer::{DynamicBuffer, GpuBuffer, IndexBuffer};
+use game_render::buffer::slab::{CompactSlabBuffer, SlabBuffer, SlabIndex};
+use game_render::buffer::{GpuBuffer, IndexBuffer};
 use game_render::graph::{NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 use glam::UVec2;
 use parking_lot::Mutex;
@@ -29,10 +28,7 @@ use update::{TransformUniform, UpdatePass};
 
 use crate::camera::Camera;
 use crate::entities::{CameraId, Event, ImageId, LightId, MaterialId, MeshId, ObjectId, SceneId};
-use crate::lights::{
-    DirectionalLight, DirectionalLightUniform, PointLight, PointLightUniform, SpotLight,
-    SpotLightUniform,
-};
+use crate::lights::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
 
 const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 const HDR_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
@@ -165,7 +161,7 @@ impl State {
             scenes: HashMap::new(),
             images: HashMap::new(),
             textures,
-            material_slab: SlabBuffer::new(),
+            material_slab: SlabBuffer::new(BufferUsage::STORAGE),
         }
     }
 }
@@ -236,38 +232,26 @@ struct MeshState {
 struct SceneData {
     cameras: HashMap<CameraId, Camera>,
     objects: HashMap<ObjectId, ObjectState>,
-    directional_lights: HashMap<LightId, DirectionalLight>,
-    point_lights: HashMap<LightId, PointLight>,
-    spot_lights: HashMap<LightId, SpotLight>,
+    directional_lights: HashMap<LightId, SlabIndex>,
+    point_lights: HashMap<LightId, SlabIndex>,
+    spot_lights: HashMap<LightId, SlabIndex>,
 
-    directional_light_buffer: Buffer,
-    point_light_buffer: Buffer,
-    spot_light_buffer: Buffer,
+    directional_lights_buffer: CompactSlabBuffer<DirectionalLightUniform>,
+    point_lights_buffer: CompactSlabBuffer<PointLightUniform>,
+    spot_lights_buffer: CompactSlabBuffer<SpotLightUniform>,
 }
 
 impl SceneData {
-    fn new(queue: &mut CommandQueue<'_>) -> Self {
+    fn new() -> Self {
         Self {
             cameras: HashMap::new(),
             objects: HashMap::new(),
             directional_lights: HashMap::new(),
             point_lights: HashMap::new(),
             spot_lights: HashMap::new(),
-            directional_light_buffer: queue.create_buffer_init(&BufferInitDescriptor {
-                contents: DynamicBuffer::<DirectionalLightUniform>::new().as_bytes(),
-                usage: BufferUsage::STORAGE,
-                flags: UsageFlags::empty(),
-            }),
-            point_light_buffer: queue.create_buffer_init(&BufferInitDescriptor {
-                contents: DynamicBuffer::<PointLightUniform>::new().as_bytes(),
-                usage: BufferUsage::STORAGE,
-                flags: UsageFlags::empty(),
-            }),
-            spot_light_buffer: queue.create_buffer_init(&BufferInitDescriptor {
-                contents: DynamicBuffer::<SpotLightUniform>::new().as_bytes(),
-                usage: BufferUsage::STORAGE,
-                flags: UsageFlags::empty(),
-            }),
+            directional_lights_buffer: CompactSlabBuffer::new(BufferUsage::STORAGE),
+            point_lights_buffer: CompactSlabBuffer::new(BufferUsage::STORAGE),
+            spot_lights_buffer: CompactSlabBuffer::new(BufferUsage::STORAGE),
         }
     }
 }
