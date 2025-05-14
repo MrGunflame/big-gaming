@@ -21,6 +21,7 @@ struct Instance {
     Mat4 transform;
     Mat3 normal;
     u32 meshlet_offset;
+    u32 meshlet_count;
     u32 material_index;
 }
 
@@ -37,19 +38,23 @@ struct Vertex {
 
 // Buffers storing vertex data.
 // These buffers are 
-[[vk::binding(0, 1)]] StructuredBuffer<f32> positions;
-[[vk::binding(1, 1)]] StructuredBuffer<f32> normals;
-[[vk::binding(2, 1)]] StructuredBuffer<f32> uvs;
-[[vk::binding(3, 1)]] StructuredBuffer<f32> tangents;
+[[vk::binding(0, 0)]] StructuredBuffer<f32> positions;
+[[vk::binding(1, 0)]] StructuredBuffer<f32> normals;
+[[vk::binding(2, 0)]] StructuredBuffer<f32> uvs;
+[[vk::binding(3, 0)]] StructuredBuffer<f32> tangents;
 
 // Buffers storing Meshlet data.
 // vertex_indices contains offsets into the vertex data buffers,
 // so that vertex data itself does not need to be duplicated for multiple meshlets.
-[[vk::binding(4, 1)]] StructuredBuffer<u32> vertex_indices;
-[[vk::binding(5, 1)]] StructuredBuffer<u8> triangle_indices;
-[[vk::binding(6, 1)]] StructuredBuffer<Meshlet> meshlets;
+[[vk::binding(4, 0)]] StructuredBuffer<u32> vertex_indices;
+[[vk::binding(5, 0)]] StructuredBuffer<u8> triangle_indices;
+[[vk::binding(6, 0)]] StructuredBuffer<Meshlet> meshlets;
 
-[[vk::binding(0, 0)]] ConstantBuffer<Instance> instance;
+[[vk::binding(7, 0)]] StructuredBuffer<Instance> instances;
+
+struct Payload {
+    u32 instance_index;
+}
 
 [shader("mesh")]
 [outputtopology("triangle")]
@@ -57,9 +62,11 @@ struct Vertex {
 void main(
     u32 tid: SV_GroupThreadID,
     u32 gid: SV_GroupID,
+    in payload Payload payload,
     out indices vector<u32, 3> triangles[TRIANGLE_COUNT],
     out vertices Vertex vertices[VERTEX_COUNT]
 ) {
+    let instance = instances[payload.instance_index];
     let meshlet = meshlets[instance.meshlet_offset + gid];
     SetMeshOutputCounts(meshlet.vertex_count, meshlet.triangle_count);
 

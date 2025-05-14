@@ -1,9 +1,13 @@
 use bytemuck::{Pod, Zeroable};
 use game_common::collections::arena::{Arena, Key};
+use game_common::components::Transform;
 use game_render::api::CommandQueue;
 use game_render::backend::BufferUsage;
+use game_render::buffer::GpuBuffer;
+use game_render::buffer::slab::{CompactSlabBuffer, SlabIndex};
 use game_render::buffer::suballocated::SubAllocatedGrowableBuffer;
 use game_render::mesh::Mesh;
+use glam::{Mat3, Mat4, Vec4};
 use meshopt::VertexDataAdapter;
 
 const VERTEX_COUNT: usize = 128;
@@ -18,6 +22,7 @@ pub struct MeshState {
     pub vertex_indices: SubAllocatedGrowableBuffer<u32>,
     pub triangle_indices: SubAllocatedGrowableBuffer<u8>,
     pub meshlets: SubAllocatedGrowableBuffer<Meshlet>,
+    pub instances: CompactSlabBuffer<Instance>,
     meshes: Arena<MeshData>,
 }
 
@@ -31,6 +36,7 @@ impl MeshState {
             vertex_indices: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             triangle_indices: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             meshlets: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
+            instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
             meshes: Arena::new(),
         }
     }
@@ -104,6 +110,45 @@ impl MeshState {
         }))
     }
 
+    pub fn create_instance(
+        &mut self,
+        transform: Transform,
+        mesh: MeshStrategyMeshId,
+        material_index: SlabIndex,
+    ) -> InstanceId {
+        let meshlet_offset = self.meshes.get(mesh.0).unwrap().meshlets_offset as u32;
+        let meshlet_count = self.meshes.get(mesh.0).unwrap().meshlet_count as u32;
+
+        let normal = Mat3::from_quat(transform.rotation);
+        let normal_x = Vec4::new(normal.x_axis.x, normal.x_axis.y, normal.x_axis.z, 0.0);
+        let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
+        let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
+
+        InstanceId(
+            self.instances.insert(&Instance {
+                transform: Mat4::from_scale_rotation_translation(
+                    transform.scale,
+                    transform.rotation,
+                    transform.translation,
+                )
+                .to_cols_array_2d(),
+                normal: [
+                    normal_x.to_array(),
+                    normal_y.to_array(),
+                    normal_z.to_array(),
+                ],
+                meshlet_offset,
+                meshlet_count,
+                material_index: material_index,
+                _pad0: 0,
+            }),
+        )
+    }
+
+    pub fn remove_instance(&mut self, id: InstanceId) {
+        self.instances.remove(id.0);
+    }
+
     pub fn get_meshlet_offset(&self, id: MeshStrategyMeshId) -> Option<u32> {
         self.meshes.get(id.0).map(|m| m.meshlets_offset as u32)
     }
@@ -136,8 +181,30 @@ pub struct Meshlet {
     pub tangents_offset: u32,
 }
 
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct Instance {
+    pub transform: [[f32; 4]; 4],
+    // rotation matrix for normals/tangents
+    // Note that we can't use the transform matrix for non-uniform
+    // scaling values.
+    pub normal: [[f32; 4]; 3],
+    pub meshlet_offset: u32,
+    pub meshlet_count: u32,
+    pub material_index: SlabIndex,
+    _pad0: u32,
+}
+
+impl GpuBuffer for Instance {
+    const SIZE: usize = size_of::<Self>();
+    const ALIGN: usize = 16;
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MeshStrategyMeshId(pub Key);
+pub struct MeshStrategyMeshId(Key);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InstanceId(SlabIndex);
 
 #[derive(Copy, Clone, Debug)]
 struct MeshData {
@@ -147,4 +214,9 @@ struct MeshData {
     tangents: u64,
     meshlets_offset: u64,
     meshlet_count: u32,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct InstanceData {
+    index: u64,
 }

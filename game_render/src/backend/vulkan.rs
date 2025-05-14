@@ -2773,6 +2773,12 @@ impl<'a> CommandEncoder<'a> {
         dst_offset: u64,
         count: u64,
     ) {
+        tracing::trace!(
+            "vkCopyBufferToBuffer(src={:p} dst={:p})",
+            src.buffer,
+            dst.buffer,
+        );
+
         assert!(self.queue_caps.contains(QueueCapabilities::TRANSFER));
 
         if count == 0 {
@@ -3169,6 +3175,13 @@ impl<'a> CommandEncoder<'a> {
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
             buffer_barriers.push(barrier);
+
+            tracing::trace!(
+                "Buffer Barrier ({:p}) {:?} -> {:?}",
+                barrier.buffer,
+                src_access_flags,
+                dst_access_flags,
+            );
         }
 
         let mut image_barriers = Vec::new();
@@ -3220,6 +3233,13 @@ impl<'a> CommandEncoder<'a> {
                 .image(barrier.texture.image)
                 .subresource_range(subresource_range);
             image_barriers.push(barrier);
+
+            tracing::trace!(
+                "Image Barrier ({:p}) {:?} -> {:?}",
+                barrier.image,
+                src_access_flags,
+                dst_access_flags,
+            );
         }
 
         let info = vk::DependencyInfo::default()

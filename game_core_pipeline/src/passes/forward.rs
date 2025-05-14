@@ -12,7 +12,7 @@ use game_render::api::{
 use game_render::backend::{
     AddressMode, BlendState, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
     DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, MeshStage, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp,
+    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TaskStage,
     TextureDescriptor, TextureFormat, TextureUsage,
 };
 use game_render::camera::RenderTarget;
@@ -32,6 +32,7 @@ const VS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs
 const FS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_frag.slang");
 
 const MS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_mesh.slang");
+const TS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_task.slang");
 
 #[derive(Debug)]
 pub(super) struct ForwardPass {
@@ -107,10 +108,13 @@ impl ForwardPass {
             pipeline = PipelineCache::new(
                 BuildForwardPipeline {
                     mesh_descriptor: state.mesh_descriptor_layout.clone(),
-                    model_descriptor: state.transform_descriptor_layout.clone(),
                     lights_and_sampler_descriptor: lights_and_sampler_descriptor.clone(),
                 },
                 vec![
+                    ShaderConfig {
+                        source: ShaderSource::File(TS_SHADER.into()),
+                        language: ShaderLanguage::Slang,
+                    },
                     ShaderConfig {
                         source: ShaderSource::File(MS_SHADER.into()),
                         language: ShaderLanguage::Slang,
@@ -209,6 +213,8 @@ impl ForwardPass {
                 ],
             });
 
+        let instance_buffer = state.mesh.instances.buffer(ctx.queue);
+
         let mesh_descriptor = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
             layout: &state.mesh_descriptor_layout,
             entries: &[
@@ -239,6 +245,10 @@ impl ForwardPass {
                 DescriptorSetEntry {
                     binding: 6,
                     resource: BindingResource::Buffer(state.mesh.meshlets.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 7,
+                    resource: BindingResource::Buffer(instance_buffer),
                 },
             ],
         });
@@ -282,20 +292,10 @@ impl ForwardPass {
             &push_constants,
         );
 
-        render_pass.set_descriptor_set(1, &mesh_descriptor);
-        render_pass.set_descriptor_set(2, &lights_and_sampler_descriptor);
+        render_pass.set_descriptor_set(0, &mesh_descriptor);
+        render_pass.set_descriptor_set(1, &lights_and_sampler_descriptor);
 
-        for object in scene.objects.values() {
-            let mesh = state.meshes.get(&object.mesh).unwrap();
-            let count = state.mesh.get_meshlet_count(*mesh).unwrap();
-
-            render_pass.set_descriptor_set(0, &object.transform);
-
-            // render_pass.set_index_buffer(&mesh.indices.buffer, mesh.indices.format);
-            // render_pass.draw_indexed(0..mesh.indices.len, 0, 0..1);
-            // render_pass.draw_mesh_tasks(count, 1, 1);
-            render_pass.draw_mesh_tasks(count, 1, 1);
-        }
+        render_pass.draw_mesh_tasks(scene.objects.len() as u32, 1, 1);
 
         drop(render_pass);
         ctx.write(self.hdr_texture_slot, render_target).unwrap();
@@ -350,7 +350,6 @@ impl Node for ForwardPass {
 #[derive(Debug)]
 struct BuildForwardPipeline {
     mesh_descriptor: DescriptorSetLayout,
-    model_descriptor: DescriptorSetLayout,
     lights_and_sampler_descriptor: DescriptorSetLayout,
 }
 
@@ -365,18 +364,18 @@ impl PipelineBuilder for BuildForwardPipeline {
             topology: PrimitiveTopology::TriangleList,
             cull_mode: None,
             front_face: FrontFace::Ccw,
-            descriptors: &[
-                &self.model_descriptor,
-                &self.mesh_descriptor,
-                &self.lights_and_sampler_descriptor,
-            ],
+            descriptors: &[&self.mesh_descriptor, &self.lights_and_sampler_descriptor],
             stages: &[
-                PipelineStage::Mesh(MeshStage {
+                PipelineStage::Task(TaskStage {
                     shader: &shaders[0],
                     entry: "main",
                 }),
-                PipelineStage::Fragment(FragmentStage {
+                PipelineStage::Mesh(MeshStage {
                     shader: &shaders[1],
+                    entry: "main",
+                }),
+                PipelineStage::Fragment(FragmentStage {
+                    shader: &shaders[2],
                     entry: "main",
                     targets: &[ColorTargetState {
                         format,

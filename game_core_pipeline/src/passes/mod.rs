@@ -12,8 +12,7 @@ use bytemuck::{NoUninit, Pod, Zeroable};
 use crossbeam::channel::Receiver;
 use forward::ForwardPass;
 use game_render::api::{
-    CommandQueue, DescriptorSet, DescriptorSetLayout, TextureRegion, TextureView,
-    TextureViewDescriptor,
+    CommandQueue, DescriptorSetLayout, TextureRegion, TextureView, TextureViewDescriptor,
 };
 use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, ImageDataLayout,
@@ -25,7 +24,7 @@ use game_render::graph::{NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel}
 use glam::UVec2;
 use parking_lot::Mutex;
 use post_process::PostProcessPass;
-use state::mesh::{MeshState, MeshStrategyMeshId};
+use state::mesh::{InstanceId, MeshState, MeshStrategyMeshId};
 use update::{TransformUniform, UpdatePass};
 
 use crate::camera::Camera;
@@ -85,7 +84,6 @@ struct State {
     default_textures: DefaultTextures,
 
     mesh_descriptor_layout: DescriptorSetLayout,
-    transform_descriptor_layout: DescriptorSetLayout,
 
     mesh: MeshState,
 
@@ -152,18 +150,15 @@ impl State {
                     kind: DescriptorType::Storage,
                     count: NonZeroU32::MIN,
                 },
+                // INSTANCES
+                DescriptorBinding {
+                    binding: 7,
+                    visibility: ShaderStages::TASK | ShaderStages::MESH,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
             ],
         });
-
-        let transform_descriptor_layout =
-            queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
-                bindings: &[DescriptorBinding {
-                    binding: 0,
-                    visibility: ShaderStages::MESH,
-                    kind: DescriptorType::Uniform,
-                    count: NonZeroU32::MIN,
-                }],
-            });
 
         let placeholder_texture = queue.create_texture(&TextureDescriptor {
             size: UVec2::ONE,
@@ -180,7 +175,6 @@ impl State {
         Self {
             default_textures,
             mesh_descriptor_layout,
-            transform_descriptor_layout,
             meshes: HashMap::new(),
             materials: HashMap::new(),
             scenes: HashMap::new(),
@@ -278,8 +272,7 @@ impl SceneData {
 
 #[derive(Debug)]
 struct ObjectState {
-    mesh: MeshId,
-    transform: DescriptorSet,
+    id: InstanceId,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]

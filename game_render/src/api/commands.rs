@@ -112,16 +112,23 @@ impl Command {
                 });
             }
             Self::CopyBufferToBuffer(cmd) => {
-                accesses.extend([
-                    Resource {
+                if cmd.src == cmd.dst {
+                    accesses.push(Resource {
                         id: ResourceId::Buffer(cmd.src),
-                        access: AccessFlags::TRANSFER_READ,
-                    },
-                    Resource {
-                        id: ResourceId::Buffer(cmd.dst),
-                        access: AccessFlags::TRANSFER_WRITE,
-                    },
-                ]);
+                        access: AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE,
+                    });
+                } else {
+                    accesses.extend([
+                        Resource {
+                            id: ResourceId::Buffer(cmd.src),
+                            access: AccessFlags::TRANSFER_READ,
+                        },
+                        Resource {
+                            id: ResourceId::Buffer(cmd.dst),
+                            access: AccessFlags::TRANSFER_WRITE,
+                        },
+                    ]);
+                }
             }
             Self::CopyBufferToTexture(cmd) => {
                 accesses.extend([
@@ -139,22 +146,32 @@ impl Command {
                 ]);
             }
             Self::CopyTextureToTexture(cmd) => {
-                accesses.extend([
-                    Resource {
+                if cmd.src == cmd.dst && cmd.src_mip_level == cmd.dst_mip_level {
+                    accesses.push(Resource {
                         id: ResourceId::Texture(TextureMip {
                             id: cmd.src,
                             mip_level: cmd.src_mip_level,
                         }),
-                        access: AccessFlags::TRANSFER_READ,
-                    },
-                    Resource {
-                        id: ResourceId::Texture(TextureMip {
-                            id: cmd.dst,
-                            mip_level: cmd.dst_mip_level,
-                        }),
-                        access: AccessFlags::TRANSFER_WRITE,
-                    },
-                ]);
+                        access: AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE,
+                    });
+                } else {
+                    accesses.extend([
+                        Resource {
+                            id: ResourceId::Texture(TextureMip {
+                                id: cmd.src,
+                                mip_level: cmd.src_mip_level,
+                            }),
+                            access: AccessFlags::TRANSFER_READ,
+                        },
+                        Resource {
+                            id: ResourceId::Texture(TextureMip {
+                                id: cmd.dst,
+                                mip_level: cmd.dst_mip_level,
+                            }),
+                            access: AccessFlags::TRANSFER_WRITE,
+                        },
+                    ]);
+                }
             }
             Self::TextureTransition(cmd) => {
                 accesses.push(Resource {

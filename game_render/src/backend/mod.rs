@@ -684,9 +684,14 @@ impl AccessFlags {
     }
 
     pub(crate) fn is_writable(&self) -> bool {
-        matches!(
-            *self,
-            Self::TRANSFER_WRITE | Self::COLOR_ATTACHMENT_WRITE | Self::DEPTH_ATTACHMENT_WRITE
+        self.intersects(
+            Self::TRANSFER_WRITE
+                | Self::COLOR_ATTACHMENT_WRITE
+                | Self::DEPTH_ATTACHMENT_WRITE
+                | Self::VERTEX_SHADER_WRITE
+                | Self::FRAGMENT_SHADER_WRITE
+                | Self::MESH_SHADER_WRITE
+                | Self::TASK_SHADER_WRITE,
         )
     }
 }
