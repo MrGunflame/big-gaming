@@ -11,9 +11,9 @@ use game_render::api::{
 };
 use game_render::backend::{
     AddressMode, BlendState, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
-    DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology,
-    PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
-    TextureUsage, VertexStage,
+    DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, MeshStage, PipelineStage,
+    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp,
+    TextureDescriptor, TextureFormat, TextureUsage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
@@ -30,6 +30,8 @@ use super::{DEPTH_FORMAT, HDR_FORMAT, State};
 
 const VS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_vs.slang");
 const FS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_frag.slang");
+
+const MS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_mesh.slang");
 
 #[derive(Debug)]
 pub(super) struct ForwardPass {
@@ -110,7 +112,7 @@ impl ForwardPass {
                 },
                 vec![
                     ShaderConfig {
-                        source: ShaderSource::File(VS_SHADER.into()),
+                        source: ShaderSource::File(MS_SHADER.into()),
                         language: ShaderLanguage::Slang,
                     },
                     ShaderConfig {
@@ -207,6 +209,40 @@ impl ForwardPass {
                 ],
             });
 
+        let mesh_descriptor = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
+            layout: &state.mesh_descriptor_layout,
+            entries: &[
+                DescriptorSetEntry {
+                    binding: 0,
+                    resource: BindingResource::Buffer(state.mesh.positions.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 1,
+                    resource: BindingResource::Buffer(state.mesh.normals.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 2,
+                    resource: BindingResource::Buffer(state.mesh.uvs.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 3,
+                    resource: BindingResource::Buffer(state.mesh.tangents.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 4,
+                    resource: BindingResource::Buffer(state.mesh.vertex_indices.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 5,
+                    resource: BindingResource::Buffer(state.mesh.triangle_indices.buffer()),
+                },
+                DescriptorSetEntry {
+                    binding: 6,
+                    resource: BindingResource::Buffer(state.mesh.meshlets.buffer()),
+                },
+            ],
+        });
+
         let pipeline = self.pipeline.get(ctx.queue, HDR_FORMAT);
         let depth_stencil = depth_stencils.get(&ctx.render_target).unwrap();
         let render_target = ctx.queue.create_texture(&TextureDescriptor {
@@ -241,21 +277,24 @@ impl ForwardPass {
 
         render_pass.set_pipeline(&pipeline);
         render_pass.set_push_constants(
-            ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+            ShaderStages::MESH | ShaderStages::FRAGMENT,
             0,
             &push_constants,
         );
 
+        render_pass.set_descriptor_set(1, &mesh_descriptor);
         render_pass.set_descriptor_set(2, &lights_and_sampler_descriptor);
 
         for object in scene.objects.values() {
             let mesh = state.meshes.get(&object.mesh).unwrap();
+            let count = state.mesh.get_meshlet_count(*mesh).unwrap();
 
             render_pass.set_descriptor_set(0, &object.transform);
-            render_pass.set_descriptor_set(1, &mesh.descriptor);
 
-            render_pass.set_index_buffer(&mesh.indices.buffer, mesh.indices.format);
-            render_pass.draw_indexed(0..mesh.indices.len, 0, 0..1);
+            // render_pass.set_index_buffer(&mesh.indices.buffer, mesh.indices.format);
+            // render_pass.draw_indexed(0..mesh.indices.len, 0, 0..1);
+            // render_pass.draw_mesh_tasks(count, 1, 1);
+            render_pass.draw_mesh_tasks(count, 1, 1);
         }
 
         drop(render_pass);
@@ -332,7 +371,7 @@ impl PipelineBuilder for BuildForwardPipeline {
                 &self.lights_and_sampler_descriptor,
             ],
             stages: &[
-                PipelineStage::Vertex(VertexStage {
+                PipelineStage::Mesh(MeshStage {
                     shader: &shaders[0],
                     entry: "main",
                 }),
@@ -352,7 +391,7 @@ impl PipelineBuilder for BuildForwardPipeline {
             }),
             push_constant_ranges: &[PushConstantRange {
                 range: 0..128,
-                stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                stages: ShaderStages::MESH | ShaderStages::FRAGMENT,
             }],
         })
     }

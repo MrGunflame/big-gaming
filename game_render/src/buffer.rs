@@ -1,5 +1,6 @@
 pub mod block;
 pub mod slab;
+pub mod suballocated;
 
 use std::marker::PhantomData;
 

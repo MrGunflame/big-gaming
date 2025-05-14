@@ -321,6 +321,9 @@ fn run_render_pass(
                     call.instances.clone(),
                 );
             }
+            DrawCmd::Draw(DrawCall::DrawMeshTasks(call)) => {
+                render_pass.draw_mesh_tasks(call.x, call.y, call.z);
+            }
         }
     }
 

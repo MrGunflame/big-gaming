@@ -1,5 +1,6 @@
 mod forward;
 mod post_process;
+mod state;
 mod update;
 
 use std::collections::HashMap;
@@ -18,12 +19,13 @@ use game_render::backend::{
     BufferUsage, DescriptorBinding, DescriptorSetDescriptor, DescriptorType, ImageDataLayout,
     ShaderStages, TextureDescriptor, TextureFormat, TextureUsage,
 };
+use game_render::buffer::GpuBuffer;
 use game_render::buffer::slab::{CompactSlabBuffer, SlabBuffer, SlabIndex};
-use game_render::buffer::{GpuBuffer, IndexBuffer};
 use game_render::graph::{NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 use glam::UVec2;
 use parking_lot::Mutex;
 use post_process::PostProcessPass;
+use state::mesh::{MeshState, MeshStrategyMeshId};
 use update::{TransformUniform, UpdatePass};
 
 use crate::camera::Camera;
@@ -85,7 +87,9 @@ struct State {
     mesh_descriptor_layout: DescriptorSetLayout,
     transform_descriptor_layout: DescriptorSetLayout,
 
-    meshes: HashMap<MeshId, MeshState>,
+    mesh: MeshState,
+
+    meshes: HashMap<MeshId, MeshStrategyMeshId>,
     images: HashMap<ImageId, TextureSlabIndex>,
     materials: HashMap<MaterialId, SlabIndex>,
 
@@ -102,28 +106,49 @@ impl State {
                 // POSITIONS
                 DescriptorBinding {
                     binding: 0,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::MESH,
                     kind: DescriptorType::Storage,
                     count: NonZeroU32::MIN,
                 },
                 // NORMALS
                 DescriptorBinding {
                     binding: 1,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::MESH,
                     kind: DescriptorType::Storage,
                     count: NonZeroU32::MIN,
                 },
                 // TANGENTS
                 DescriptorBinding {
                     binding: 2,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::MESH,
                     kind: DescriptorType::Storage,
                     count: NonZeroU32::MIN,
                 },
                 // UVS
                 DescriptorBinding {
                     binding: 3,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::MESH,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                // VERTEX INDICES
+                DescriptorBinding {
+                    binding: 4,
+                    visibility: ShaderStages::MESH,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                // TRIANGLE INDICES
+                DescriptorBinding {
+                    binding: 5,
+                    visibility: ShaderStages::MESH,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                // MESHLETS
+                DescriptorBinding {
+                    binding: 6,
+                    visibility: ShaderStages::MESH,
                     kind: DescriptorType::Storage,
                     count: NonZeroU32::MIN,
                 },
@@ -134,7 +159,7 @@ impl State {
             queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
                 bindings: &[DescriptorBinding {
                     binding: 0,
-                    visibility: ShaderStages::VERTEX,
+                    visibility: ShaderStages::MESH,
                     kind: DescriptorType::Uniform,
                     count: NonZeroU32::MIN,
                 }],
@@ -162,6 +187,7 @@ impl State {
             images: HashMap::new(),
             textures,
             material_slab: SlabBuffer::new(BufferUsage::STORAGE),
+            mesh: MeshState::new(queue),
         }
     }
 }
@@ -220,12 +246,6 @@ impl DefaultTextures {
             specular_glossiness,
         }
     }
-}
-
-#[derive(Debug)]
-struct MeshState {
-    descriptor: DescriptorSet,
-    indices: IndexBuffer,
 }
 
 #[derive(Debug)]
@@ -358,6 +378,7 @@ bitflags! {
 #[repr(C)]
 struct RawObjectData {
     pub transform: TransformUniform,
+    pub meshlet_offset: u32,
     pub material: SlabIndex,
-    _pad0: [u32; 3],
+    _pad0: [u32; 2],
 }

@@ -136,7 +136,7 @@ impl Shader {
                 _ => todo!(),
             };
 
-            let access = functions
+            let access: ShaderAccess = functions
                 .iter()
                 .flat_map(|function| {
                     function[handle].iter().filter_map(|flags| match flags {
@@ -146,6 +146,10 @@ impl Shader {
                     })
                 })
                 .collect();
+
+            if access.is_empty() {
+                continue;
+            }
 
             bindings.push(ShaderBinding {
                 group: binding.group,
@@ -191,6 +195,9 @@ impl<'a> ShaderInstance<'a> {
         let shader_stage = match self.stage {
             ShaderStage::Vertex => naga::ShaderStage::Vertex,
             ShaderStage::Fragment => naga::ShaderStage::Fragment,
+            ShaderStage::Task | ShaderStage::Mesh => {
+                panic!("unsupported WGSL stage: {:?}", self.stage)
+            }
         };
 
         spv::write_vec(

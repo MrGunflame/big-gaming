@@ -251,6 +251,8 @@ impl Module {
         match (options.stage, entry_point.execution_model) {
             (ShaderStage::Vertex, ExecutionModel::Vertex) => (),
             (ShaderStage::Fragment, ExecutionModel::Fragment) => (),
+            (ShaderStage::Task, ExecutionModel::TaskEXT) => (),
+            (ShaderStage::Mesh, ExecutionModel::MeshEXT) => (),
             _ => {
                 return Err(ErrorImpl::UnknownEntryPoint {
                     name: options.entry_point.to_owned(),

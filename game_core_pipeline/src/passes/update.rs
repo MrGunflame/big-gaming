@@ -10,12 +10,11 @@ use game_render::api::{
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    BufferUsage, ImageDataLayout, IndexFormat, TextureDescriptor, TextureUsage, max_mips_2d,
+    BufferUsage, ImageDataLayout, TextureDescriptor, TextureUsage, max_mips_2d,
 };
-use game_render::buffer::IndexBuffer;
+use game_render::buffer::GpuBuffer;
 use game_render::buffer::slab::{SlabBuffer, SlabIndex};
 use game_render::graph::{Node, RenderContext};
-use game_render::mesh::{Indices, Mesh};
 use game_render::mipmap::MipMapGenerator;
 use game_render::texture::image::MipImage;
 use game_tracing::trace_span;
@@ -27,8 +26,8 @@ use crate::entities::{Event, ImageId};
 use crate::lights::{DirectionalLightUniform, Light, PointLightUniform, SpotLightUniform};
 
 use super::{
-    DefaultTextures, MaterialFlags, MeshState, ObjectState, RawMaterialData, RawObjectData,
-    SceneData, State, TextureSlab, TextureSlabIndex,
+    DefaultTextures, MaterialFlags, ObjectState, RawMaterialData, RawObjectData, SceneData, State,
+    TextureSlab, TextureSlabIndex,
 };
 
 #[derive(Debug)]
@@ -67,8 +66,8 @@ impl Node for UpdatePass {
                     state.scenes.remove(&id);
                 }
                 Event::CreateMesh(id, mesh) => {
-                    let mesh = create_mesh(ctx.queue, &state.mesh_descriptor_layout, &mesh);
-                    state.meshes.insert(id, mesh);
+                    let key = state.mesh.create_mesh(ctx.queue, &mesh);
+                    state.meshes.insert(id, key);
                 }
                 Event::DestroyMesh(id) => {
                     state.meshes.remove(&id);
@@ -105,11 +104,18 @@ impl Node for UpdatePass {
                         continue;
                     };
 
+                    let Some(mesh) = state.meshes.get(&object.mesh.id()).copied() else {
+                        continue;
+                    };
+
+                    let meshlet_offset = state.mesh.get_meshlet_offset(mesh).unwrap();
+
                     let transform = create_object(
                         ctx.queue,
                         &state.transform_descriptor_layout,
                         object.transform,
                         material,
+                        meshlet_offset,
                     );
                     if let Some(scene) = state.scenes.get_mut(&object.scene.id()) {
                         scene.objects.insert(
@@ -185,103 +191,6 @@ impl Node for UpdatePass {
                 }
             }
         }
-    }
-}
-
-fn create_mesh(
-    queue: &mut CommandQueue<'_>,
-    layout: &DescriptorSetLayout,
-    mesh: &Mesh,
-) -> MeshState {
-    let _span = trace_span!("create_mesh").entered();
-
-    // FIXME: Since meshes are user controlled, we might not catch invalid
-    // meshes with a panic and simply ignore them.
-    assert!(!mesh.positions().is_empty());
-    assert!(!mesh.normals().is_empty());
-    assert!(!mesh.tangents().is_empty());
-    assert!(!mesh.uvs().is_empty());
-    assert!(!mesh.indicies().as_ref().unwrap().is_empty());
-
-    let indices = match mesh.indicies() {
-        Some(Indices::U32(indices)) => {
-            let buffer = queue.create_buffer_init(&BufferInitDescriptor {
-                contents: bytemuck::must_cast_slice(&indices),
-                usage: BufferUsage::INDEX,
-                flags: UsageFlags::empty(),
-            });
-
-            IndexBuffer {
-                buffer,
-                format: IndexFormat::U32,
-                len: indices.len() as u32,
-            }
-        }
-        Some(Indices::U16(indices)) => {
-            let buffer = queue.create_buffer_init(&BufferInitDescriptor {
-                contents: bytemuck::must_cast_slice(&indices),
-                usage: BufferUsage::INDEX,
-                flags: UsageFlags::empty(),
-            });
-
-            IndexBuffer {
-                buffer,
-                format: IndexFormat::U16,
-                len: indices.len() as u32,
-            }
-        }
-        None => todo!(),
-    };
-
-    let positions = queue.create_buffer_init(&BufferInitDescriptor {
-        contents: bytemuck::must_cast_slice(mesh.positions()),
-        usage: BufferUsage::STORAGE,
-        flags: UsageFlags::empty(),
-    });
-
-    let normals = queue.create_buffer_init(&BufferInitDescriptor {
-        contents: bytemuck::must_cast_slice(mesh.normals()),
-        usage: BufferUsage::STORAGE,
-        flags: UsageFlags::empty(),
-    });
-
-    let tangents = queue.create_buffer_init(&BufferInitDescriptor {
-        contents: bytemuck::must_cast_slice(mesh.tangents()),
-        usage: BufferUsage::STORAGE,
-        flags: UsageFlags::empty(),
-    });
-
-    let uvs = queue.create_buffer_init(&BufferInitDescriptor {
-        contents: bytemuck::must_cast_slice(mesh.uvs()),
-        usage: BufferUsage::STORAGE,
-        flags: UsageFlags::empty(),
-    });
-
-    let descriptor = queue.create_descriptor_set(&DescriptorSetDescriptor {
-        layout,
-        entries: &[
-            DescriptorSetEntry {
-                binding: 0,
-                resource: BindingResource::Buffer(&positions),
-            },
-            DescriptorSetEntry {
-                binding: 1,
-                resource: BindingResource::Buffer(&normals),
-            },
-            DescriptorSetEntry {
-                binding: 2,
-                resource: BindingResource::Buffer(&tangents),
-            },
-            DescriptorSetEntry {
-                binding: 3,
-                resource: BindingResource::Buffer(&uvs),
-            },
-        ],
-    });
-
-    MeshState {
-        descriptor,
-        indices,
     }
 }
 
@@ -441,14 +350,16 @@ fn create_object(
     layout: &DescriptorSetLayout,
     transform: Transform,
     material: SlabIndex,
+    meshlet_offset: u32,
 ) -> DescriptorSet {
     let _span = trace_span!("create_object_transform").entered();
 
     let transform_buffer = queue.create_buffer_init(&BufferInitDescriptor {
         contents: bytemuck::bytes_of(&RawObjectData {
             transform: TransformUniform::from(transform),
+            meshlet_offset,
             material,
-            _pad0: [0; 3],
+            _pad0: [0; 2],
         }),
         usage: BufferUsage::UNIFORM,
         flags: UsageFlags::empty(),
@@ -471,6 +382,11 @@ pub struct TransformUniform {
     // Note that we can't use the transform matrix for non-uniform
     // scaling values.
     normal: [[f32; 4]; 3],
+}
+
+impl GpuBuffer for TransformUniform {
+    const SIZE: usize = size_of::<Self>();
+    const ALIGN: usize = 16;
 }
 
 impl From<Transform> for TransformUniform {

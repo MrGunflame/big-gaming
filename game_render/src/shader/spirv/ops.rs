@@ -213,6 +213,8 @@ pub enum Instruction {
     AtomicXor(OpAtomicXor),
     AtomicFlagTestAndSet(OpAtomicFlagTestAndSet),
     AtomicFlagClear(OpAtomicFlagClear),
+    EmitMeshTasksEXT(OpEmitMeshTasksEXT),
+    SetMeshOutputsEXT(OpSetMeshOutputsEXT),
 }
 
 impl Instruction {
@@ -444,6 +446,8 @@ impl Instruction {
             AtomicXor => AtomicXor,
             AtomicFlagTestAndSet => AtomicFlagTestAndSet,
             AtomicFlagClear => AtomicFlagClear,
+            EmitMeshTasksEXT => EmitMeshTasksEXT,
+            SetMeshOutputsEXT => SetMeshOutputsEXT,
         }
     }
 
@@ -669,6 +673,8 @@ impl Instruction {
             AtomicXor => AtomicXor,
             AtomicFlagTestAndSet => AtomicFlagTestAndSet,
             AtomicFlagClear => AtomicFlagClear,
+            EmitMeshTasksEXT => EmitMeshTasksEXT,
+            SetMeshOutputsEXT => SetMeshOutputsEXT,
         };
 
         // The word count is the number of words we have written
@@ -3179,5 +3185,27 @@ spirv_op! {
         pub pointer: Id,
         pub memory: Id,
         pub semantics: MemorySemantics,
+    }
+}
+
+// ======================
+// === MeshShadingEXT ===
+// ======================
+
+spirv_op! {
+    #[derive(Copy, Clone, Debug)]
+    pub struct OpEmitMeshTasksEXT {
+        pub group_count_x: u32,
+        pub group_count_y: u32,
+        pub group_count_z: u32,
+        pub payload: Id,
+    }
+}
+
+spirv_op! {
+    #[derive(Copy, Clone, Debug)]
+    pub struct OpSetMeshOutputsEXT {
+        pub vertex_count: u32,
+        pub primitive_count: u32,
     }
 }
