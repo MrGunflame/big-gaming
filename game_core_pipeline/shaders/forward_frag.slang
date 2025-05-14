@@ -31,12 +31,12 @@ struct PushConstants {
 
 [[vk::push_constant]] PushConstants push_constants;
 
-[[vk::binding(0, 2)]] StructuredBuffer<DirectionalLight> directional_lights;
-[[vk::binding(1, 2)]] StructuredBuffer<PointLight> point_lights;
-[[vk::binding(2, 2)]] StructuredBuffer<SpotLight> spot_lights;
-[[vk::binding(3, 2)]] StructuredBuffer<Material> materials;
-[[vk::binding(4, 2)]] Texture2D<Vec4>[] textures;
-[[vk::binding(5, 2)]] SamplerState sampler;
+[[vk::binding(0, 1)]] StructuredBuffer<DirectionalLight> directional_lights;
+[[vk::binding(1, 1)]] StructuredBuffer<PointLight> point_lights;
+[[vk::binding(2, 1)]] StructuredBuffer<SpotLight> spot_lights;
+[[vk::binding(3, 1)]] StructuredBuffer<Material> materials;
+[[vk::binding(4, 1)]] Texture2D<Vec4>[] textures;
+[[vk::binding(5, 1)]] SamplerState sampler;
 
 struct Input {
     Vec4 clip_position: SV_Position;

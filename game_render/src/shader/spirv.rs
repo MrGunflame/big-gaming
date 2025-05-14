@@ -133,6 +133,7 @@ impl Module {
                 // Input and Output classes are vertex attributes.
                 StorageClass::Input | StorageClass::Output => continue,
                 StorageClass::PushConstant => continue,
+                StorageClass::TaskPayloadWorkgroupEXT => continue,
                 StorageClass::Uniform => {
                     kind = DescriptorType::Uniform;
                 }
@@ -1068,6 +1069,12 @@ impl Function {
                     current_block.push(instruction);
                 }
                 Instruction::FunctionEnd(_) => {
+                    if !current_block.is_empty() {
+                        blocks.push(Block {
+                            instructions: current_block,
+                        });
+                    }
+
                     break;
                 }
                 _ => {
@@ -1147,7 +1154,6 @@ impl Instance {
     pub fn to_spirv(&self) -> Vec<u32> {
         let mut words = Vec::new();
         self.data.write(&mut words);
-        std::fs::write("/tmp/x.spv", bytemuck::cast_slice(&words)).unwrap();
         words
     }
 }

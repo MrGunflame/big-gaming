@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use bytemuck::NoUninit;
+use bytemuck::{NoUninit, Pod, Zeroable};
 use hashbrown::HashMap;
 use slab::Slab;
 
@@ -11,7 +11,7 @@ use super::block::BlockBuffer;
 use super::GpuBuffer;
 
 /// Index for a [`SlabBuffer`].
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, NoUninit)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
 #[repr(transparent)]
 pub struct SlabIndex(u32);
 
@@ -91,7 +91,15 @@ where
     }
 
     pub fn remove(&mut self, index: SlabIndex) {
-        self.buffer.remove(index);
+        // No need to recompact the slab if we removed nothing.
+        if !self.logical_to_physical.contains(index.0 as usize) {
+            return;
+        }
+
+        let physical_index = self.logical_to_physical.remove(index.0 as usize);
+        self.physical_to_logical.remove(&physical_index);
+        self.buffer.remove(physical_index);
+
         self.buffer.compact(|src, dst| {
             let logical = self.physical_to_logical.remove(&src).unwrap();
             self.physical_to_logical.insert(dst, logical);

@@ -70,7 +70,9 @@ impl Node for UpdatePass {
                     state.meshes.insert(id, key);
                 }
                 Event::DestroyMesh(id) => {
-                    state.meshes.remove(&id);
+                    if let Some(key) = state.meshes.remove(&id) {
+                        state.mesh.remove(key);
+                    }
                 }
                 Event::CreateImage(id, image) => {
                     let texture =
@@ -108,28 +110,17 @@ impl Node for UpdatePass {
                         continue;
                     };
 
-                    let meshlet_offset = state.mesh.get_meshlet_offset(mesh).unwrap();
-
-                    let transform = create_object(
-                        ctx.queue,
-                        &state.transform_descriptor_layout,
-                        object.transform,
-                        material,
-                        meshlet_offset,
-                    );
                     if let Some(scene) = state.scenes.get_mut(&object.scene.id()) {
-                        scene.objects.insert(
-                            id,
-                            ObjectState {
-                                transform,
-                                mesh: object.mesh.id(),
-                            },
-                        );
+                        let key = state.mesh.create_instance(object.transform, mesh, material);
+                        scene.objects.insert(id, ObjectState { id: key });
                     }
                 }
                 Event::DestroyObject(id) => {
+                    let state = &mut *state;
                     for scene in state.scenes.values_mut() {
-                        scene.objects.remove(&id);
+                        if let Some(instance) = scene.objects.remove(&id) {
+                            state.mesh.remove_instance(instance.id);
+                        }
                     }
                 }
                 Event::CreateCamera(id, camera) => {

@@ -510,7 +510,7 @@ impl<'a> CommandQueue<'a> {
         // source and destination do not overlap.
         if src.buffer.id == dst.buffer.id {
             assert!(
-                src.start > dst.end || dst.start > src.end,
+                src.start >= dst.end || dst.start >= src.end,
                 "if copying within the same buffer source {:?} and destination {:?} must not overlap",
                 src.start..src.end,
                 dst.start..dst.end,
