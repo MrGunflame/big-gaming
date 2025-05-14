@@ -1,11 +1,10 @@
 use std::alloc::Layout;
-use std::num::NonZeroUsize;
 
 use game_common::utils::vec_ext::VecExt;
 use game_tracing::trace_span;
 use slab::Slab;
 
-use super::{Allocator, Region};
+use super::{Allocator, GrowableAllocator, Region};
 
 #[derive(Clone, Debug)]
 pub struct BuddyAllocator {
@@ -48,6 +47,10 @@ impl BuddyAllocator {
 }
 
 impl Allocator for BuddyAllocator {
+    fn new(region: Region) -> Self {
+        Self::new(region)
+    }
+
     fn alloc(&mut self, layout: Layout) -> Option<Region> {
         let _span = trace_span!("BuddyAllocator::alloc").entered();
 
@@ -85,12 +88,12 @@ impl Allocator for BuddyAllocator {
                     // is small enough.
                     if (block.offset + block.size / 2) % align == 0 {
                         unsafe {
-                            self.stack.push_unchecked(right.get());
+                            self.stack.push_unchecked(right);
                         }
                     }
 
                     unsafe {
-                        self.stack.push_unchecked(left.get());
+                        self.stack.push_unchecked(left);
                     }
 
                     continue;
@@ -135,11 +138,7 @@ impl Allocator for BuddyAllocator {
 
             // Mark the block as split.
             let block = unsafe { self.blocks.get_unchecked_mut(index) };
-            block.state = State::Split {
-                // Safety: The children can never be the root node which has index 0.
-                left: unsafe { NonZeroUsize::new_unchecked(left) },
-                right: unsafe { NonZeroUsize::new_unchecked(right) },
-            };
+            block.state = State::Split { left, right };
 
             // Since the parent block that we just split is bigger
             // than the requested size, either of the split blocks
@@ -169,11 +168,7 @@ impl Allocator for BuddyAllocator {
             };
 
             let mid = block.offset + block.size / 2;
-            index = if region.offset < mid {
-                left.get()
-            } else {
-                right.get()
-            };
+            index = if region.offset < mid { left } else { right };
             block = unsafe { self.blocks.get_unchecked_mut(index) };
         }
 
@@ -193,18 +188,18 @@ impl Allocator for BuddyAllocator {
                 _ => unsafe { core::hint::unreachable_unchecked() },
             };
 
-            let other = if index == left.get() { right } else { left };
-            debug_assert_ne!(index, other.get());
+            let other = if index == left { right } else { left };
+            debug_assert_ne!(index, other);
 
             // If our buddy is not free we cannot merge any further.
-            if unsafe { !self.blocks.get_unchecked(other.get()).state.is_free() } {
+            if unsafe { !self.blocks.get_unchecked(other).state.is_free() } {
                 break;
             }
 
             // Merge left and right back into parent.
             unsafe {
-                self.blocks.remove_unchecked(left.get());
-                self.blocks.remove_unchecked(right.get());
+                self.blocks.remove_unchecked(left);
+                self.blocks.remove_unchecked(right);
             }
 
             let parent = unsafe { self.blocks.get_unchecked_mut(parent_index) };
@@ -212,6 +207,58 @@ impl Allocator for BuddyAllocator {
 
             index = parent_index;
             block = unsafe { self.blocks.get_unchecked(parent_index) };
+        }
+    }
+}
+
+impl GrowableAllocator for BuddyAllocator {
+    unsafe fn grow(&mut self, new_region: Region) {
+        let _span = trace_span!("BuddyAllocator::grow").entered();
+
+        assert_eq!(new_region.offset, 0);
+        assert!(new_region.size.is_power_of_two());
+        assert!(new_region.size > self.blocks[0].size);
+
+        // See comment in `BuddyAllocator::new` for why this is valid.
+        self.stack = Vec::with_capacity((new_region.size.ilog2() + 1) as usize);
+
+        // If the root block is free we can just replace it with
+        // a new bigger root block.
+        if self.blocks[self.root].state.is_free() {
+            self.blocks[self.root].size = new_region.size;
+            return;
+        }
+
+        let mut size = self.blocks[self.root].size;
+        while size != new_region.size {
+            // Create a new block that will become the new root.
+            // The block has twice the size of the previous root block.
+            // The block will start in a split state where the left child
+            // is the previous root.
+            // We must create a new empty right child.
+            let new_root = self.blocks.insert(Block {
+                size: size * 2,
+                offset: 0,
+                // State is updated once the `parent` fields are set on the children.
+                state: State::Free,
+                parent: None,
+            });
+
+            let right = self.blocks.insert(Block {
+                size,
+                offset: size,
+                state: State::Free,
+                parent: Some(new_root),
+            });
+
+            self.blocks[self.root].parent = Some(new_root);
+            self.blocks[new_root].state = State::Split {
+                left: self.root,
+                right,
+            };
+
+            self.root = new_root;
+            size *= 2;
         }
     }
 }
@@ -228,14 +275,7 @@ struct Block {
 enum State {
     Free,
     Used,
-    Split {
-        // The children of the block that was split.
-        // Note that the root block has the index 0 and
-        // no node can every have the root as a children.
-        // This means we can use the `NonZero` variant.
-        left: NonZeroUsize,
-        right: NonZeroUsize,
-    },
+    Split { left: usize, right: usize },
 }
 
 impl State {
@@ -248,7 +288,7 @@ impl State {
 mod tests {
     use std::alloc::Layout;
 
-    use crate::backend::allocator::{Allocator, Region};
+    use crate::backend::allocator::{Allocator, GrowableAllocator, Region};
 
     use super::BuddyAllocator;
 
@@ -360,6 +400,21 @@ mod tests {
 
             allocator
                 .alloc(Layout::from_size_align(128, 256).unwrap())
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn buddy_allocator_grow() {
+        let mut allocator = BuddyAllocator::new(Region::new(0, 1));
+
+        unsafe {
+            allocator.grow(Region::new(0, 4));
+        }
+
+        for _ in 0..4 {
+            allocator
+                .alloc(Layout::from_size_align(1, 1).unwrap())
                 .unwrap();
         }
     }

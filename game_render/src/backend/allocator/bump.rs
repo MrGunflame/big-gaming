@@ -8,19 +8,19 @@ pub struct BumpAllocator {
 }
 
 impl BumpAllocator {
-    pub fn new(region: Region) -> Self {
-        Self {
-            region,
-            next: region.offset,
-        }
-    }
-
     pub fn reset(&mut self) {
         self.next = self.region.offset;
     }
 }
 
 impl Allocator for BumpAllocator {
+    fn new(region: Region) -> Self {
+        Self {
+            region,
+            next: region.offset,
+        }
+    }
+
     fn alloc(&mut self, layout: Layout) -> Option<Region> {
         let offset = layout.align() - (self.next % layout.align());
 

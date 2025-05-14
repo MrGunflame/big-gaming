@@ -17,5 +17,7 @@ parking_lot = "0.12.3"
 bitflags = "2.9.0"
 tracing = "0.1.41"
 
+meshopt = "0.4.1"
+
 [lints]
 workspace = true

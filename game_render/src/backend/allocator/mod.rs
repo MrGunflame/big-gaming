@@ -158,6 +158,8 @@ pub enum AllocationError {
 }
 
 pub trait Allocator {
+    fn new(region: Region) -> Self;
+
     /// Allocates a new memory region using this allocator.
     ///
     /// The returned [`Region`] may be bigger than the size requested. Returns `None` if the
@@ -175,10 +177,21 @@ pub trait Allocator {
     unsafe fn dealloc(&mut self, region: Region);
 }
 
+/// An allocator that supports growth of its underlying memory without invalidating allocations.
+pub trait GrowableAllocator: Allocator {
+    /// Grows the allocator to the new size.
+    ///
+    /// # Safety
+    ///
+    /// - The offset of the new region must be same as the old region.
+    /// - The size of the new region must be greater than or equal to the size of the old region.
+    unsafe fn grow(&mut self, new_region: Region);
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Region {
-    offset: usize,
-    size: usize,
+    pub offset: usize,
+    pub size: usize,
 }
 
 impl Region {

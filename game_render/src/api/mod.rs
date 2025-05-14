@@ -751,11 +751,17 @@ impl<'a> CommandQueue<'a> {
             .collect();
         let descriptors: Vec<_> = layouts.iter().map(|layout| &layout.inner).collect();
 
-        let validate_shader_binding = |binding: &ShaderBinding| {
+        let validate_shader_binding = |binding: &ShaderBinding, stage: ShaderStage| {
             let get_descriptor_kind = |group: u32, binding: u32| -> Option<DescriptorType> {
                 let descriptor = descriptors.get(group as usize)?;
                 let binding = descriptor.bindings().get(binding as usize)?;
                 Some(binding.kind)
+            };
+
+            let get_descriptor_vis = |group: u32, binding: u32| -> Option<ShaderStages> {
+                let descriptor = descriptors.get(group as usize)?;
+                let binding = descriptor.bindings().get(binding as usize)?;
+                Some(binding.visibility)
             };
 
             assert!(
@@ -765,6 +771,15 @@ impl<'a> CommandQueue<'a> {
                 binding.kind,
                 binding.location(),
                 get_descriptor_kind(binding.group, binding.binding),
+            );
+
+            assert!(
+                get_descriptor_vis(binding.group, binding.binding)
+                    .is_some_and(|vis| vis.contains(stage.into())),
+                "binding at {:?} must be visible in stage {:?}, but was only visible in stages {:?}",
+                binding.location(),
+                stage,
+                get_descriptor_vis(binding.group, binding.binding),
             );
         };
 
@@ -779,7 +794,7 @@ impl<'a> CommandQueue<'a> {
                     });
 
                     for binding in instance.bindings() {
-                        validate_shader_binding(binding);
+                        validate_shader_binding(binding, ShaderStage::Vertex);
 
                         let mut access = AccessFlags::empty();
                         if binding.access.contains(ShaderAccess::READ) {
@@ -806,7 +821,7 @@ impl<'a> CommandQueue<'a> {
                     });
 
                     for binding in instance.bindings() {
-                        validate_shader_binding(binding);
+                        validate_shader_binding(binding, ShaderStage::Fragment);
 
                         let mut access = AccessFlags::empty();
                         if binding.access.contains(ShaderAccess::READ) {
@@ -814,6 +829,60 @@ impl<'a> CommandQueue<'a> {
                         }
                         if binding.access.contains(ShaderAccess::WRITE) {
                             access |= AccessFlags::FRAGMENT_SHADER_WRITE;
+                        }
+
+                        if !access.is_empty() {
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
+                        }
+                    }
+                }
+                PipelineStage::Task(stage) => {
+                    let instance = stage.shader.instantiate(&shader::Options {
+                        bindings: HashMap::new(),
+                        stage: ShaderStage::Task,
+                        entry_point: &stage.entry,
+                    });
+
+                    for binding in instance.bindings() {
+                        validate_shader_binding(binding, ShaderStage::Task);
+
+                        let mut access = AccessFlags::empty();
+                        if binding.access.contains(ShaderAccess::READ) {
+                            access |= AccessFlags::TASK_SHADER_READ;
+                        }
+                        if binding.access.contains(ShaderAccess::WRITE) {
+                            access |= AccessFlags::TASK_SHADER_WRITE;
+                        }
+
+                        if !access.is_empty() {
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
+                        }
+                    }
+                }
+                PipelineStage::Mesh(stage) => {
+                    let instance = stage.shader.instantiate(&shader::Options {
+                        bindings: HashMap::new(),
+                        stage: ShaderStage::Mesh,
+                        entry_point: &stage.entry,
+                    });
+
+                    for binding in instance.bindings() {
+                        validate_shader_binding(binding, ShaderStage::Mesh);
+
+                        let mut access = AccessFlags::empty();
+                        if binding.access.contains(ShaderAccess::READ) {
+                            access |= AccessFlags::MESH_SHADER_READ;
+                        }
+                        if binding.access.contains(ShaderAccess::WRITE) {
+                            access |= AccessFlags::MESH_SHADER_WRITE;
                         }
 
                         if !access.is_empty() {
@@ -1490,6 +1559,17 @@ impl<'a, 'b> RenderPass<'a, 'b> {
                 instances,
             })));
     }
+
+    pub fn draw_mesh_tasks(&mut self, x: u32, y: u32, z: u32) {
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
+
+        self.cmds
+            .push(DrawCmd::Draw(DrawCall::DrawMeshTasks(DrawMeshTasks {
+                x,
+                y,
+                z,
+            })));
+    }
 }
 
 impl<'a, 'b> Drop for RenderPass<'a, 'b> {
@@ -1549,6 +1629,7 @@ enum DrawCmd {
 enum DrawCall {
     Draw(Draw),
     DrawIndexed(DrawIndexed),
+    DrawMeshTasks(DrawMeshTasks),
 }
 
 #[derive(Clone, Debug)]
@@ -1562,4 +1643,11 @@ struct DrawIndexed {
     indices: Range<u32>,
     vertex_offset: i32,
     instances: Range<u32>,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct DrawMeshTasks {
+    x: u32,
+    y: u32,
+    z: u32,
 }

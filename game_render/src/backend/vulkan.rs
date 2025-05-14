@@ -789,6 +789,19 @@ impl Adapter {
             .descriptor_binding_variable_descriptor_count(true)
             .runtime_descriptor_array(true);
 
+        let mut _8bit_storage = vk::PhysicalDevice8BitStorageFeatures::default()
+            .storage_buffer8_bit_access(true)
+            .uniform_and_storage_buffer8_bit_access(true)
+            .storage_push_constant8(true);
+
+        let mut f16i8 = vk::PhysicalDeviceShaderFloat16Int8Features::default()
+            .shader_float16(true)
+            .shader_int8(true);
+
+        let mut mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
+            .task_shader(true)
+            .mesh_shader(true);
+
         // Allow passing deprecated `enabled_layer_names`.
         #[allow(deprecated)]
         let mut create_info = vk::DeviceCreateInfo::default()
@@ -801,10 +814,16 @@ impl Adapter {
             .enabled_features(&features)
             .push_next(&mut dynamic_rendering)
             .push_next(&mut synchronization2)
-            .push_next(&mut descriptor_indexing);
+            .push_next(&mut descriptor_indexing)
+            .push_next(&mut _8bit_storage)
+            .push_next(&mut f16i8);
 
         if supported_extensions.swapchain_maintenance1 {
             create_info = create_info.push_next(&mut swapchain_maintenance1);
+        }
+
+        if supported_extensions.mesh_shader {
+            create_info = create_info.push_next(&mut mesh_shader);
         }
 
         let device = unsafe {
@@ -842,7 +861,10 @@ impl Adapter {
 
     fn device_limits(&self) -> DeviceLimits {
         let mut maintenance3 = vk::PhysicalDeviceMaintenance3Properties::default();
-        let mut props = vk::PhysicalDeviceProperties2::default().push_next(&mut maintenance3);
+        let mut mesh_shader = vk::PhysicalDeviceMeshShaderPropertiesEXT::default();
+        let mut props = vk::PhysicalDeviceProperties2::default()
+            .push_next(&mut maintenance3)
+            .push_next(&mut mesh_shader);
 
         unsafe {
             self.instance
@@ -887,6 +909,17 @@ impl Adapter {
             max_color_attachments: props.properties.limits.max_color_attachments,
             max_per_set_descriptors: maintenance3.max_per_set_descriptors,
             max_memory_allocation_size: maintenance3.max_memory_allocation_size,
+            max_task_work_group_total_count: mesh_shader.max_task_work_group_total_count,
+            max_task_work_group_count: mesh_shader.max_task_work_group_count,
+            max_task_work_group_invocations: mesh_shader.max_task_work_group_invocations,
+            max_task_work_group_size: mesh_shader.max_task_work_group_size,
+            max_task_payload_size: mesh_shader.max_task_payload_size,
+            max_mesh_work_group_total_count: mesh_shader.max_mesh_work_group_total_count,
+            max_mesh_work_group_count: mesh_shader.max_mesh_work_group_count,
+            max_mesh_work_group_invocations: mesh_shader.max_mesh_work_group_invocations,
+            max_mesh_work_group_size: mesh_shader.max_mesh_work_group_size,
+            max_mesh_output_vertices: mesh_shader.max_mesh_output_vertices,
+            max_mesh_output_primitives: mesh_shader.max_mesh_output_primitives,
         }
     }
 }
@@ -1473,19 +1506,27 @@ impl Device {
         let mut color_attchment_formats: Vec<vk::Format> = Vec::new();
         let mut color_blend_attachments = Vec::new();
 
-        // We need exactly one `VK_SHADER_STAGE_VERTEX_BIT` or `VK_SHADER_STAGE_MESH_BIT_EXT` stage.
-        assert_eq!(
-            descriptor
-                .stages
-                .iter()
-                .filter(|stage| matches!(stage, PipelineStage::Vertex(_)))
-                .count(),
-            1,
-            "Exactly one VERTEX or MESH shader stage is needed",
-        );
-
         let shader_modules = ScratchBuffer::new(descriptor.stages.len());
         let stage_entry_pointers = ScratchBuffer::new(descriptor.stages.len());
+
+        {
+            const VALID_STAGE_CONFIGS: &[&[ShaderStage]] = &[
+                &[ShaderStage::Vertex, ShaderStage::Fragment],
+                &[ShaderStage::Task, ShaderStage::Mesh, ShaderStage::Fragment],
+                &[ShaderStage::Mesh, ShaderStage::Fragment],
+            ];
+
+            let requested_stages: Vec<_> = descriptor
+                .stages
+                .iter()
+                .map(|stage| stage.shader_stage())
+                .collect();
+
+            if !VALID_STAGE_CONFIGS.contains(&requested_stages.as_slice()) {
+                panic!("invalid pipeline stage composition: {:?}", requested_stages);
+            }
+        }
+
         for stage in descriptor.stages {
             let vk_stage = match stage {
                 PipelineStage::Vertex(stage) => {
@@ -1552,6 +1593,52 @@ impl Device {
 
                     vk::PipelineShaderStageCreateInfo::default()
                         .stage(vk::ShaderStageFlags::FRAGMENT)
+                        .module(module.shader)
+                        .name(&*name)
+                }
+                PipelineStage::Task(stage) => {
+                    assert!(
+                        self.device.extensions.mesh_shader,
+                        "Cannot use Task shader when EXT_MESH_SHADER is not enabled"
+                    );
+
+                    let spirv = create_pipeline_shader_module(
+                        &stage.shader,
+                        stage.entry,
+                        ShaderStage::Task,
+                        descriptor.descriptors,
+                    );
+
+                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
+
+                    validate_shader_bindings(stage.shader, descriptor.descriptors);
+
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::TASK_EXT)
+                        .module(module.shader)
+                        .name(&*name)
+                }
+                PipelineStage::Mesh(stage) => {
+                    assert!(
+                        self.device.extensions.mesh_shader,
+                        "Cannot use Mesh shader when EXT_MESH_SHADER is not enabled"
+                    );
+
+                    let spirv = create_pipeline_shader_module(
+                        &stage.shader,
+                        stage.entry,
+                        ShaderStage::Mesh,
+                        descriptor.descriptors,
+                    );
+
+                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
+
+                    validate_shader_bindings(stage.shader, descriptor.descriptors);
+
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::MESH_EXT)
                         .module(module.shader)
                         .name(&*name)
                 }
@@ -1670,6 +1757,7 @@ impl Device {
             device: self.device.clone(),
             pipeline: pipelines[0],
             pipeline_layout,
+            stages: descriptor.stages.iter().map(|v| v.shader_stage()).collect(),
         })
     }
 
@@ -2484,6 +2572,12 @@ impl From<ShaderStages> for vk::ShaderStageFlags {
         if value.contains(ShaderStages::FRAGMENT) {
             flags |= vk::ShaderStageFlags::FRAGMENT;
         }
+        if value.contains(ShaderStages::TASK) {
+            flags |= vk::ShaderStageFlags::TASK_EXT;
+        }
+        if value.contains(ShaderStages::MESH) {
+            flags |= vk::ShaderStageFlags::MESH_EXT;
+        }
 
         flags
     }
@@ -2528,6 +2622,7 @@ pub struct Pipeline {
     device: Arc<DeviceShared>,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
+    stages: Vec<ShaderStage>,
 }
 
 impl Drop for Pipeline {
@@ -3260,6 +3355,88 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
                 instances.start,
             );
         }
+    }
+
+    /// Dispatches Mesh/Task shader workgroups.
+    ///
+    /// Requires `VK_EXT_mesh_shader`.
+    ///
+    /// See <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawMeshTasksEXT.html>
+    pub fn draw_mesh_tasks(&mut self, x: u32, y: u32, z: u32) {
+        let pipeline = self.pipeline.as_ref().expect("Pipeline is not set");
+        let total = x.checked_mul(y).unwrap().checked_mul(z).unwrap();
+        match pipeline.stages[0] {
+            ShaderStage::Task => {
+                assert!(total <= self.encoder.device.limits.max_task_work_group_total_count);
+                assert!(x <= self.encoder.device.limits.max_task_work_group_count[0]);
+                assert!(y <= self.encoder.device.limits.max_task_work_group_count[0]);
+                assert!(z <= self.encoder.device.limits.max_task_work_group_count[0]);
+            }
+            ShaderStage::Mesh => {
+                assert!(total <= self.encoder.device.limits.max_mesh_work_group_total_count);
+                assert!(x <= self.encoder.device.limits.max_mesh_work_group_count[0]);
+                assert!(y <= self.encoder.device.limits.max_mesh_work_group_count[1]);
+                assert!(z <= self.encoder.device.limits.max_mesh_work_group_count[2]);
+            }
+            stage => {
+                panic!("Cannot use `RenderPass::draw_mesh_tasks` on {:?}", stage);
+            }
+        }
+
+        unsafe {
+            self.mesh_shader_device()
+                .cmd_draw_mesh_tasks(self.encoder.buffer, x, y, z);
+        }
+    }
+
+    /// See <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawMeshTasksIndirectEXT.html>
+    pub fn draw_mesh_tasks_indirect(
+        &mut self,
+        buffer: &Buffer,
+        offset: u64,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            self.mesh_shader_device().cmd_draw_mesh_tasks_indirect(
+                self.encoder.buffer,
+                buffer.buffer,
+                offset,
+                draw_count,
+                stride,
+            );
+        }
+    }
+
+    /// <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawMeshTasksIndirectCountEXT.html>
+    pub fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        buffer: &Buffer,
+        offset: u64,
+        count_buffer: &Buffer,
+        count_buffer_offset: u64,
+        max_draw_count: u32,
+        stride: u32,
+    ) {
+        unsafe {
+            self.mesh_shader_device()
+                .cmd_draw_mesh_tasks_indirect_count(
+                    self.encoder.buffer,
+                    buffer.buffer,
+                    offset,
+                    count_buffer.buffer,
+                    count_buffer_offset,
+                    max_draw_count,
+                    stride,
+                );
+        }
+    }
+
+    fn mesh_shader_device(&self) -> ash::ext::mesh_shader::Device {
+        ash::ext::mesh_shader::Device::new(
+            &self.encoder.device.instance.instance,
+            &self.encoder.device.device,
+        )
     }
 }
 
@@ -4152,6 +4329,17 @@ struct DeviceLimits {
     // VkPhysicalDeviceMaintenance3Properties
     max_per_set_descriptors: u32,
     max_memory_allocation_size: u64,
+    max_task_work_group_total_count: u32,
+    max_task_work_group_count: [u32; 3],
+    max_task_work_group_invocations: u32,
+    max_task_work_group_size: [u32; 3],
+    max_task_payload_size: u32,
+    max_mesh_work_group_total_count: u32,
+    max_mesh_work_group_count: [u32; 3],
+    max_mesh_work_group_invocations: u32,
+    max_mesh_work_group_size: [u32; 3],
+    max_mesh_output_vertices: u32,
+    max_mesh_output_primitives: u32,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -4164,6 +4352,8 @@ pub struct DeviceExtensions {
     pub synchronization2: bool,
     /// `VK_KHR_dynamic_rendering`
     pub dynamic_rendering: bool,
+    /// `VK_EXT_mesh_shader`
+    pub mesh_shader: bool,
 }
 
 impl DeviceExtensions {
@@ -4171,6 +4361,7 @@ impl DeviceExtensions {
     const SYNCHRONIZATION2: &CStr = ash::khr::synchronization2::NAME;
     const DYNAMIC_RENDERING: &CStr = ash::khr::dynamic_rendering::NAME;
     const SWAPCHAIN: &CStr = ash::khr::swapchain::NAME;
+    const MESH_SAHDER: &CStr = ash::ext::mesh_shader::NAME;
 
     fn names(&self) -> Vec<&'static CStr> {
         let mut names = Vec::new();
@@ -4180,6 +4371,7 @@ impl DeviceExtensions {
             (self.synchronization2, Self::SYNCHRONIZATION2),
             (self.dynamic_rendering, Self::DYNAMIC_RENDERING),
             (self.swapchain, Self::SWAPCHAIN),
+            (self.mesh_shader, Self::MESH_SAHDER),
         ] {
             if enabled {
                 names.push(name);
@@ -4204,6 +4396,7 @@ impl<'a> FromIterator<&'a CStr> for DeviceExtensions {
                 name if name == Self::SYNCHRONIZATION2 => extensions.synchronization2 = true,
                 name if name == Self::DYNAMIC_RENDERING => extensions.dynamic_rendering = true,
                 name if name == Self::SWAPCHAIN => extensions.swapchain = true,
+                name if name == Self::MESH_SAHDER => extensions.mesh_shader = true,
                 _ => (),
             }
         }
@@ -4253,6 +4446,10 @@ fn convert_access_flags(flags: AccessFlags) -> vk::AccessFlags2 {
             AccessFlags::VERTEX_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
             AccessFlags::FRAGMENT_SHADER_READ => vk::AccessFlags2::SHADER_READ,
             AccessFlags::FRAGMENT_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
+            AccessFlags::TASK_SHADER_READ => vk::AccessFlags2::SHADER_READ,
+            AccessFlags::TASK_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
+            AccessFlags::MESH_SHADER_READ => vk::AccessFlags2::SHADER_READ,
+            AccessFlags::MESH_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
             AccessFlags::PRESENT => continue,
             _ => unreachable!(),
         };
@@ -4286,6 +4483,10 @@ fn access_flags_to_image_layout(flags: AccessFlags) -> vk::ImageLayout {
             AccessFlags::VERTEX_SHADER_WRITE => shader_write = true,
             AccessFlags::FRAGMENT_SHADER_READ => shader_read = true,
             AccessFlags::FRAGMENT_SHADER_WRITE => shader_write = true,
+            AccessFlags::TASK_SHADER_READ => shader_read = true,
+            AccessFlags::TASK_SHADER_WRITE => shader_write = true,
+            AccessFlags::MESH_SHADER_READ => shader_read = true,
+            AccessFlags::MESH_SHADER_WRITE => shader_write = true,
             AccessFlags::PRESENT => present = true,
             AccessFlags::INDEX => {
                 unreachable!("{:?} has no image layout", AccessFlags::INDEX)
@@ -4347,10 +4548,16 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
     // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#synchronization-pipeline-stages-order
     // for ordered list of pipeline stages.
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-    enum GraphicsStage {
+    enum GraphicsPrimitiveStage {
         DrawIndirect,
+        // PRIMITIVE PIPELINE
         VertexInput,
+        // PRIMITIVE PIPELINE
         VertexShader,
+        // MESH PIPELINE
+        TaskShader,
+        // MESH PIPELINE
+        MeshShader,
         EarlyFragmentTests,
         FragmentShader,
         //LateFragmentTests,
@@ -4371,36 +4578,55 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
     // for which accesses map to which pipeline stages.
     let mut graphics = None;
     for (flag, stage) in [
-        (AccessFlags::INDIRECT, GraphicsStage::DrawIndirect),
-        (AccessFlags::INDEX, GraphicsStage::VertexInput),
-        (AccessFlags::VERTEX_SHADER_READ, GraphicsStage::VertexShader),
+        (AccessFlags::INDIRECT, GraphicsPrimitiveStage::DrawIndirect),
+        (AccessFlags::INDEX, GraphicsPrimitiveStage::VertexInput),
+        (
+            AccessFlags::VERTEX_SHADER_READ,
+            GraphicsPrimitiveStage::VertexShader,
+        ),
         (
             AccessFlags::VERTEX_SHADER_WRITE,
-            GraphicsStage::VertexShader,
+            GraphicsPrimitiveStage::VertexShader,
         ),
         (
             AccessFlags::FRAGMENT_SHADER_READ,
-            GraphicsStage::FragmentShader,
+            GraphicsPrimitiveStage::FragmentShader,
         ),
         (
             AccessFlags::FRAGMENT_SHADER_WRITE,
-            GraphicsStage::FragmentShader,
+            GraphicsPrimitiveStage::FragmentShader,
         ),
         (
             AccessFlags::DEPTH_ATTACHMENT_READ,
-            GraphicsStage::EarlyFragmentTests,
+            GraphicsPrimitiveStage::EarlyFragmentTests,
         ),
         (
             AccessFlags::DEPTH_ATTACHMENT_WRITE,
-            GraphicsStage::EarlyFragmentTests,
+            GraphicsPrimitiveStage::EarlyFragmentTests,
         ),
         (
             AccessFlags::COLOR_ATTACHMENT_READ,
-            GraphicsStage::FragmentShader,
+            GraphicsPrimitiveStage::FragmentShader,
         ),
         (
             AccessFlags::COLOR_ATTACHMENT_WRITE,
-            GraphicsStage::ColorAttachmentOutput,
+            GraphicsPrimitiveStage::ColorAttachmentOutput,
+        ),
+        (
+            AccessFlags::TASK_SHADER_READ,
+            GraphicsPrimitiveStage::TaskShader,
+        ),
+        (
+            AccessFlags::TASK_SHADER_WRITE,
+            GraphicsPrimitiveStage::TaskShader,
+        ),
+        (
+            AccessFlags::MESH_SHADER_READ,
+            GraphicsPrimitiveStage::MeshShader,
+        ),
+        (
+            AccessFlags::MESH_SHADER_WRITE,
+            GraphicsPrimitiveStage::MeshShader,
         ),
     ] {
         if !flags.contains(flag) {
@@ -4421,13 +4647,17 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
     };
 
     let graphics = match graphics {
-        Some(GraphicsStage::DrawIndirect) => vk::PipelineStageFlags2::DRAW_INDIRECT,
-        Some(GraphicsStage::VertexInput) => vk::PipelineStageFlags2::VERTEX_INPUT,
-        Some(GraphicsStage::VertexShader) => vk::PipelineStageFlags2::VERTEX_SHADER,
-        Some(GraphicsStage::EarlyFragmentTests) => vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
-        Some(GraphicsStage::FragmentShader) => vk::PipelineStageFlags2::FRAGMENT_SHADER,
+        Some(GraphicsPrimitiveStage::DrawIndirect) => vk::PipelineStageFlags2::DRAW_INDIRECT,
+        Some(GraphicsPrimitiveStage::VertexInput) => vk::PipelineStageFlags2::VERTEX_INPUT,
+        Some(GraphicsPrimitiveStage::VertexShader) => vk::PipelineStageFlags2::VERTEX_SHADER,
+        Some(GraphicsPrimitiveStage::TaskShader) => vk::PipelineStageFlags2::TASK_SHADER_EXT,
+        Some(GraphicsPrimitiveStage::MeshShader) => vk::PipelineStageFlags2::MESH_SHADER_EXT,
+        Some(GraphicsPrimitiveStage::EarlyFragmentTests) => {
+            vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
+        }
+        Some(GraphicsPrimitiveStage::FragmentShader) => vk::PipelineStageFlags2::FRAGMENT_SHADER,
         //Some(GraphicsStage::LateFragmentTests) => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
-        Some(GraphicsStage::ColorAttachmentOutput) => {
+        Some(GraphicsPrimitiveStage::ColorAttachmentOutput) => {
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
         }
         None => vk::PipelineStageFlags2::empty(),

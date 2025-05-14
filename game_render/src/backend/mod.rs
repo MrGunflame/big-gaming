@@ -261,6 +261,19 @@ pub enum Face {
 pub enum PipelineStage<'a> {
     Vertex(VertexStage<'a>),
     Fragment(FragmentStage<'a>),
+    Task(TaskStage<'a>),
+    Mesh(MeshStage<'a>),
+}
+
+impl PipelineStage<'_> {
+    fn shader_stage(&self) -> ShaderStage {
+        match self {
+            Self::Vertex(_) => ShaderStage::Vertex,
+            Self::Fragment(_) => ShaderStage::Fragment,
+            Self::Task(_) => ShaderStage::Task,
+            Self::Mesh(_) => ShaderStage::Mesh,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -274,6 +287,18 @@ pub struct FragmentStage<'a> {
     pub shader: &'a Shader,
     pub entry: &'static str,
     pub targets: &'a [ColorTargetState],
+}
+
+#[derive(Debug)]
+pub struct TaskStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
+}
+
+#[derive(Debug)]
+pub struct MeshStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
 }
 
 #[derive(Clone, Debug)]
@@ -395,6 +420,25 @@ pub struct DescriptorBinding {
 pub enum ShaderStage {
     Vertex,
     Fragment,
+    Task,
+    Mesh,
+}
+
+impl ShaderStage {
+    pub const fn stages(self) -> ShaderStages {
+        match self {
+            Self::Vertex => ShaderStages::VERTEX,
+            Self::Fragment => ShaderStages::FRAGMENT,
+            Self::Task => ShaderStages::TASK,
+            Self::Mesh => ShaderStages::MESH,
+        }
+    }
+}
+
+impl From<ShaderStage> for ShaderStages {
+    fn from(value: ShaderStage) -> Self {
+        value.stages()
+    }
 }
 
 bitflags! {
@@ -402,6 +446,8 @@ bitflags! {
     pub struct ShaderStages: u32 {
         const VERTEX = 1 << 0;
         const FRAGMENT = 1 << 1;
+        const TASK = 1 << 2;
+        const MESH = 1 << 3;
     }
 }
 
@@ -543,21 +589,21 @@ pub struct TextureBarrier<'a> {
 bitflags! {
     #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
     pub struct AccessFlags: u32 {
-        /// Resource can be used as a destination for transfer operations.
-        const TRANSFER_WRITE = 1 << 0;
-        const COLOR_ATTACHMENT_READ = 1 << 3;
-        /// Resource can be bound as a writable color attachment.
-        const COLOR_ATTACHMENT_WRITE = 1 << 2;
-        /// Resource can be used to present to the swapchain.
-        const PRESENT = 1 << 13;
-        /// Resources can be bound as a read-only index buffer.
-        const INDEX = 1 << 4;
-        /// Resource can be used as the source of an indirect command.
-        const INDIRECT = 1 << 5;
-        const DEPTH_ATTACHMENT_WRITE = 1 << 6;
-        const DEPTH_ATTACHMENT_READ = 1 << 7;
         /// Resource can be used as a source for transfer operations.
-        const TRANSFER_READ = 1 << 8;
+        const TRANSFER_READ = 1 << 0;
+        /// Resource can be used as a destination for transfer operations.
+        const TRANSFER_WRITE = 1 << 1;
+        const COLOR_ATTACHMENT_READ = 1 << 2;
+        /// Resource can be bound as a writable color attachment.
+        const COLOR_ATTACHMENT_WRITE = 1 << 3;
+        /// Resource can be used to present to the swapchain.
+        const PRESENT = 1 << 4;
+        /// Resources can be bound as a read-only index buffer.
+        const INDEX = 1 << 5;
+        /// Resource can be used as the source of an indirect command.
+        const INDIRECT = 1 << 6;
+        const DEPTH_ATTACHMENT_WRITE = 1 << 7;
+        const DEPTH_ATTACHMENT_READ = 1 << 8;
         /// Resource can be bound and accessed readable in a vertex shader.
         const VERTEX_SHADER_READ = 1 << 9;
         /// Resource can be bound and accessed writable in a vertex shader.
@@ -566,6 +612,14 @@ bitflags! {
         const FRAGMENT_SHADER_READ = 1 << 11;
         /// Resource can be bound and accessed writable in a fragment shader.
         const FRAGMENT_SHADER_WRITE = 1 << 12;
+        /// Resource can be bound and accessed reable in task shader.
+        const TASK_SHADER_READ = 1 << 13;
+        /// Resource can be bound and accessed writable in a task shader.
+        const TASK_SHADER_WRITE = 1 << 14;
+        /// Resource can be read from in a mesh shader.
+        const MESH_SHADER_READ = 1 << 15;
+        /// Resource can be written to in a mesh shader.
+        const MESH_SHADER_WRITE = 1 << 16;
     }
 }
 
@@ -592,7 +646,11 @@ impl AccessFlags {
             | AccessFlags::VERTEX_SHADER_READ
             | AccessFlags::VERTEX_SHADER_WRITE
             | AccessFlags::FRAGMENT_SHADER_READ
-            | AccessFlags::FRAGMENT_SHADER_WRITE;
+            | AccessFlags::FRAGMENT_SHADER_WRITE
+            | AccessFlags::TASK_SHADER_READ
+            | AccessFlags::TASK_SHADER_WRITE
+            | AccessFlags::MESH_SHADER_READ
+            | AccessFlags::MESH_SHADER_WRITE;
         let compute_flags = AccessFlags::empty();
         let transfer_flags = AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
 
