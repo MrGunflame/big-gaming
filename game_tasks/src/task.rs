@@ -93,7 +93,7 @@ where
             ManuallyDrop::drop(&mut this.waker);
         }
 
-        match *this.header.state.get_mut() & (STATE_DONE | STATE_CLOSED) {
+        match this.header.state.load(Ordering::Acquire) & (STATE_DONE | STATE_CLOSED) {
             // The `DONE` flag indicates that future has completed and been dropped.
             // The output value has not been consumed.
             // We must drop the output value in this case.
@@ -126,9 +126,20 @@ where
         // Unset the `QUEUED` flag and set the `RUNNING` flag.
         // This must happen before we start polling the future.
         let mut state = header.state.load(Ordering::Acquire);
+
+        // Completed/Closed tasks will not get scheduled again,
+        // but it is possible for the task to get scheduled while
+        // it is still running and then get closed.
+        // In this case the task is still scheduled, but we must
+        // not poll the future again.
+        if state & (STATE_DONE | STATE_CLOSED) != 0 {
+            task_waker.wake();
+            return Poll::Ready(());
+        }
+
         loop {
-            debug_assert!(state & STATE_QUEUED != 0);
-            debug_assert!(state & STATE_RUNNING == 0);
+            debug_assert_ne!(state & STATE_QUEUED, 0);
+            debug_assert_eq!(state & STATE_RUNNING, 0);
             let new_state = state & !STATE_QUEUED | STATE_RUNNING;
 
             match header.state.compare_exchange_weak(
@@ -248,6 +259,11 @@ impl RawTaskPtr {
         }
     }
 
+    /// Increments the ref count.
+    ///
+    /// # Safety
+    ///
+    /// - Must not be called on a dangling `RawTaskPtr`.
     pub unsafe fn increment_ref_count(&self) {
         let header = unsafe { self.header().as_ref() };
 
@@ -260,6 +276,14 @@ impl RawTaskPtr {
 
     /// Decrements the ref count. If the last ref count is dropped the task deallocated and this
     /// `RawTaskPtr` becomes dangling.
+    ///
+    /// # Safety
+    ///
+    /// - This function must not be called on a dangling `RawTaskPtr` value. A `RawTaskPtr` becomes
+    ///   dangling when the last ref-count was removed with this function.
+    /// - Removing the last ref-count will cause the underlying [`RawTask`] to be dropped on the
+    ///   calling thread. As such [`RawTask`] must be safe to drop on this thread (`Send` and `Sync`
+    ///   must be guaranteed).
     pub unsafe fn decrement_ref_count(&self) {
         let header = unsafe { self.header().as_ref() };
 
@@ -290,7 +314,10 @@ impl RawTaskPtr {
     ///
     /// # Safety
     ///
-    /// The task must not be done or dropped yet.
+    /// - The `RawTaskPtr` must not be dangling.
+    /// - If the `RawTaskPtr` was moved across threads since creation, `T` and `F` of the
+    ///   underlying [`RawTask`] must be `Send`.
+    /// - `poll` must not be called from more than one thread at a time.
     #[inline]
     pub(crate) unsafe fn poll(&self, waker: *const Waker) -> Poll<()> {
         unsafe {
@@ -299,6 +326,11 @@ impl RawTaskPtr {
         }
     }
 
+    /// Schedules this task for execution.
+    ///
+    /// # Safety
+    ///
+    /// - Must not be called on a dangling `RawTaskPtr`.
     pub(crate) unsafe fn schedule(&self) {
         let header = unsafe { self.header().as_ref() };
 
@@ -312,6 +344,11 @@ impl RawTaskPtr {
 
         let mut state = header.state.load(Ordering::Acquire);
         loop {
+            // If a task is done or canceled we must not poll it again.
+            // We must not queue the task.
+            // If the task is already queued it is already in queue.
+            // We must not push it again, otherwise it would be possible
+            // for the same task the get polled on multiple threads simultaneously.
             if state & (STATE_QUEUED | STATE_DONE | STATE_CANCEL) != 0 {
                 return;
             }
@@ -336,10 +373,12 @@ impl RawTaskPtr {
     ///
     /// # Safety
     ///
-    /// This function must only be called once the future has been completed, dropped and the
-    /// output value has been written. This is the case when [`poll`] returns `Poll::Ready(())`.
-    ///
-    /// The function must also not be used more than once.
+    /// - This function must only be called once the future has been completed, dropped and the
+    ///   output value has been written. This is the case when [`poll`] returns `Poll::Ready(())`.
+    /// - The function must not be called more than once on the same `RawTaskPtr`.
+    /// - `T` must be the same type as the `T` value of the underlying [`RawTask`].
+    /// - `T` must be safe to read from the callers thread, i.e. if `RawTaskPtr` was moved across
+    ///   threads since creation, `T` must be `Send`.
     ///
     /// [`poll`]: Self::poll
     #[inline]
@@ -371,6 +410,13 @@ impl Drop for RawTaskPtr {
         }
     }
 }
+
+// `RawTaskPtr` itself can shared between threads safely.
+// Note that `RawTaskPtr` only gives access to the underlying
+// future/output value via `poll` or `drop`, which are unsafe
+// since we cannot guarantee that the underlying future/output
+// value is also threadsafe.
+unsafe impl Sync for RawTaskPtr {}
 
 pub struct Task<T> {
     /// Untyped task pointer.

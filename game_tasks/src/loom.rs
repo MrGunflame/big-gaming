@@ -13,5 +13,5 @@ pub mod sync {
         pub use loom::sync::atomic::{AtomicUsize, Ordering};
     }
 
-    pub use loom::sync::{Arc, Condvar, Mutex};
+    pub use loom::sync::{Condvar, Mutex};
 }
