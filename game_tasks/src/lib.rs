@@ -12,7 +12,7 @@ use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
-use std::thread::JoinHandle;
+use std::thread::{self, JoinHandle};
 
 use crossbeam::deque::{Injector, Steal};
 use park::Parker;
@@ -36,6 +36,15 @@ struct Inner {
     shutdown: AtomicBool,
 }
 
+impl Inner {
+    fn new() -> Self {
+        Self {
+            queue: InjectorQueue::new(),
+            shutdown: AtomicBool::new(false),
+        }
+    }
+}
+
 impl TaskPool {
     /// Creates a new `TaskPool` backed by the given number of threads.
     ///
@@ -45,10 +54,7 @@ impl TaskPool {
     pub fn new(threads: usize) -> Self {
         assert_ne!(threads, 0);
 
-        let inner = Arc::new(Inner {
-            queue: InjectorQueue::new(),
-            shutdown: AtomicBool::new(false),
-        });
+        let inner = Arc::new(Inner::new());
 
         let mut vec = Vec::new();
         for _ in 0..threads {
@@ -132,7 +138,7 @@ unsafe impl Send for Inner {}
 unsafe impl Sync for Inner {}
 
 fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
-    std::thread::spawn(move || loop {
+    thread::spawn(move || loop {
         if inner.shutdown.load(Ordering::Acquire) {
             return;
         }
