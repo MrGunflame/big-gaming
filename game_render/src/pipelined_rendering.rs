@@ -157,10 +157,10 @@ impl RenderThread {
         let surface = self.surfaces.get_mut(id).unwrap();
 
         // Wait until all queue submissions have completed.
-        for (fence, used) in &mut surface.submit_done {
-            if *used {
-                fence.wait(None).unwrap();
-                *used = false;
+        for frame in &mut surface.frames {
+            if frame.present_done_used {
+                frame.present_done.wait(None).unwrap();
+                frame.present_done_used = false;
             }
         }
 
@@ -173,10 +173,10 @@ impl RenderThread {
         // the best we can do.
         // See https://github.com/KhronosGroup/Vulkan-Docs/issues/1678
         if self.shared.device.extensions().swapchain_maintenance1 {
-            for (fence, used) in &mut surface.present_done {
-                if *used {
-                    fence.wait(None).unwrap();
-                    *used = false;
+            for frame in &mut surface.frames {
+                if frame.present_done_used {
+                    frame.present_done.wait(None).unwrap();
+                    frame.present_done_used = false;
                 }
             }
         } else {
@@ -198,45 +198,39 @@ impl RenderThread {
             self.schedule = render_passes;
         }
 
-        for (window, surface) in self.surfaces.iter_mut() {
-            let res = &mut surface.resources[surface.next_frame];
-            let swapchain_texture_slot = &mut surface.swapchain_textures[surface.next_frame];
-            let (submit_done, submit_done_used) = &mut surface.submit_done[surface.next_frame];
-            let (present_done, present_done_used) = &mut surface.present_done[surface.next_frame];
-            let image_avail = &mut surface.image_avail[surface.next_frame];
-            let render_done = &mut surface.render_done[surface.next_frame];
-            let pool = &mut surface.command_pools[surface.next_frame];
-            surface.next_frame = (surface.next_frame + 1) % surface.config.image_count as usize;
+        let mut image_avail = self.shared.device.create_semaphore().unwrap();
 
+        for (window, surface) in self.surfaces.iter_mut() {
             surface.limiter.block_until_ready();
 
-            // Wait until all commands are done in this "frame slot".
-            if *submit_done_used {
-                submit_done.wait(None).unwrap();
+            // Acquire the next swapchain image.
+            // Note that there are no guarantees about the index of the acquired image.
+            let mut output = surface
+                .swapchain
+                .acquire_next_image(&mut image_avail)
+                .unwrap();
+
+            let frame = &mut surface.frames[output.index() as usize];
+
+            if frame.submit_done_used {
+                frame.submit_done.wait(None).unwrap();
             }
 
             // Destroy all resources that were required for the commands.
-            scheduler.destroy(core::mem::take(res));
-            if let Some(texture) = swapchain_texture_slot.take() {
+            scheduler.destroy(core::mem::take(&mut frame.resources));
+            if let Some(texture) = frame.swapchain_texture.take() {
                 scheduler.queue().remove_imported_texture(texture);
             }
-            unsafe {
-                pool.reset().unwrap();
-            }
 
-            let mut output = surface.swapchain.acquire_next_image(image_avail).unwrap();
+            unsafe {
+                frame.command_pool.reset().unwrap();
+            }
 
             let mut queue = scheduler.queue();
 
-            let access = if *submit_done_used {
-                AccessFlags::PRESENT
-            } else {
-                AccessFlags::empty()
-            };
-
             let swapchain_texture = queue.import_texture(
                 unsafe { output.take_texture() },
-                access,
+                AccessFlags::empty(),
                 TextureUsage::RENDER_ATTACHMENT,
             );
 
@@ -266,18 +260,20 @@ impl RenderThread {
                 AccessFlags::PRESENT,
             );
 
-            let mut encoder = pool.create_encoder().unwrap();
-            *res = scheduler.execute(&mut encoder);
-            *swapchain_texture_slot = Some(swapchain_texture);
-            *submit_done_used = true;
+            let mut encoder = frame.command_pool.create_encoder().unwrap();
+            frame.resources = scheduler.execute(&mut encoder);
+            frame.swapchain_texture = Some(swapchain_texture);
+            frame.submit_done_used = true;
+
+            core::mem::swap(&mut frame.image_avail, &mut image_avail);
 
             self.queue
                 .submit(
                     core::iter::once(encoder.finish().unwrap()),
                     QueueSubmit {
-                        wait: core::slice::from_mut(image_avail),
-                        signal: core::slice::from_mut(render_done),
-                        signal_fence: submit_done,
+                        wait: core::slice::from_mut(&mut frame.image_avail),
+                        signal: core::slice::from_mut(&mut frame.render_done),
+                        signal_fence: &mut frame.submit_done,
                     },
                 )
                 .unwrap();
@@ -285,10 +281,11 @@ impl RenderThread {
             surface.window.pre_present_notify();
 
             if self.shared.device.extensions().swapchain_maintenance1 {
-                if *present_done_used {
-                    present_done.wait(None).unwrap();
+                if frame.present_done_used {
+                    frame.present_done.wait(None).unwrap();
                 }
-                *present_done_used = true;
+
+                frame.present_done_used = true;
             }
 
             // SAFETY:
@@ -299,8 +296,8 @@ impl RenderThread {
                     .present(
                         &mut self.queue,
                         QueuePresent {
-                            wait: render_done,
-                            signal: Some(present_done),
+                            wait: &mut frame.render_done,
+                            signal: Some(&mut frame.present_done),
                         },
                     )
                     .unwrap();

@@ -5,11 +5,12 @@ use glam::UVec2;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crate::api::executor::TemporaryResources;
+use crate::api::Texture;
 use crate::backend::vulkan::{
     CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
 };
 use crate::backend::{
-    ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
+    AccessFlags, ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
 };
 use crate::fps_limiter::FpsLimiter;
 use crate::FpsLimit;
@@ -94,20 +95,27 @@ pub(crate) struct SurfaceData {
     pub swapchain: Swapchain,
     pub config: SwapchainConfig,
     pub next_frame: usize,
-    pub image_avail: Vec<Semaphore>,
-    pub render_done: Vec<Semaphore>,
-    /// Fence that becomes ready once the submission is done.
-    pub submit_done: Vec<(Fence, bool)>,
-    /// Fence that becomes ready once the presentation is done.
-    pub present_done: Vec<(Fence, bool)>,
-    pub resources: Vec<TemporaryResources>,
-    pub swapchain_textures: Vec<Option<crate::api::Texture>>,
-    pub command_pools: Vec<CommandPool>,
+    pub frames: Vec<SurfaceFrameData>,
     pub limiter: FpsLimiter,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
     pub window: WindowState,
+}
+
+#[derive(Debug)]
+pub struct SurfaceFrameData {
+    pub image_avail: Semaphore,
+    pub render_done: Semaphore,
+    /// Fence that becomes ready once the submission is done.
+    pub submit_done: Fence,
+    pub submit_done_used: bool,
+    /// Fence that becomes ready once the presentation is done.
+    pub present_done: Fence,
+    pub present_done_used: bool,
+    pub command_pool: CommandPool,
+    pub resources: TemporaryResources,
+    pub swapchain_texture: Option<Texture>,
 }
 
 fn create_surface(
@@ -131,31 +139,27 @@ fn create_surface(
     let config = create_swapchain_config(&caps, size);
     let swapchain = surface.create_swapchain(device, config, &caps).unwrap();
 
+    let frames = (0..config.image_count)
+        .map(|_| SurfaceFrameData {
+            image_avail: device.create_semaphore().unwrap(),
+            render_done: device.create_semaphore().unwrap(),
+            submit_done: device.create_fence().unwrap(),
+            submit_done_used: false,
+            present_done: device.create_fence().unwrap(),
+            present_done_used: false,
+            command_pool: device.create_command_pool(queue.family()).unwrap(),
+            resources: TemporaryResources::default(),
+            swapchain_texture: None,
+        })
+        .collect();
+
     Ok(SurfaceData {
         swapchain,
         surface,
         config,
         window,
-        image_avail: (0..config.image_count)
-            .map(|_| device.create_semaphore().unwrap())
-            .collect(),
-        render_done: (0..config.image_count)
-            .map(|_| device.create_semaphore().unwrap())
-            .collect(),
-        submit_done: (0..config.image_count)
-            .map(|_| (device.create_fence().unwrap(), false))
-            .collect(),
-        present_done: (0..config.image_count)
-            .map(|_| (device.create_fence().unwrap(), false))
-            .collect(),
         next_frame: 0,
-        resources: (0..config.image_count)
-            .map(|_| TemporaryResources::default())
-            .collect(),
-        swapchain_textures: vec![(const { None }); config.image_count as usize],
-        command_pools: (0..config.image_count)
-            .map(|_| device.create_command_pool(queue.family()).unwrap())
-            .collect(),
+        frames,
         limiter: FpsLimiter::new(FpsLimit::UNLIMITED),
     })
 }
@@ -170,32 +174,25 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, siz
 
     if surface.config.image_count != config.image_count {
         surface.next_frame = 0;
-        let len = config.image_count as usize;
-        surface
-            .image_avail
-            .resize_with(len, || device.create_semaphore().unwrap());
-        surface
-            .render_done
-            .resize_with(len, || device.create_semaphore().unwrap());
-        surface
-            .submit_done
-            .resize_with(len, || (device.create_fence().unwrap(), false));
-        for (_, used) in &mut surface.submit_done {
-            *used = false;
+
+        for frame in &mut surface.frames {
+            frame.present_done_used = false;
+            frame.submit_done_used = false;
         }
 
         surface
-            .present_done
-            .resize_with(len, || (device.create_fence().unwrap(), false));
-        for (_, used) in &mut surface.present_done {
-            *used = false;
-        }
-
-        surface.resources.resize_with(len, Default::default);
-        surface.swapchain_textures.resize_with(len, || None);
-        surface
-            .command_pools
-            .resize_with(len, || device.create_command_pool(queue.family()).unwrap());
+            .frames
+            .resize_with(config.image_count as usize, || SurfaceFrameData {
+                image_avail: device.create_semaphore().unwrap(),
+                render_done: device.create_semaphore().unwrap(),
+                submit_done: device.create_fence().unwrap(),
+                submit_done_used: false,
+                present_done: device.create_fence().unwrap(),
+                present_done_used: false,
+                command_pool: device.create_command_pool(queue.family()).unwrap(),
+                resources: TemporaryResources::default(),
+                swapchain_texture: None,
+            });
     }
 
     unsafe {
