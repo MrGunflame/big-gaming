@@ -270,7 +270,7 @@ impl ForwardPass {
             }],
             depth_stencil_attachment: Some(&DepthStencilAttachment {
                 texture: depth_stencil,
-                load_op: LoadOp::Clear(1.0),
+                load_op: LoadOp::Clear(0.0),
                 store_op: StoreOp::Store,
             }),
         });
@@ -386,7 +386,7 @@ impl PipelineBuilder for BuildForwardPipeline {
             depth_stencil_state: Some(DepthStencilState {
                 format: DEPTH_FORMAT,
                 depth_write_enabled: true,
-                depth_compare_op: CompareOp::Less,
+                depth_compare_op: CompareOp::Greater,
             }),
             push_constant_ranges: &[PushConstantRange {
                 range: 0..128,

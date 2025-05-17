@@ -8,6 +8,16 @@ use glam::{Mat4, UVec2, Vec2, Vec3};
 
 use crate::entities::SceneHandle;
 
+/// Matrix to reverse Z for improved depth testing.
+// https://developer.nvidia.com/content/depth-precision-visualized
+// https://tomhultonharrop.com/mathematics/graphics/2023/08/06/reverse-z.html
+const REVERSE_Z: Mat4 = Mat4::from_cols_array_2d(&[
+    [1.0, 0.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0, 0.0],
+    [0.0, 0.0, -1.0, 0.0],
+    [0.0, 0.0, 1.0, 1.0],
+]);
+
 #[derive(Clone, Debug)]
 pub struct Camera {
     pub transform: Transform,
@@ -96,7 +106,7 @@ impl CameraUniform {
                 transform.translation.z,
                 0.0,
             ],
-            view_proj: (proj * view).to_cols_array_2d(),
+            view_proj: (REVERSE_Z * proj * view).to_cols_array_2d(),
         }
     }
 }

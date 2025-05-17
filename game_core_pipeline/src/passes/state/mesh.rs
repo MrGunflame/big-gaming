@@ -7,6 +7,7 @@ use game_render::buffer::GpuBuffer;
 use game_render::buffer::slab::{CompactSlabBuffer, SlabIndex};
 use game_render::buffer::suballocated::SubAllocatedGrowableBuffer;
 use game_render::mesh::Mesh;
+use game_tracing::trace_span;
 use glam::{Mat3, Mat4, Vec4};
 use meshopt::VertexDataAdapter;
 
@@ -42,6 +43,8 @@ impl MeshState {
     }
 
     pub fn create_mesh(&mut self, queue: &mut CommandQueue<'_>, mesh: &Mesh) -> MeshStrategyMeshId {
+        let _span = trace_span!("MeshState::create_mesh").entered();
+
         let indices = mesh.indicies().unwrap().into_u32();
         let vertices = VertexDataAdapter::new(
             bytemuck::must_cast_slice(mesh.positions()),
