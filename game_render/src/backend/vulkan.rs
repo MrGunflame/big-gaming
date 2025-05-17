@@ -21,18 +21,20 @@ use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
-use crate::backend::{mip_level_size_2d, DescriptorType, SurfaceFormat, TextureLayout};
+use crate::backend::{
+    mip_level_size_2d, DedicatedAllocation, DescriptorType, SurfaceFormat, TextureLayout,
+};
 use crate::shader::{self, BindingInfo, Shader};
 
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BlendFactor,
-    BlendOp, BufferUsage, BufferView, ColorSpace, CompareOp, CopyBuffer, DescriptorPoolDescriptor,
-    DescriptorSetDescriptor, Face, FilterMode, FrontFace, IndexFormat, LoadOp, MemoryHeap,
-    MemoryHeapFlags, MemoryRequirements, MemoryType, MemoryTypeFlags, PipelineBarriers,
-    PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology, QueueCapabilities,
-    QueueFamily, QueueFamilyId, QueuePresent, QueueSubmit, RenderPassDescriptor, SamplerDescriptor,
-    ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig, TextureDescriptor,
-    TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
+    BlendOp, BufferUsage, BufferView, ColorSpace, CompareOp, CopyBuffer, DedicatedResource,
+    DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode, FrontFace, IndexFormat,
+    LoadOp, MemoryHeap, MemoryHeapFlags, MemoryRequirements, MemoryType, MemoryTypeFlags,
+    PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology,
+    QueueCapabilities, QueueFamily, QueueFamilyId, QueuePresent, QueueSubmit, RenderPassDescriptor,
+    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig,
+    TextureDescriptor, TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
     WriteDescriptorResources,
 };
 
@@ -1051,6 +1053,7 @@ impl Device {
         &self,
         size: NonZeroU64,
         memory_type_index: u32,
+        dedicated_for: Option<DedicatedResource<'_>>,
     ) -> Result<DeviceMemory, Error> {
         let heap = self.device.memory_properties.types[memory_type_index as usize].heap;
 
@@ -1060,11 +1063,25 @@ impl Device {
                 .contains(MemoryTypeFlags::_VK_PROTECTED),
         );
 
-        let info = vk::MemoryAllocateInfo::default()
+        let mut dedicated_info = match dedicated_for {
+            Some(DedicatedResource::Buffer(buffer)) => {
+                vk::MemoryDedicatedAllocateInfo::default().buffer(buffer.buffer)
+            }
+            Some(DedicatedResource::Texture(texture)) => {
+                vk::MemoryDedicatedAllocateInfo::default().image(texture.image)
+            }
+            None => vk::MemoryDedicatedAllocateInfo::default(),
+        };
+
+        let mut info = vk::MemoryAllocateInfo::default()
             // - `allocationSize` must be greater than 0.
             .allocation_size(size.get())
             // - memoryTypeIndex must not indicate a memory type that reports `VK_MEMORY_PROPERTY_PROTECTED_BIT`.
             .memory_type_index(memory_type_index);
+
+        if dedicated_for.is_some() {
+            info = info.push_next(&mut dedicated_info);
+        }
 
         assert!(
             size.get() <= u64::from(self.device.memory_properties.heaps[heap as usize].size),
@@ -1129,31 +1146,50 @@ impl Device {
         // - `buffer` must have been created from the same `device`.
         assert!(self.device.same(&buffer.device));
 
-        let req = unsafe { self.device.get_buffer_memory_requirements(buffer.buffer) };
+        let mut dedicated_req = vk::MemoryDedicatedRequirements::default();
+        let mut req = vk::MemoryRequirements2::default().push_next(&mut dedicated_req);
+        let info = vk::BufferMemoryRequirementsInfo2::default().buffer(buffer.buffer);
+
+        unsafe {
+            self.device.get_buffer_memory_requirements2(&info, &mut req);
+        }
+
+        // Since buffer with size 0 are forbidden, the size/align
+        // of any buffer is not 0.
+        debug_assert!(req.memory_requirements.size > 0);
+        debug_assert!(req.memory_requirements.alignment > 0);
+
+        // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#resources-association
+        // - The `alignment` member is a power of two.
+        debug_assert!(req.memory_requirements.alignment.is_power_of_two());
+
+        let size = unsafe { NonZeroU64::new_unchecked(req.memory_requirements.size) };
+        let align = unsafe { NonZeroU64::new_unchecked(req.memory_requirements.alignment) };
 
         // Bit `i` is set iff the memory type at index `i` is
         // supported for this buffer.
         let mut memory_types = Vec::new();
-        let mut bits = req.memory_type_bits;
+        let mut bits = req.memory_requirements.memory_type_bits;
         while bits != 0 {
             let index = bits.trailing_zeros();
             memory_types.push(index);
             bits &= !(1 << index);
         }
 
-        // Since buffer with size 0 are forbidden, the size/align
-        // of any buffer is not 0.
-        debug_assert!(req.size > 0);
-        debug_assert!(req.alignment > 0);
-
-        // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#resources-association
-        // - The `alignment` member is a power of two.
-        debug_assert!(req.alignment.is_power_of_two());
+        let dedicated = match (
+            dedicated_req.requires_dedicated_allocation,
+            dedicated_req.prefers_dedicated_allocation,
+        ) {
+            (vk::TRUE, _) => DedicatedAllocation::Required,
+            (_, vk::TRUE) => DedicatedAllocation::Preferred,
+            _ => DedicatedAllocation::None,
+        };
 
         MemoryRequirements {
-            size: unsafe { NonZeroU64::new_unchecked(req.size) },
-            align: unsafe { NonZeroU64::new_unchecked(req.alignment) },
+            size,
+            align,
             memory_types,
+            dedicated,
         }
     }
 
@@ -1161,24 +1197,30 @@ impl Device {
     pub fn image_memory_requirements(&self, texture: &Texture) -> MemoryRequirements {
         assert!(self.device.same(&texture.device));
 
-        let req = unsafe { self.device.get_image_memory_requirements(texture.image) };
+        let mut dedicated_req = vk::MemoryDedicatedRequirements::default();
+        let mut req = vk::MemoryRequirements2::default().push_next(&mut dedicated_req);
+        let info = vk::ImageMemoryRequirementsInfo2::default().image(texture.image);
+
+        unsafe {
+            self.device.get_image_memory_requirements2(&info, &mut req);
+        }
 
         // Bit `i` is set iff the memory type at index `i` is
         // supported for this buffer.
         let mut memory_types = Vec::new();
-        let mut bits = req.memory_type_bits;
+        let mut bits = req.memory_requirements.memory_type_bits;
         while bits != 0 {
             let index = bits.trailing_zeros();
             memory_types.push(index);
             bits &= !(1 << index);
         }
 
-        debug_assert!(req.size > 0);
-        debug_assert!(req.alignment > 0);
+        debug_assert!(req.memory_requirements.size > 0);
+        debug_assert!(req.memory_requirements.alignment > 0);
 
         // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#resources-association
         // - The `alignment` member is a power of two.
-        debug_assert!(req.alignment.is_power_of_two());
+        debug_assert!(req.memory_requirements.alignment.is_power_of_two());
 
         // To handle `bufferImageGranularity` we just overalign all images
         // to `bufferImageGranularity`. This means the image will always
@@ -1188,17 +1230,28 @@ impl Device {
         // This is usually not a problem, since images already have a big
         // alignment and size and `bufferImageGranularity` is usually relatively small.
         let buffer_image_granularity = self.device.limits.buffer_image_granularity;
-        let align = u64::max(req.alignment, buffer_image_granularity);
+        let align = u64::max(req.memory_requirements.alignment, buffer_image_granularity);
         // size + (size % align) = (size + align - 1) & !(align - 1)
-        let size = (req.size + buffer_image_granularity - 1) & !(buffer_image_granularity - 1);
+        let size = (req.memory_requirements.size + buffer_image_granularity - 1)
+            & !(buffer_image_granularity - 1);
 
         debug_assert_eq!(align % self.device.limits.buffer_image_granularity, 0);
         debug_assert_eq!(size % self.device.limits.buffer_image_granularity, 0);
+
+        let dedicated = match (
+            dedicated_req.requires_dedicated_allocation,
+            dedicated_req.prefers_dedicated_allocation,
+        ) {
+            (vk::TRUE, _) => DedicatedAllocation::Required,
+            (_, vk::TRUE) => DedicatedAllocation::Preferred,
+            _ => DedicatedAllocation::None,
+        };
 
         MemoryRequirements {
             size: unsafe { NonZeroU64::new_unchecked(size) },
             align: unsafe { NonZeroU64::new_unchecked(align) },
             memory_types,
+            dedicated,
         }
     }
 
