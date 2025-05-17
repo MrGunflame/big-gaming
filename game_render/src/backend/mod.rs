@@ -5,13 +5,13 @@ pub mod vulkan;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
 
-use ash::vk;
+use ash::vk::{self, DecompressMemoryRegionNV};
 use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
 use glam::UVec2;
 use hashbrown::HashMap;
-use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, TextureView};
+use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, Texture, TextureView};
 
 use crate::shader::Shader;
 
@@ -491,6 +491,7 @@ pub struct MemoryRequirements {
     pub size: NonZeroU64,
     pub align: NonZeroU64,
     pub memory_types: Vec<u32>,
+    pub dedicated: DedicatedAllocation,
 }
 
 impl MemoryRequirements {
@@ -503,6 +504,30 @@ impl MemoryRequirements {
             align - (size % align)
         }
     }
+}
+
+/// Dedicated allocation requirements
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DedicatedAllocation {
+    /// No preference.
+    None,
+    /// The resource is preferred in a dedicated allocation.
+    Preferred,
+    /// The resource must be in a dedicated allocation.
+    Required,
+}
+
+impl DedicatedAllocation {
+    /// Returns `true` if the `DedicatedAllocation` is either `Preferred` or `Required`.
+    pub const fn is_preferred_or_required(self) -> bool {
+        matches!(self, Self::Preferred | Self::Required)
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum DedicatedResource<'a> {
+    Buffer(&'a Buffer),
+    Texture(&'a Texture),
 }
 
 // TODO: Naming

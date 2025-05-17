@@ -22,7 +22,8 @@ use crate::statistics::{AllocationKind, MemoryAlloc, MemoryBlock, Statistics};
 
 use super::vulkan::{self, Buffer, Device, DeviceMemory, DeviceMemorySlice, Texture};
 use super::{
-    AdapterMemoryProperties, BufferUsage, BufferView, MemoryRequirements, TextureDescriptor,
+    AdapterMemoryProperties, BufferUsage, BufferView, DedicatedResource, MemoryRequirements,
+    TextureDescriptor,
 };
 
 #[derive(Clone, Debug, Error)]
@@ -70,6 +71,7 @@ impl MemoryManager {
         &self,
         size: NonZeroU64,
         memory_type: u32,
+        dedicated_for: Option<DedicatedResource<'_>>,
     ) -> Result<MemoryAllocation, AllocError> {
         if size > self.inner.properties.max_allocation_size {
             return Err(AllocError::AllocationTooBig);
@@ -88,7 +90,11 @@ impl MemoryManager {
             return Err(AllocError::HeapFull);
         }
 
-        let memory = match self.inner.device.allocate_memory(size, memory_type) {
+        let memory = match self
+            .inner
+            .device
+            .allocate_memory(size, memory_type, dedicated_for)
+        {
             Ok(memory) => memory,
             Err(err) => {
                 // If the allocation fails it must not contribute to the
@@ -240,7 +246,7 @@ impl GeneralPurposeAllocator {
     ) -> BufferAlloc {
         let mut buffer = self.device.create_buffer(size, usage).unwrap();
         let req = self.device.buffer_memory_requirements(&buffer);
-        let memory = self.alloc(req.clone(), flags);
+        let memory = self.alloc(req.clone(), flags, Some(DedicatedResource::Buffer(&buffer)));
         unsafe {
             self.device
                 .bind_buffer_memory(&mut buffer, memory.memory())
@@ -280,7 +286,11 @@ impl GeneralPurposeAllocator {
     ) -> TextureAlloc {
         let mut texture = self.device.create_texture(descriptor).unwrap();
         let req = self.device.image_memory_requirements(&texture);
-        let memory = self.alloc(req.clone(), flags);
+        let memory = self.alloc(
+            req.clone(),
+            flags,
+            Some(DedicatedResource::Texture(&texture)),
+        );
         unsafe {
             self.device
                 .bind_texture_memory(&mut texture, memory.memory())
@@ -307,7 +317,13 @@ impl GeneralPurposeAllocator {
         }
     }
 
-    fn alloc(&self, mut req: MemoryRequirements, flags: UsageFlags) -> DeviceMemoryRegion {
+    /// `dedicated_for` is the resource in case a dedicated allocation is chosen.
+    fn alloc(
+        &self,
+        mut req: MemoryRequirements,
+        flags: UsageFlags,
+        dedicated_for: Option<DedicatedResource<'_>>,
+    ) -> DeviceMemoryRegion {
         let _span = trace_span!("GeneralPurposeAllocator::alloc").entered();
 
         let inner = &mut *self.inner.lock();
@@ -365,7 +381,13 @@ impl GeneralPurposeAllocator {
                 .entry(mem_typ)
                 .or_insert_with(|| Pool::new(mem_typ));
 
-            match pool.alloc(&self.manager, &self.statistics, &req, host_visible) {
+            match pool.alloc(
+                &self.manager,
+                &self.statistics,
+                &req,
+                host_visible,
+                dedicated_for,
+            ) {
                 Ok(allocation) => {
                     return DeviceMemoryRegion {
                         allocator: self.clone(),
@@ -443,14 +465,15 @@ impl Pool {
         statistics: &Statistics,
         req: &MemoryRequirements,
         host_visible: bool,
+        dedicated_for: Option<DedicatedResource<'_>>,
     ) -> Result<PoolAllocation, AllocError> {
         // If the allocation size exceeds the maximum size we will
         // attempt to do a dedicated allocation.
         // This may still fail if the allocation is greater than
         // the reported max allocation size of the device, but this is
         // handled by `MemoryManager::allocate`.
-        if req.size.get() > MAX_SIZE.get() {
-            let mut memory = manager.allocate(req.size, self.memory_type)?;
+        if req.dedicated.is_preferred_or_required() || req.size.get() > MAX_SIZE.get() {
+            let mut memory = manager.allocate(req.size, self.memory_type, dedicated_for)?;
             let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
                 size: req.size.get(),
                 allocs: HashMap::new(),
@@ -495,7 +518,7 @@ impl Pool {
             prev_power_of_two(manager.inner.properties.max_allocation_size.min(MAX_SIZE));
         self.next_block_size = block_size.saturating_mul(GROWTH_FACTOR).min(max_alloc_size);
 
-        let mut memory = manager.allocate(block_size, self.memory_type)?;
+        let mut memory = manager.allocate(block_size, self.memory_type, None)?;
         let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
             size: block_size.get(),
             allocs: HashMap::new(),
