@@ -2339,6 +2339,8 @@ impl Swapchain {
 
     /// Acquires a new texture.
     ///
+    /// Note that there are no guarantees in which order the images are aquired.
+    ///
     /// # Errors
     ///
     /// Note that this function will always return an [`Error`] if [`recreate`] was and returned
@@ -2368,6 +2370,10 @@ impl Swapchain {
                 )
                 .unwrap()
         };
+
+        // `pImageIndex` is a valid index within the swapchain images,
+        // as required by the spec.
+        debug_assert!(image_index < self.images.len() as u32);
 
         Ok(SwapchainTexture {
             texture: Some(Texture {
@@ -3497,6 +3503,7 @@ impl Drop for Semaphore {
     }
 }
 
+#[derive(Debug)]
 pub struct SwapchainTexture<'a> {
     pub texture: Option<Texture>,
     suboptimal: bool,
@@ -3513,6 +3520,14 @@ impl<'a> SwapchainTexture<'a> {
     pub unsafe fn take_texture(&mut self) -> Texture {
         assert!(!self.texture().destroy_on_drop);
         self.texture.take().unwrap()
+    }
+
+    /// Returns the index of the texture in the swapchain.
+    ///
+    /// The index returned is guaranteed to be valid, i.e. be less than the number of swapchain
+    /// images.
+    pub fn index(&self) -> u32 {
+        self.index
     }
 
     /// Returns `true` if the [`Swapchain`] used to acquire this texture is suboptimal, i.e. could
