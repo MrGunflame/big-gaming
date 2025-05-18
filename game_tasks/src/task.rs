@@ -50,12 +50,12 @@ pub const STATE_MASK: usize =
 
 /// The initial state of a [`RawTask`].
 ///
-/// In the initial state the task is `QUEUED` and one handle exists.
-const INITIAL_STATE: usize = STATE_QUEUED | REF_COUNT;
+/// In the initial state the task is `QUEUED` and two handles exists.
+const INITIAL_STATE: usize = STATE_QUEUED | (REF_COUNT * 2);
 
 #[derive(Debug)]
 struct Vtable {
-    poll: unsafe fn(NonNull<()>, *const Waker) -> Poll<()>,
+    poll: unsafe fn(NonNull<()>, *const Waker),
     drop: unsafe fn(NonNull<()>),
     layout: Layout,
 }
@@ -114,7 +114,7 @@ where
         }
     }
 
-    unsafe fn poll(ptr: NonNull<()>, waker: *const Waker) -> Poll<()> {
+    unsafe fn poll(ptr: NonNull<()>, waker: *const Waker) {
         let task = unsafe { ptr.cast::<Self>().as_ref() };
 
         let header = &task.header;
@@ -134,7 +134,7 @@ where
         // not poll the future again.
         if state & (STATE_DONE | STATE_CLOSED) != 0 {
             task_waker.wake();
-            return Poll::Ready(());
+            return;
         }
 
         loop {
@@ -194,10 +194,8 @@ where
                 }
 
                 task_waker.wake();
-
-                Poll::Ready(())
             }
-            Poll::Pending => Poll::Pending,
+            Poll::Pending => (),
             Poll::Ready(val) => {
                 unsafe {
                     ManuallyDrop::drop(future);
@@ -225,8 +223,6 @@ where
                 }
 
                 task_waker.wake();
-
-                Poll::Ready(())
             }
         }
     }
@@ -248,7 +244,7 @@ impl RawTaskPtr {
         self.ptr
     }
 
-    pub(crate) fn waker(&self) -> *const AtomicWaker {
+    fn waker(&self) -> *const AtomicWaker {
         let offset = size_of::<Header>();
         unsafe { self.ptr.as_ptr().cast::<u8>().add(offset) as *const AtomicWaker }
     }
@@ -305,8 +301,18 @@ impl RawTaskPtr {
         // We now have exclusive access to the data in the `RawTask` and
         // can safely drop it and deallocate the memory.
         unsafe {
+            // Get the allocation parameters before we drop the task,
+            // which may invalidate the data in `self.ptr`.
+            let ptr = self.ptr.as_ptr() as *mut u8;
+            let layout = self.header().as_ref().vtable.layout;
+
+            // Call the `RawTask` drop impl.
             (header.vtable.drop)(self.ptr);
-            dealloc_task(self.ptr);
+
+            // Deallocate the `RawTask` memory.
+            // Safety: We are calling this with the same values obtained in
+            // `RawTask::new`.
+            alloc::alloc::dealloc(ptr, layout);
         }
     }
 
@@ -319,7 +325,7 @@ impl RawTaskPtr {
     ///   underlying [`RawTask`] must be `Send`.
     /// - `poll` must not be called from more than one thread at a time.
     #[inline]
-    pub(crate) unsafe fn poll(&self, waker: *const Waker) -> Poll<()> {
+    pub(crate) unsafe fn poll(&self, waker: &Waker) {
         unsafe {
             let poll_fn = self.header().as_ref().vtable.poll;
             poll_fn(self.ptr, waker)
@@ -425,7 +431,8 @@ pub struct Task<T> {
 }
 
 impl<T> Task<T> {
-    pub(crate) fn alloc_new<F>(future: F, executor: Arc<Inner>) -> RawTaskPtr
+    /// Creates a new task and returns a `Task` and a [`RawTaskPtr`] to schedule.
+    pub(crate) fn new<F>(future: F, executor: Arc<Inner>) -> (Self, RawTaskPtr)
     where
         F: Future<Output = T>,
     {
@@ -436,7 +443,7 @@ impl<T> Task<T> {
             alloc::alloc::handle_alloc_error(layout);
         }
 
-        let task = RawTask {
+        let mut task = RawTask {
             header: Header {
                 state: AtomicUsize::new(INITIAL_STATE),
                 vtable: &Vtable {
@@ -452,11 +459,22 @@ impl<T> Task<T> {
             }),
         };
 
+        // Our initial state contains a refcount of two.
+        // - One for the `Task` handle that we return.
+        // - One for the `RawTaskPtr` that we return for scheduling.
+        debug_assert_eq!(*task.header.state.get_mut() & REF_COUNT_MASK, REF_COUNT * 2);
+
         unsafe { ptr.write(task) };
 
-        RawTaskPtr {
-            ptr: NonNull::new(ptr as *mut ()).unwrap(),
-        }
+        (
+            Self {
+                ptr: unsafe { RawTaskPtr::from_ptr(ptr.cast_const().cast::<()>()) },
+                _marker: PhantomData,
+            },
+            RawTaskPtr {
+                ptr: NonNull::new(ptr.cast::<()>()).unwrap(),
+            },
+        )
     }
 
     fn poll_inner(&mut self, cx: &mut Context<'_>) -> Poll<Option<T>> {
@@ -518,40 +536,44 @@ impl<T> Task<T> {
     /// Detaches the `Task`, letting it continue in the background.
     #[inline]
     pub fn deatch(self) {
+        // Safety: Since we consume self by value this function can not be
+        // called again.
         unsafe {
-            self.detach_inner();
+            self.set_detached();
         }
     }
 
-    /// Detaches the task.
+    /// Detaches the task, letting it continue in the background.
     ///
     /// # Safety
     ///
-    /// The task must not be accessed after this call.
-    #[inline]
-    unsafe fn detach_inner(&self) {
-        // SAFETY: We own one of the reference counts and the caller guarantees
-        // that this function is only called once.
-        // unsafe {
-        //     self.ptr.decrement_ref_count();
-        // }
-    }
+    /// - Must only be called once for the lifetime of this `Task`.
+    unsafe fn set_detached(&self) {}
 
     /// Sets this `Task` as being cancelled.
     ///
-    /// This should only be called once in the lifetime of the `Task`.
-    fn set_cancelled(&self) {
+    /// # Safety
+    ///
+    /// - Must only be called once for the lifetime of this `Task`.
+    unsafe fn set_cancelled(&self) {
         let header = unsafe { self.ptr.header().as_ref() };
 
         let mut state = header.state.load(Ordering::Acquire);
         loop {
             debug_assert!(state & STATE_CLOSED == 0);
 
+            // The caller guarantees that this function is only called once,
+            // so that only this function has the possibility to set the
+            // `CANCEL` bit.
+            debug_assert_eq!(state & STATE_CANCEL, 0);
+
             // We can't cancel the task if it is already complete.
             if state & (STATE_DONE | STATE_CLOSED) != 0 {
                 break;
             }
 
+            // If the task is currently not queued or running reschedule it in order
+            // for the `Task` waker to be awoken before the future is dropped.
             let new_state = if state & (STATE_QUEUED | STATE_RUNNING) == 0 {
                 state | STATE_QUEUED | STATE_CANCEL
             } else {
@@ -565,6 +587,8 @@ impl<T> Task<T> {
                 Ordering::Acquire,
             ) {
                 Ok(_) => {
+                    // If the task is currently not queued or running we must schedule
+                    // it one final time in order for the `Task` waker to be awoken.
                     if state & (STATE_QUEUED | STATE_RUNNING) == 0 {
                         header.executor.queue.push(self.ptr.clone());
                     }
@@ -581,7 +605,12 @@ impl<T> Task<T> {
     ///
     /// If the returned future is dropped the task is detached and cancelled in the background.
     pub fn cancel(self) -> Cancel<T> {
-        self.set_cancelled();
+        // Safety: Since we consume self by value this function can
+        // not be called again.
+        unsafe {
+            self.set_cancelled();
+        }
+
         Cancel { task: self }
     }
 
@@ -592,7 +621,12 @@ impl<T> Task<T> {
     ///
     /// This function is a more efficient version of `self.cancel().now_or_never()`.
     pub fn cancel_now(mut self) -> Option<T> {
-        self.set_cancelled();
+        // Safety: Since we consume self by value this function can
+        // not be called again.
+        unsafe {
+            self.set_cancelled();
+        }
+
         let output = self.get_output();
         self.deatch();
         output
@@ -629,7 +663,7 @@ impl<T> FusedFuture for Task<T> {
 impl<T> Drop for Task<T> {
     fn drop(&mut self) {
         unsafe {
-            self.detach_inner();
+            self.set_detached();
         }
     }
 }
@@ -650,12 +684,6 @@ unsafe impl<T> Send for Task<T> where T: Send {}
 // `Task<T>` is always `Sync`, regardless of `T`.
 unsafe impl<T> Sync for Task<T> {}
 
-unsafe fn dealloc_task(ptr: NonNull<()>) {
-    let layout = unsafe { (*(ptr.as_ptr() as *const Header)).vtable.layout };
-
-    unsafe { alloc::alloc::dealloc(ptr.as_ptr() as *mut u8, layout) };
-}
-
 /// A union containing either the future or the output value of a [`RawTask`].
 union Stage<T, F> {
     /// The output value of the future.
@@ -675,5 +703,102 @@ impl<T> Future for Cancel<T> {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.task.poll_inner(cx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::task::{Poll, Waker};
+
+    use futures::future::poll_fn;
+
+    use crate::Inner;
+
+    use super::Task;
+
+    /// Returns an executor that can be used to allocated [`Task`]s with.
+    fn with_executor<F>(f: F)
+    where
+        F: FnOnce(Arc<Inner>),
+    {
+        let executor = Arc::new(Inner::new());
+        f(executor.clone());
+
+        // Drain the queue at the end dropping all tasks.
+        // This is important because the tasks have a reference the executor
+        // i.e. a reference cycle exists that we must break to prevent miri
+        // from complaining about memory leaks.
+        while let Some(_) = executor.queue.pop() {}
+    }
+
+    #[test]
+    fn task_done_drop_output() {
+        with_executor(|executor| {
+            let (task, ptr) = Task::new(poll_fn(|_| Poll::Ready(())), executor);
+
+            // The future is ready and `STATE_DONE` is set but the value is
+            // never consumed.
+            unsafe {
+                ptr.poll(Waker::noop());
+            }
+
+            drop(task);
+        });
+    }
+
+    #[test]
+    fn task_get_output() {
+        with_executor(|executor| {
+            let (mut task, ptr) = Task::new(poll_fn(|_| Poll::Ready(())), executor);
+
+            task.get_output();
+
+            assert!(!task.is_finished());
+            assert_eq!(task.get_output(), None);
+
+            unsafe {
+                ptr.poll(Waker::noop());
+            }
+
+            assert!(task.is_finished());
+            assert_eq!(task.get_output(), Some(()));
+        });
+    }
+
+    #[test]
+    fn task_detach() {
+        with_executor(|executor| {
+            let (task, ptr) = Task::new(async move {}, executor);
+            drop(ptr);
+
+            task.deatch();
+        });
+    }
+
+    #[test]
+    fn task_cancel_now_pending() {
+        with_executor(|executor| {
+            let (task, ptr) = Task::new(poll_fn(|_| Poll::<()>::Pending), executor);
+
+            unsafe {
+                ptr.poll(Waker::noop());
+            }
+
+            assert_eq!(task.cancel_now(), None);
+        });
+    }
+
+    #[test]
+    fn task_cancel_now_ready() {
+        with_executor(|executor| {
+            let (task, ptr) = Task::new(poll_fn(|_| Poll::Ready(())), executor);
+
+            unsafe {
+                ptr.poll(Waker::noop());
+            }
+
+            assert_eq!(task.cancel_now(), Some(()));
+        });
     }
 }
