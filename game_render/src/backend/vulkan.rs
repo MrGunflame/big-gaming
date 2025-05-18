@@ -2717,7 +2717,11 @@ impl CommandPool {
         let inheritance = vk::CommandBufferInheritanceInfo::default();
 
         let info = vk::CommandBufferBeginInfo::default()
-            .flags(vk::CommandBufferUsageFlags::empty())
+            // `ONE_TIME_SUBMIT` means we can only submit the final buffer
+            // once. This is always given since `Queue::submit` takes the
+            // `CommandBuffer` by value, guaranteeing that it will never be
+            // used again.
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT)
             .inheritance_info(&inheritance);
 
         let Some(buffer) = self.buffers.get(self.next_buffer).copied() else {
