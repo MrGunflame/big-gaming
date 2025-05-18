@@ -217,7 +217,7 @@ impl GrowableAllocator for BuddyAllocator {
 
         assert_eq!(new_region.offset, 0);
         assert!(new_region.size.is_power_of_two());
-        assert!(new_region.size > self.blocks[0].size);
+        assert!(new_region.size > self.blocks[self.root].size);
 
         // See comment in `BuddyAllocator::new` for why this is valid.
         self.stack = Vec::with_capacity((new_region.size.ilog2() + 1) as usize);
