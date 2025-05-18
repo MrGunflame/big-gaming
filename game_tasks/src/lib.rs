@@ -7,11 +7,10 @@ mod task;
 mod waker;
 
 use std::future::Future;
-use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::task::{Poll, RawWaker, RawWakerVTable, Waker};
+use std::task::{RawWaker, RawWakerVTable, Waker};
 use std::thread::{self, JoinHandle};
 
 use crossbeam::deque::{Injector, Steal};
@@ -90,17 +89,10 @@ impl TaskPool {
         F: Future<Output = T> + Send + 'a,
         T: Send + 'a,
     {
-        let task = Task::alloc_new(future, self.inner.clone());
-        // unsafe {
-        //     self.inner.tasks.lock().push_back(task.header());
-        // }
+        let (task, ptr) = Task::new(future, self.inner.clone());
 
-        self.inner.queue.push(task.clone());
-
-        Task {
-            ptr: task,
-            _marker: PhantomData,
-        }
+        self.inner.queue.push(ptr);
+        task
     }
 
     /// Spawns a future on the `TaskPool` and blocks until the future finishes execution.
@@ -149,12 +141,8 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
         };
 
         let waker = unsafe { Waker::from_raw(waker_create(task.clone())) };
-        match unsafe { task.poll(&waker) } {
-            Poll::Pending => {}
-            Poll::Ready(()) => {
-                // The `poll` function handles advancing the internal state
-                // when the future yields `Ready`.
-            }
+        unsafe {
+            task.poll(&waker);
         }
     })
 }
@@ -202,6 +190,7 @@ mod tests {
     use std::future::Future;
     use std::hint::black_box;
     use std::pin::Pin;
+    use std::sync::{Arc, Barrier};
     use std::task::{Context, Poll};
 
     use futures::future::poll_fn;
@@ -361,6 +350,41 @@ mod tests {
             cx.waker().wake_by_ref();
             Poll::Ready(())
         }));
+
+        let waker = noop_waker();
+        let mut cx = Context::from_waker(&waker);
+        while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+    }
+
+    #[test]
+    fn task_wake_twice_from_different_threads() {
+        let executor = TaskPool::new(2);
+        let mut task = executor.spawn({
+            let mut yieded = false;
+            poll_fn(move |cx| {
+                if yieded {
+                    return Poll::Ready(());
+                }
+
+                let waker1 = cx.waker().clone();
+                let waker2 = cx.waker().clone();
+
+                let barrier1 = Arc::new(Barrier::new(2));
+                let barrier2 = barrier1.clone();
+
+                std::thread::spawn(move || {
+                    barrier1.wait();
+                    waker1.wake();
+                });
+                std::thread::spawn(move || {
+                    barrier2.wait();
+                    waker2.wake();
+                });
+
+                yieded = true;
+                Poll::Pending
+            })
+        });
 
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);

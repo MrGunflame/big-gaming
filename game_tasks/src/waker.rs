@@ -50,8 +50,8 @@ mod tests {
 
     fn new_waker() -> Waker {
         let executor = TaskPool::new(1);
-        let task = Task::alloc_new(async {}, executor.inner.clone());
-        unsafe { Waker::from_raw(waker_create(task)) }
+        let (_, ptr) = Task::new(async {}, executor.inner.clone());
+        unsafe { Waker::from_raw(waker_create(ptr)) }
     }
 
     #[test]
