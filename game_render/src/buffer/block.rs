@@ -102,7 +102,7 @@ impl BlockBuffer {
         }
     }
 
-    pub fn buffer(&mut self, queue: &mut CommandQueue<'_>) -> &Buffer {
+    pub fn buffer(&mut self, queue: &CommandQueue<'_>) -> &Buffer {
         let buffer = self.buffer.get_or_insert_with(|| {
             let size = (self.block_size * self.buffer_size.max(1)) as u64;
 

@@ -58,7 +58,7 @@ where
             .compact(|src, dst| rekey(SlabIndex(src), SlabIndex(dst)));
     }
 
-    pub fn buffer(&mut self, queue: &mut CommandQueue<'_>) -> &Buffer {
+    pub fn buffer(&mut self, queue: &CommandQueue<'_>) -> &Buffer {
         self.buffer.buffer(queue)
     }
 }
@@ -107,7 +107,7 @@ where
         });
     }
 
-    pub fn buffer(&mut self, queue: &mut CommandQueue<'_>) -> &Buffer {
+    pub fn buffer(&mut self, queue: &CommandQueue<'_>) -> &Buffer {
         self.buffer.buffer(queue)
     }
 }

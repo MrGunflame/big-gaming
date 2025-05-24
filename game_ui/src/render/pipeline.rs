@@ -44,11 +44,11 @@ struct UiPipeline {
 }
 
 impl UiPipeline {
-    pub fn new(queue: &mut CommandQueue<'_>) -> Self {
+    pub fn new(queue: &CommandQueue<'_>) -> Self {
         Self::new_with_capacity(queue, DEFAULT_TEXTURE_CAPACITY)
     }
 
-    fn new_with_capacity(queue: &mut CommandQueue<'_>, capacity: NonZeroU32) -> Self {
+    fn new_with_capacity(queue: &CommandQueue<'_>, capacity: NonZeroU32) -> Self {
         let descriptor_set_layout =
             queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
                 bindings: &[
@@ -109,7 +109,7 @@ struct UiPipelineBuilder {
 impl PipelineBuilder for UiPipelineBuilder {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
@@ -161,7 +161,7 @@ pub struct UiPass {
 
 impl UiPass {
     pub(super) fn new(
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         elems: Arc<RwLock<HashMap<RenderTarget, SurfaceDrawCommands>>>,
     ) -> Self {
         let index_buffer = queue.create_buffer_init(&BufferInitDescriptor {
@@ -180,12 +180,7 @@ impl UiPass {
         }
     }
 
-    fn update_buffers(
-        &self,
-        target: RenderTarget,
-        queue: &mut CommandQueue<'_>,
-        viewport_size: UVec2,
-    ) {
+    fn update_buffers(&self, target: RenderTarget, queue: &CommandQueue<'_>, viewport_size: UVec2) {
         let mut vertex_buffer = self.vertex_buffer.lock();
         let mut texture_buffer = self.textures.lock();
         let mut instance_count = self.instance_count.lock();
@@ -338,7 +333,7 @@ const INDICES: &[u16] = &[0, 1, 2, 3, 0, 2];
 fn create_element(
     cmd: &DrawCommand,
     viewport_size: UVec2,
-    queue: &mut CommandQueue<'_>,
+    queue: &CommandQueue<'_>,
 ) -> GpuDrawCommandState {
     let _span = trace_span!("create_element").entered();
 

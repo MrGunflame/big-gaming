@@ -43,7 +43,7 @@ where
     /// be created using the [`PipelineBuilder`].
     pub fn get<'a, 'b>(
         &'a self,
-        queue: &'b mut CommandQueue<'_>,
+        queue: &'b CommandQueue<'_>,
         format: TextureFormat,
     ) -> PipelineRef<'a> {
         let mut pipelines = self.pipelines.read();
@@ -152,7 +152,7 @@ pub trait PipelineBuilder {
     /// Returns a new pipeline with the requested [`TextureFormat`].
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline;

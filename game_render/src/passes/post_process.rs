@@ -125,7 +125,7 @@ struct PostProcessPipelineBuilder {
 impl PipelineBuilder for PostProcessPipelineBuilder {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {

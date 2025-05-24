@@ -23,7 +23,7 @@ where
     T: NoUninit,
     A: GrowableAllocator,
 {
-    pub fn new(queue: &mut CommandQueue<'_>, usage: BufferUsage) -> Self {
+    pub fn new(queue: &CommandQueue<'_>, usage: BufferUsage) -> Self {
         let buffer = queue.create_buffer(&BufferDescriptor {
             size: 1,
             usage: usage | BufferUsage::TRANSFER_SRC | BufferUsage::TRANSFER_DST,
@@ -42,7 +42,7 @@ where
     /// Inserts a new array of values into the buffer.
     ///
     /// Returns an index to the first value. The values are densly packed in the buffer.
-    pub fn insert(&mut self, queue: &mut CommandQueue<'_>, value: &[T]) -> u64 {
+    pub fn insert(&mut self, queue: &CommandQueue<'_>, value: &[T]) -> u64 {
         let bytes = bytemuck::must_cast_slice(value);
 
         let layout = Layout::array::<T>(value.len()).unwrap();
@@ -94,7 +94,7 @@ where
         }
     }
 
-    fn grow(&mut self, queue: &mut CommandQueue<'_>, size: usize) {
+    fn grow(&mut self, queue: &CommandQueue<'_>, size: usize) {
         let old_size = self.buffer.size();
         let new_size =
             u64::max(old_size << 1, old_size + size.next_power_of_two() as u64).next_power_of_two();

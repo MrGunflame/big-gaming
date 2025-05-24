@@ -31,7 +31,7 @@ pub struct GizmoPipeline {
 }
 
 impl GizmoPipeline {
-    pub fn new(queue: &mut CommandQueue<'_>) -> Self {
+    pub fn new(queue: &CommandQueue<'_>) -> Self {
         let bind_group_layout =
             queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
                 bindings: &[
@@ -75,7 +75,7 @@ struct GizmoPipelineBuilder {
 impl PipelineBuilder for GizmoPipelineBuilder {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
@@ -113,7 +113,7 @@ pub struct GizmoPass {
 
 impl GizmoPass {
     pub(crate) fn new(
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         elements: Arc<RwLock<Vec<DrawCommand>>>,
         camera: Arc<Mutex<Option<Camera>>>,
     ) -> Self {

@@ -195,7 +195,7 @@ pub struct ForwardPipelineBuilder {
 impl PipelineBuilder for ForwardPipelineBuilder {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {

@@ -41,7 +41,7 @@ pub const FINAL_RENDER_PASS: NodeLabel = NodeLabel::new("FINAL_RENDER_PASS");
 
 const HDR_TEXTURE: SlotLabel = SlotLabel::new("HDR_TEXTURE");
 
-pub(crate) fn init(graph: &mut RenderGraph, queue: &mut CommandQueue<'_>, events: Receiver<Event>) {
+pub(crate) fn init(graph: &mut RenderGraph, queue: &CommandQueue<'_>, events: Receiver<Event>) {
     let state = Arc::new(Mutex::new(State::new(queue)));
 
     let update_pass = UpdatePass::new(queue, state.clone(), events);
@@ -98,7 +98,7 @@ struct State {
 }
 
 impl State {
-    fn new(queue: &mut CommandQueue<'_>) -> Self {
+    fn new(queue: &CommandQueue<'_>) -> Self {
         let mesh_descriptor_layout = queue.create_descriptor_set_layout(&DescriptorSetDescriptor {
             bindings: &[
                 // POSITIONS
@@ -195,7 +195,7 @@ struct DefaultTextures {
 }
 
 impl DefaultTextures {
-    fn new(queue: &mut CommandQueue<'_>, textures: &mut TextureSlab) -> Self {
+    fn new(queue: &CommandQueue<'_>, textures: &mut TextureSlab) -> Self {
         let [base_color, normal, metallic_roughness, specular_glossiness] = [
             // Base color: white
             (TextureFormat::Rgba8UnormSrgb, [255, 255, 255, 255]),
