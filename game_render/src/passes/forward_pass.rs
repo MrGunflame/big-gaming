@@ -80,7 +80,7 @@ impl Node for ForwardPass {
 
         for camera in state.cameras.values() {
             if camera.target == ctx.render_target {
-                self.update_depth_stencil(ctx.render_target, size, &mut ctx.queue);
+                self.update_depth_stencil(ctx.render_target, size, &ctx.queue);
 
                 let scene = state.scenes.get(&camera.scene).unwrap();
                 self.render_camera_target(&state, &scene, camera, ctx, size);
@@ -95,12 +95,7 @@ impl Node for ForwardPass {
 }
 
 impl ForwardPass {
-    fn update_depth_stencil(
-        &self,
-        target: RenderTarget,
-        size: UVec2,
-        queue: &mut CommandQueue<'_>,
-    ) {
+    fn update_depth_stencil(&self, target: RenderTarget, size: UVec2, queue: &CommandQueue<'_>) {
         let mut depth_stencils = self.depth_stencils.lock();
 
         if let Some(texture) = depth_stencils.get(&target) {
@@ -332,7 +327,7 @@ struct Scene {
 }
 
 impl Scene {
-    fn new(queue: &mut CommandQueue<'_>) -> Self {
+    fn new(queue: &CommandQueue<'_>) -> Self {
         let directional_lights = queue.create_buffer_init(&BufferInitDescriptor {
             contents: DynamicBuffer::<DirectionalLightUniform>::new().as_bytes(),
             usage: BufferUsage::STORAGE,
@@ -391,7 +386,7 @@ impl ForwardState {
         &mut self,
         resources: &Resources,
         events: &mut Vec<Event>,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         mesh_bind_group_layout: &DescriptorSetLayout,
         material_bind_group_layout: &DescriptorSetLayout,
         object_bind_group_layout: &DescriptorSetLayout,
@@ -659,7 +654,7 @@ impl ForwardState {
 }
 
 fn upload_mesh(
-    queue: &mut CommandQueue<'_>,
+    queue: &CommandQueue<'_>,
     mesh: &Mesh,
     bind_group_layout: &DescriptorSetLayout,
 ) -> (DescriptorSet, IndexBuffer) {
@@ -752,7 +747,7 @@ fn upload_mesh(
 }
 
 fn create_material(
-    queue: &mut CommandQueue<'_>,
+    queue: &CommandQueue<'_>,
     bind_group_layout: &DescriptorSetLayout,
     default_textures: &DefaultTextures,
     bound_textures: &mut HashMap<ImageId, Texture>,
@@ -842,7 +837,7 @@ fn create_material(
 }
 
 fn upload_material_texture(
-    queue: &mut CommandQueue<'_>,
+    queue: &CommandQueue<'_>,
     mipmap_generator: &MipMapGenerator,
     image: &Image,
 ) -> Texture {

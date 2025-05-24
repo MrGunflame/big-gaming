@@ -43,7 +43,7 @@ pub trait Node: Send + Sync + 'static {
 /// Context provided to render a [`Node`].
 pub struct RenderContext<'a, 'b> {
     pub render_target: RenderTarget,
-    pub queue: &'b mut CommandQueue<'a>,
+    pub queue: &'b CommandQueue<'a>,
     pub(crate) resource_permissions: &'a HashMap<SlotLabel, SlotFlags>,
     pub(crate) resources: &'b mut HashMap<SlotLabel, SlotValueInner<'a>>,
 }

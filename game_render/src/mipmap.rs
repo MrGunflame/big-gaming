@@ -26,7 +26,7 @@ pub struct MipMapGenerator {
 }
 
 impl MipMapGenerator {
-    pub fn new(queue: &mut CommandQueue<'_>) -> Self {
+    pub fn new(queue: &CommandQueue<'_>) -> Self {
         let layout = queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
             bindings: &[
                 DescriptorBinding {
@@ -66,7 +66,7 @@ impl MipMapGenerator {
         }
     }
 
-    pub fn generate_mipmaps(&self, queue: &mut CommandQueue<'_>, texture: &Texture) {
+    pub fn generate_mipmaps(&self, queue: &CommandQueue<'_>, texture: &Texture) {
         let _span = trace_span!("MipMapGenerator::generate_mipmaps").entered();
 
         let pipeline = self.pipelines.get(queue, texture.format());
@@ -123,7 +123,7 @@ struct BlitPipelineBuilder {
 impl PipelineBuilder for BlitPipelineBuilder {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {

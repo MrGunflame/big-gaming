@@ -39,7 +39,7 @@ pub(super) struct UpdatePass {
 
 impl UpdatePass {
     pub(super) fn new(
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         state: Arc<Mutex<State>>,
         events: Receiver<Event>,
     ) -> Self {
@@ -186,7 +186,7 @@ impl Node for UpdatePass {
 }
 
 fn create_image(
-    queue: &mut CommandQueue<'_>,
+    queue: &CommandQueue<'_>,
     textures: &mut TextureSlab,
     mipgen: &MipMapGenerator,
     image: &MipImage,

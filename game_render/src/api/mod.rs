@@ -22,6 +22,7 @@ use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
 use hashbrown::HashMap;
+use parking_lot::Mutex;
 use resources::{
     BufferId, BufferInner, DescriptorSetId, DescriptorSetInner, DescriptorSetLayoutId,
     DescriptorSetLayoutInner, PipelineId, PipelineInner, RefCount, Resources, SamplerId,
@@ -47,7 +48,9 @@ pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
 #[derive(Debug)]
 pub struct CommandExecutor {
     resources: Arc<Resources>,
-    cmds: CommandStream,
+    // FIXME: The Mutex here is relatively low overhead, but
+    // could be replaced by a concurrent queue with extra logic or similar.
+    cmds: Mutex<CommandStream>,
     device: Device,
     adapter_props: AdapterProperties,
     allocator: Exclusive<Bump>,
@@ -76,14 +79,14 @@ impl CommandExecutor {
                 samplers: Slab::new(),
                 deletion_queue: SegQueue::new(),
             }),
-            cmds: CommandStream::new(),
+            cmds: Mutex::new(CommandStream::new()),
             device,
             adapter_props,
             allocator: Exclusive::new(Bump::new()),
         }
     }
 
-    pub fn queue(&mut self) -> CommandQueue<'_> {
+    pub fn queue(&self) -> CommandQueue<'_> {
         CommandQueue { executor: self }
     }
 
@@ -92,7 +95,7 @@ impl CommandExecutor {
 
         let allocator = self.allocator.get_mut();
 
-        let cmds = self.cmds.cmd_refs();
+        let cmds = self.cmds.get_mut().cmd_refs();
 
         let mut scheduler = Scheduler {
             resources: &*self.resources,
@@ -102,7 +105,7 @@ impl CommandExecutor {
         let steps = scheduler.schedule(&cmds);
         allocator.reset();
         let tmp = executor::execute(&mut self.resources, steps, encoder);
-        self.cmds.clear();
+        self.cmds.get_mut().clear();
 
         tmp
     }
@@ -198,7 +201,7 @@ enum ResourceId {
 /// A queue for encoding rendering commands.
 #[derive(Debug)]
 pub struct CommandQueue<'a> {
-    executor: &'a mut CommandExecutor,
+    executor: &'a CommandExecutor,
 }
 
 impl<'a> CommandQueue<'a> {
@@ -243,7 +246,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    pub fn create_buffer_init(&mut self, descriptor: &BufferInitDescriptor<'_>) -> Buffer {
+    pub fn create_buffer_init(&self, descriptor: &BufferInitDescriptor<'_>) -> Buffer {
         let buffer = self.create_buffer(&BufferDescriptor {
             size: descriptor.contents.len() as u64,
             usage: descriptor.usage | BufferUsage::TRANSFER_DST,
@@ -263,7 +266,7 @@ impl<'a> CommandQueue<'a> {
     ///
     /// [`TRANSFER_DST`]: BufferUsage::TRANSFER_DST
     #[track_caller]
-    pub fn write_buffer<Dst>(&mut self, buffer: Dst, data: &[u8])
+    pub fn write_buffer<Dst>(&self, buffer: Dst, data: &[u8])
     where
         Dst: IntoBufferSlice,
     {
@@ -271,7 +274,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    fn write_buffer_inner(&mut self, buffer: BufferSlice<'_>, data: &[u8]) {
+    fn write_buffer_inner(&self, buffer: BufferSlice<'_>, data: &[u8]) {
         assert!(
             buffer.buffer.usage.contains(BufferUsage::TRANSFER_DST),
             "Buffer cannot be written to: TRANSFER_DST not set",
@@ -292,7 +295,7 @@ impl<'a> CommandQueue<'a> {
             // the memcpy is complete.
             buffer.buffer.increment_ref_count();
 
-            self.executor.cmds.push(
+            self.executor.cmds.lock().push(
                 &self.executor.resources,
                 Command::WriteBuffer(WriteBuffer {
                     buffer: buffer.buffer.id,
@@ -316,7 +319,7 @@ impl<'a> CommandQueue<'a> {
             staging_buffer.increment_ref_count();
 
             // Write the data into the staging buffer.
-            self.executor.cmds.push(
+            self.executor.cmds.lock().push(
                 &self.executor.resources,
                 Command::WriteBuffer(WriteBuffer {
                     buffer: staging_buffer.id,
@@ -330,7 +333,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    pub fn create_texture(&mut self, descriptor: &TextureDescriptor) -> Texture {
+    pub fn create_texture(&self, descriptor: &TextureDescriptor) -> Texture {
         assert!(
             !descriptor.usage.is_empty(),
             "TextureUsage flags must not be empty",
@@ -429,7 +432,7 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    pub(crate) fn remove_imported_texture(&mut self, texture: Texture) {
+    pub(crate) fn remove_imported_texture(&self, texture: Texture) {
         debug_assert!(texture.manually_managed);
 
         let texture = self.executor.resources.textures.take(texture.id).unwrap();
@@ -439,12 +442,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    pub fn write_texture(
-        &mut self,
-        texture: TextureRegion<'_>,
-        data: &[u8],
-        layout: ImageDataLayout,
-    ) {
+    pub fn write_texture(&self, texture: TextureRegion<'_>, data: &[u8], layout: ImageDataLayout) {
         assert!(
             texture.texture.usage.contains(TextureUsage::TRANSFER_DST),
             "Texture cannot be written to: TRANSFER_DST usage not set",
@@ -479,7 +477,7 @@ impl<'a> CommandQueue<'a> {
     /// [`TRANSFER_SRC`]: BufferUsage::TRANSFER_SRC
     /// [`TRANSFER_DST`]: BufferUsage::TRANSFER_DST
     #[track_caller]
-    pub fn copy_buffer_to_buffer<Src, Dst>(&mut self, src: Src, dst: Dst)
+    pub fn copy_buffer_to_buffer<Src, Dst>(&self, src: Src, dst: Dst)
     where
         Src: IntoBufferSlice,
         Dst: IntoBufferSlice,
@@ -488,7 +486,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    fn copy_buffer_to_buffer_inner(&mut self, src: BufferSlice<'_>, dst: BufferSlice<'_>) {
+    fn copy_buffer_to_buffer_inner(&self, src: BufferSlice<'_>, dst: BufferSlice<'_>) {
         assert!(
             src.buffer.usage.contains(BufferUsage::TRANSFER_SRC),
             "Buffer cannot be read from: TRANSFER_SRC usage not set",
@@ -533,7 +531,7 @@ impl<'a> CommandQueue<'a> {
         src.buffer.increment_ref_count();
         dst.buffer.increment_ref_count();
 
-        self.executor.cmds.push(
+        self.executor.cmds.lock().push(
             &self.executor.resources,
             Command::CopyBufferToBuffer(CopyBufferToBuffer {
                 src: src.buffer.id,
@@ -546,7 +544,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub fn copy_buffer_to_texture(
-        &mut self,
+        &self,
         src: &Buffer,
         dst: TextureRegion<'_>,
         layout: ImageDataLayout,
@@ -571,7 +569,7 @@ impl<'a> CommandQueue<'a> {
         src.increment_ref_count();
         dst.texture.increment_ref_count();
 
-        self.executor.cmds.push(
+        self.executor.cmds.lock().push(
             &self.executor.resources,
             Command::CopyBufferToTexture(CopyBufferToTexture {
                 src: src.id,
@@ -583,7 +581,7 @@ impl<'a> CommandQueue<'a> {
         );
     }
 
-    pub fn copy_texture_to_texture(&mut self, src: TextureRegion<'_>, dst: TextureRegion<'_>) {
+    pub fn copy_texture_to_texture(&self, src: TextureRegion<'_>, dst: TextureRegion<'_>) {
         assert!(
             src.texture.usage.contains(TextureUsage::TRANSFER_SRC),
             "Texture cannot be read from: TRANSER_SRC not set"
@@ -599,7 +597,7 @@ impl<'a> CommandQueue<'a> {
         src.texture.increment_ref_count();
         dst.texture.increment_ref_count();
 
-        self.executor.cmds.push(
+        self.executor.cmds.lock().push(
             &self.executor.resources,
             Command::CopyTextureToTexture(CopyTextureToTexture {
                 src: src.texture.id,
@@ -611,10 +609,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    pub fn create_descriptor_set(
-        &mut self,
-        descriptor: &DescriptorSetDescriptor<'_>,
-    ) -> DescriptorSet {
+    pub fn create_descriptor_set(&self, descriptor: &DescriptorSetDescriptor<'_>) -> DescriptorSet {
         let mut buffers = Vec::new();
         let mut samplers = Vec::new();
         let mut textures = Vec::new();
@@ -712,7 +707,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     pub fn create_descriptor_set_layout(
-        &mut self,
+        &self,
         descriptor: &DescriptorSetLayoutDescriptor<'_>,
     ) -> DescriptorSetLayout {
         let inner = self
@@ -737,7 +732,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     #[track_caller]
-    pub fn create_pipeline(&mut self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
+    pub fn create_pipeline(&self, descriptor: &PipelineDescriptor<'_>) -> Pipeline {
         let layouts: Vec<_> = descriptor
             .descriptors
             .iter()
@@ -927,7 +922,7 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    pub fn create_sampler(&mut self, descriptor: &SamplerDescriptor) -> Sampler {
+    pub fn create_sampler(&self, descriptor: &SamplerDescriptor) -> Sampler {
         let inner = self.executor.device.create_sampler(descriptor).unwrap();
         let id = self
             .executor
@@ -945,7 +940,7 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    pub fn run_render_pass(&mut self, descriptor: &RenderPassDescriptor<'_>) -> RenderPass<'a, '_> {
+    pub fn run_render_pass(&self, descriptor: &RenderPassDescriptor<'_>) -> RenderPass<'a, '_> {
         let color_attachments = descriptor
             .color_attachments
             .iter()
@@ -1005,7 +1000,7 @@ impl<'a> CommandQueue<'a> {
     }
 
     /// Manually force a transition of the [`TextureRegion`] to the specified [`AccessFlags`].
-    pub(crate) fn transition_texture(&mut self, texture: &TextureRegion<'_>, to: AccessFlags) {
+    pub(crate) fn transition_texture(&self, texture: &TextureRegion<'_>, to: AccessFlags) {
         self.executor
             .resources
             .textures
@@ -1014,7 +1009,7 @@ impl<'a> CommandQueue<'a> {
             .ref_count
             .increment();
 
-        self.executor.cmds.push(
+        self.executor.cmds.lock().push(
             &self.executor.resources,
             Command::TextureTransition(TextureTransition {
                 texture: TextureMip {
@@ -1450,7 +1445,7 @@ pub struct TextureViewDescriptor {
 }
 
 pub struct RenderPass<'a, 'b> {
-    ctx: &'b mut CommandQueue<'a>,
+    ctx: &'b CommandQueue<'a>,
     color_attachments: Vec<ColorAttachmentOwned>,
     depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
     cmds: Vec<DrawCmd>,
@@ -1574,7 +1569,7 @@ impl<'a, 'b> RenderPass<'a, 'b> {
 
 impl<'a, 'b> Drop for RenderPass<'a, 'b> {
     fn drop(&mut self) {
-        self.ctx.executor.cmds.push(
+        self.ctx.executor.cmds.lock().push(
             &self.ctx.executor.resources,
             Command::RenderPass(RenderPassCmd {
                 color_attachments: self.color_attachments.clone(),

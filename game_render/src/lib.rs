@@ -221,7 +221,7 @@ impl Renderer {
 
     pub fn with_command_queue_and_graph<F, R>(&mut self, f: F) -> R
     where
-        F: FnOnce(&mut RenderGraph, &mut CommandQueue<'_>) -> R,
+        F: FnOnce(&mut RenderGraph, &CommandQueue<'_>) -> R,
     {
         if let Some(parker) = self.parker.take() {
             parker.park();
@@ -229,10 +229,10 @@ impl Renderer {
 
         // SAFETY: We have waited until the render thread is idle.
         // This means we are allowed to access all shared resources.
-        let mut scheduler = unsafe { self.render_thread.shared.scheduler.borrow_mut() };
+        let scheduler = unsafe { self.render_thread.shared.scheduler.borrow_mut() };
         let mut graph = unsafe { self.render_thread.shared.graph.borrow_mut() };
-        let mut queue = scheduler.queue();
-        f(&mut graph, &mut queue)
+        let queue = scheduler.queue();
+        f(&mut graph, &queue)
     }
 
     pub fn create_render_texture(&mut self, texture: RenderTexture) -> RenderImageId {

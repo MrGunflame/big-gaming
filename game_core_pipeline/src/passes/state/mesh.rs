@@ -28,7 +28,7 @@ pub struct MeshState {
 }
 
 impl MeshState {
-    pub fn new(queue: &mut CommandQueue<'_>) -> Self {
+    pub fn new(queue: &CommandQueue<'_>) -> Self {
         Self {
             positions: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             normals: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
@@ -42,7 +42,7 @@ impl MeshState {
         }
     }
 
-    pub fn create_mesh(&mut self, queue: &mut CommandQueue<'_>, mesh: &Mesh) -> MeshStrategyMeshId {
+    pub fn create_mesh(&mut self, queue: &CommandQueue<'_>, mesh: &Mesh) -> MeshStrategyMeshId {
         let _span = trace_span!("MeshState::create_mesh").entered();
 
         let indices = mesh.indicies().unwrap().into_u32();

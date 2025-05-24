@@ -27,7 +27,7 @@ pub struct PostProcessPass {
 }
 
 impl PostProcessPass {
-    pub fn new(queue: &mut CommandQueue<'_>, src: SlotLabel, dst: SlotLabel) -> Self {
+    pub fn new(queue: &CommandQueue<'_>, src: SlotLabel, dst: SlotLabel) -> Self {
         let bind_group_layout =
             queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
                 bindings: &[
@@ -123,7 +123,7 @@ struct PostProcessPipelineBuilder {
 impl PipelineBuilder for PostProcessPipelineBuilder {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {

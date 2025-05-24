@@ -46,7 +46,7 @@ pub(super) struct ForwardPass {
 
 impl ForwardPass {
     pub(super) fn new(
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         state: Arc<Mutex<State>>,
         hdr_texture_slot: SlotLabel,
     ) -> Self {
@@ -137,12 +137,7 @@ impl ForwardPass {
         }
     }
 
-    fn update_depth_stencil(
-        &self,
-        queue: &mut CommandQueue<'_>,
-        target: RenderTarget,
-        size: UVec2,
-    ) {
+    fn update_depth_stencil(&self, queue: &CommandQueue<'_>, target: RenderTarget, size: UVec2) {
         let mut depth_stencils = self.depth_stencils.write();
         if let Some(texture) = depth_stencils.get(&target) {
             // Texture size unchanged, no need to recreate.
@@ -356,7 +351,7 @@ struct BuildForwardPipeline {
 impl PipelineBuilder for BuildForwardPipeline {
     fn build(
         &self,
-        queue: &mut CommandQueue<'_>,
+        queue: &CommandQueue<'_>,
         shaders: &[Shader],
         format: TextureFormat,
     ) -> Pipeline {
