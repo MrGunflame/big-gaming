@@ -83,9 +83,8 @@ pub struct Renderer {
 impl Renderer {
     pub fn new() -> Result<Self, Error> {
         let mut config = Config::default();
-        if debug::debug_layers_enabled() {
-            config.validation = true;
-        }
+        config.validation = debug::debug_enabled();
+        config.gpuav = debug::gpuav_enabled();
 
         let instance = Instance::new(config).unwrap();
 

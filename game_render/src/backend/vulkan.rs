@@ -193,6 +193,8 @@ impl From<vk::Result> for Error {
 pub struct Config {
     /// Enabled valiation layers if available.
     pub validation: bool,
+    /// GPU Assisted validation. Expensive
+    pub gpuav: bool,
 }
 
 /// Entrypoint for the Vulkan API.
@@ -205,6 +207,12 @@ pub struct Instance {
 impl Instance {
     /// Creates a new `Instance`.
     pub fn new(config: Config) -> Result<Self, Error> {
+        tracing::info!(
+            "Instance::create(): VALIDATION_LAYERS={} GPUAV={}",
+            config.validation,
+            config.gpuav
+        );
+
         let entry = unsafe { Entry::load().unwrap() };
 
         let mut app = vk::ApplicationInfo::default()
@@ -261,6 +269,9 @@ impl Instance {
             .pfn_user_callback(Some(debug_callback));
 
         const TRUE: &[u8] = &vk::TRUE.to_ne_bytes();
+        const FALSE: &[u8] = &vk::FALSE.to_ne_bytes();
+
+        let gpuav_enabled = if config.gpuav { TRUE } else { FALSE };
 
         // Refer to VkLayer_khronos_validation.json for list of
         // options.
@@ -279,6 +290,8 @@ impl Instance {
             (c"thread_safety", TRUE),
             (c"validate_sync", TRUE),
             (c"validate_best_practices", TRUE),
+            (c"gpuav_enable", gpuav_enabled),
+            (c"gpuav_safe_mode", gpuav_enabled),
         ] {
             settings.push(
                 vk::LayerSettingEXT::default()
@@ -4287,6 +4300,9 @@ extern "system" fn debug_callback(
         }
         vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
             tracing::warn!("[{:?}]: {}", typ, message);
+        }
+        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
+            tracing::info!("[{:?}]: {}", typ, message);
         }
         _ => (),
     }
