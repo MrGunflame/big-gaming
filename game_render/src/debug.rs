@@ -1,33 +1,22 @@
-#[inline]
-pub fn debug_layers_enabled() -> bool {
-    // Disable debug layers at compile time if the cfg is set.
-    #[cfg(render_debug_layers_disable)]
-    #[inline]
-    fn inner() -> bool {
-        false
+use std::sync::OnceLock;
+
+pub fn debug_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| load_bool_env("RENDER_DEBUG_LAYERS").unwrap_or(true))
+}
+
+pub fn gpuav_enabled() -> bool {
+    static ENABLED: OnceLock<bool> = OnceLock::new();
+    *ENABLED.get_or_init(|| load_bool_env("RENDER_DEBUG_GPUAV").unwrap_or(false))
+}
+
+fn load_bool_env(name: &str) -> Option<bool> {
+    match std::env::var(name).ok()?.as_str() {
+        "true" | "1" => Some(true),
+        "false" | "0" => Some(false),
+        _ => {
+            tracing::warn!("invalid value for {} env variable", name);
+            None
+        }
     }
-
-    #[cfg(not(render_debug_layers_disable))]
-    fn inner() -> bool {
-        use std::sync::OnceLock;
-
-        static DEBUG_LAYERS_ENABLED: OnceLock<bool> = OnceLock::new();
-
-        *DEBUG_LAYERS_ENABLED.get_or_init(|| {
-            if let Ok(val) = std::env::var("RENDER_DEBUG_LAYERS") {
-                match val.as_str() {
-                    "true" | "1" => true,
-                    "false" | "0" => false,
-                    _ => {
-                        tracing::warn!("invalid value for RENDER_DEBUG_LAYERS env variable");
-                        true
-                    }
-                }
-            } else {
-                true
-            }
-        })
-    }
-
-    inner()
 }
