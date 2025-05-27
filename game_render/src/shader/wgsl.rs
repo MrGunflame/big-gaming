@@ -198,6 +198,7 @@ impl<'a> ShaderInstance<'a> {
             ShaderStage::Task | ShaderStage::Mesh => {
                 panic!("unsupported WGSL stage: {:?}", self.stage)
             }
+            ShaderStage::Compute => naga::ShaderStage::Compute,
         };
 
         spv::write_vec(

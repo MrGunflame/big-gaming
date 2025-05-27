@@ -8,6 +8,7 @@ mod ops;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
+use std::env::vars;
 use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 
@@ -254,6 +255,7 @@ impl Module {
             (ShaderStage::Fragment, ExecutionModel::Fragment) => (),
             (ShaderStage::Task, ExecutionModel::TaskEXT) => (),
             (ShaderStage::Mesh, ExecutionModel::MeshEXT) => (),
+            (ShaderStage::Compute, ExecutionModel::GLCompute) => (),
             _ => {
                 return Err(ErrorImpl::UnknownEntryPoint {
                     name: options.entry_point.to_owned(),
@@ -780,6 +782,96 @@ impl SpirvModule {
                         }
 
                         if let Some(access) = variables.get_mut(&ins.target) {
+                            *access |= ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicLoad(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::AtomicStore(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicExchange(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicCompareExchange(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicCompareExchangeWeak(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicIIncrement(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicIDecrement(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicIAdd(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicISub(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicSMin(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicUMin(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicSMax(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicUMax(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicAnd(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicOr(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicXor(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicFlagTestAndSet(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
+                            *access |= ShaderAccess::READ | ShaderAccess::WRITE;
+                        }
+                    }
+                    Instruction::AtomicFlagClear(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.pointer) {
                             *access |= ShaderAccess::WRITE;
                         }
                     }

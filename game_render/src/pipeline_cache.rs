@@ -10,8 +10,8 @@ use crate::shader::{ReloadableShaderSource, Shader, ShaderConfig};
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]
 pub struct PipelineCache<T> {
+    pub builder: T,
     pipelines: RwLock<HashMap<TextureFormat, Pipeline>>,
-    builder: T,
     shaders: RwLock<Vec<ReloadableShaderSource>>,
     compiled_shaders: Mutex<Vec<Shader>>,
 }

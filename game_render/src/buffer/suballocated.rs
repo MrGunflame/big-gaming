@@ -85,6 +85,43 @@ where
         index
     }
 
+    pub fn alloc(&mut self, queue: &CommandQueue<'_>, len: usize) -> u64 {
+        let layout = Layout::array::<T>(len).unwrap();
+        // Since we return an index into the buffer that represents offset in
+        // number of `T`s we must also align our new element to a multiple of `T`.
+        let layout = layout.align_to(size_of::<T>()).unwrap();
+        if layout.size() == 0 {
+            return 0;
+        }
+
+        if let Some(region) = self.allocator.alloc(layout) {
+            let start = region.start() as u64;
+            let end = (region.start() + layout.size()) as u64;
+
+            debug_assert!(start <= self.buffer.size());
+            debug_assert!(end <= self.buffer.size());
+
+            debug_assert_eq!(start % size_of::<T>() as u64, 0);
+            let index = start / size_of::<T>() as u64;
+            self.allocations.insert(index, region);
+            return index;
+        }
+
+        self.grow(queue, layout.pad_to_align().size());
+        let region = self.allocator.alloc(layout).unwrap();
+
+        let start = region.start() as u64;
+        let end = (region.start() + layout.size()) as u64;
+
+        debug_assert!(start <= self.buffer.size());
+        debug_assert!(end <= self.buffer.size());
+
+        debug_assert_eq!(start % size_of::<T>() as u64, 0);
+        let index = start / size_of::<T>() as u64;
+        self.allocations.insert(index, region);
+        index
+    }
+
     /// Removes the allocation starting at the given offset.
     pub fn remove(&mut self, index: u64) {
         if let Some(region) = self.allocations.remove(&index) {

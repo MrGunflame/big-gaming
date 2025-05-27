@@ -11,22 +11,23 @@ use std::sync::Arc;
 
 use bumpalo::Bump;
 use commands::{
-    Command, CommandStream, CopyBufferToBuffer, CopyBufferToTexture, CopyTextureToTexture,
-    RenderPassCmd, TextureTransition, WriteBuffer,
+    Command, CommandStream, ComputeCommand, ComputePassCmd, CopyBufferToBuffer,
+    CopyBufferToTexture, CopyTextureToTexture, RenderPassCmd, TextureTransition, WriteBuffer,
 };
 use crossbeam_queue::SegQueue;
 use executor::TemporaryResources;
 use game_common::cell::UnsafeRefCell;
+use game_common::collections::vec_map::VecMap;
 use game_common::components::Color;
 use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use parking_lot::Mutex;
 use resources::{
     BufferId, BufferInner, DescriptorSetId, DescriptorSetInner, DescriptorSetLayoutId,
-    DescriptorSetLayoutInner, PipelineId, PipelineInner, RefCount, Resources, SamplerId,
-    SamplerInner, TextureData, TextureId, TextureInner,
+    DescriptorSetLayoutInner, DescriptorSetResource, PipelineId, PipelineInner, RefCount,
+    Resources, SamplerId, SamplerInner, TextureData, TextureId, TextureInner,
 };
 use scheduler::{Node, Resource, ResourceMap, Scheduler};
 use sharded_slab::Slab;
@@ -36,9 +37,10 @@ use crate::backend::descriptors::DescriptorSetAllocator;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
     self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
-    DescriptorType, Face, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp,
-    TextureDescriptor, TextureFormat, TextureUsage,
+    DescriptorType, DrawIndexedIndirectCommand, DrawIndirectCommand, Face, Features, FrontFace,
+    ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
+    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage,
 };
 use crate::shader::{self, ShaderAccess, ShaderBinding};
 use crate::statistics::Statistics;
@@ -54,6 +56,7 @@ pub struct CommandExecutor {
     device: Device,
     adapter_props: AdapterProperties,
     allocator: Exclusive<Bump>,
+    features: Features,
 }
 
 impl CommandExecutor {
@@ -63,6 +66,11 @@ impl CommandExecutor {
         statistics: Arc<Statistics>,
         adapter_props: AdapterProperties,
     ) -> Self {
+        let features = Features {
+            mesh_shader: device.extensions().mesh_shader,
+            task_shader: device.extensions().mesh_shader,
+        };
+
         Self {
             resources: Arc::new(Resources {
                 pipelines: Slab::new(),
@@ -83,6 +91,7 @@ impl CommandExecutor {
             device,
             adapter_props,
             allocator: Exclusive::new(Bump::new()),
+            features,
         }
     }
 
@@ -138,41 +147,48 @@ impl CommandExecutor {
                 DeletionEvent::DescriptorSet(id) => {
                     let set = self.resources.descriptor_sets.take(id).unwrap();
 
-                    for (_, id) in &set.buffers {
-                        let buffer = self.resources.buffers.get(*id).unwrap();
-                        if buffer.ref_count.decrement() {
-                            self.resources
-                                .deletion_queue
-                                .push(DeletionEvent::Buffer(*id));
-                        }
-                    }
+                    for resource in set.bindings.into_values() {
+                        match resource {
+                            DescriptorSetResource::UniformBuffer(id)
+                            | DescriptorSetResource::StorageBuffer(id) => {
+                                let buffer = self.resources.buffers.get(id).unwrap();
 
-                    for (_, view) in &set.textures {
-                        let texture = self.resources.textures.get(view.texture).unwrap();
-                        if texture.ref_count.decrement() {
-                            self.resources
-                                .deletion_queue
-                                .push(DeletionEvent::Texture(view.texture));
-                        }
-                    }
-
-                    for (_, views) in &set.texture_arrays {
-                        for view in views {
-                            let texture = self.resources.textures.get(view.texture).unwrap();
-                            if texture.ref_count.decrement() {
-                                self.resources
-                                    .deletion_queue
-                                    .push(DeletionEvent::Texture(view.texture));
+                                if buffer.ref_count.decrement() {
+                                    self.resources
+                                        .deletion_queue
+                                        .push(DeletionEvent::Buffer(id));
+                                }
                             }
-                        }
-                    }
+                            DescriptorSetResource::Texture(view) => {
+                                let texture = self.resources.textures.get(view.texture).unwrap();
 
-                    for (_, id) in &set.samplers {
-                        let sampler = self.resources.samplers.get(*id).unwrap();
-                        if sampler.ref_count.decrement() {
-                            self.resources
-                                .deletion_queue
-                                .push(DeletionEvent::Sampler(*id));
+                                if texture.ref_count.decrement() {
+                                    self.resources
+                                        .deletion_queue
+                                        .push(DeletionEvent::Texture(view.texture));
+                                }
+                            }
+                            DescriptorSetResource::TextureArray(views) => {
+                                for view in views {
+                                    let texture =
+                                        self.resources.textures.get(view.texture).unwrap();
+
+                                    if texture.ref_count.decrement() {
+                                        self.resources
+                                            .deletion_queue
+                                            .push(DeletionEvent::Texture(view.texture));
+                                    }
+                                }
+                            }
+                            DescriptorSetResource::Sampler(id) => {
+                                let sampler = self.resources.samplers.get(id).unwrap();
+
+                                if sampler.ref_count.decrement() {
+                                    self.resources
+                                        .deletion_queue
+                                        .push(DeletionEvent::Sampler(id));
+                                }
+                            }
                         }
                     }
 
@@ -215,6 +231,10 @@ impl<'a> CommandQueue<'a> {
             .get(&format)
             .copied()
             .unwrap_or(TextureUsage::empty())
+    }
+
+    pub fn features(&self) -> &Features {
+        &self.executor.features
     }
 
     /// Creates a new [`Buffer`].
@@ -610,27 +630,88 @@ impl<'a> CommandQueue<'a> {
 
     #[track_caller]
     pub fn create_descriptor_set(&self, descriptor: &DescriptorSetDescriptor<'_>) -> DescriptorSet {
-        let mut buffers = Vec::new();
-        let mut samplers = Vec::new();
-        let mut textures = Vec::new();
-        let mut texture_arrays = Vec::new();
+        let mut bindings = VecMap::new();
+        let mut num_buffers = 0;
+        let mut num_samplers = 0;
+        let mut num_textures = 0;
+        let mut num_texture_arrays = 0;
+
+        let layout = self
+            .executor
+            .resources
+            .descriptor_set_layouts
+            .get(descriptor.layout.id)
+            .unwrap();
+
+        let mut unset_descriptors: HashSet<_> =
+            layout.bindings.values().map(|b| b.binding).collect();
+
         for entry in descriptor.entries {
-            match entry.resource {
-                BindingResource::Buffer(buffer) => {
+            unset_descriptors.remove(&entry.binding);
+
+            let layout_binding = layout.bindings.get(entry.binding);
+            let layout_ty = layout_binding.map(|l| l.kind);
+
+            match (&entry.resource, layout_ty) {
+                (BindingResource::Buffer(_), Some(DescriptorType::Uniform)) => (),
+                (BindingResource::Buffer(_), Some(DescriptorType::Storage)) => (),
+                (BindingResource::Texture(_), Some(DescriptorType::Texture)) => (),
+                (BindingResource::TextureArray(_), Some(DescriptorType::Texture)) => (),
+                (BindingResource::Sampler(_), Some(DescriptorType::Sampler)) => (),
+                _ => {
+                    let found_type = match entry.resource {
+                        BindingResource::Buffer(_) => "buffer",
+                        BindingResource::Texture(_) => "texture",
+                        BindingResource::TextureArray(_) => "texture array",
+                        BindingResource::Sampler(_) => "sampler",
+                    };
+
+                    let expected_type = match layout_ty {
+                        Some(DescriptorType::Uniform) => "uniform buffer",
+                        Some(DescriptorType::Storage) => "storage buffer",
+                        Some(DescriptorType::Texture) => "texture",
+                        Some(DescriptorType::Sampler) => "sampler",
+                        None => "none",
+                    };
+
+                    panic!(
+                        "invalid descriptor at location {}: expected {}, found {}",
+                        entry.binding, expected_type, found_type,
+                    );
+                }
+            }
+
+            let layout_ty = layout_ty.unwrap();
+
+            let resource = match entry.resource {
+                BindingResource::Buffer(buffer) if layout_ty == DescriptorType::Uniform => {
                     assert!(
-                        buffer.usage.contains(BufferUsage::UNIFORM)
-                            || buffer.usage.contains(BufferUsage::STORAGE),
-                        "Buffer cannot be bound to descriptor set: UNIFORM and STORAGE not set",
+                        buffer.usage.contains(BufferUsage::UNIFORM),
+                        "Binding uniform buffer requires UNIFORM bit",
                     );
 
                     buffer.increment_ref_count();
+                    num_buffers += 1;
 
-                    buffers.push((entry.binding, buffer.id));
+                    DescriptorSetResource::UniformBuffer(buffer.id)
                 }
+                BindingResource::Buffer(buffer) if layout_ty == DescriptorType::Storage => {
+                    assert!(
+                        buffer.usage.contains(BufferUsage::STORAGE),
+                        "Binding storage buffer requires STORAGE bit",
+                    );
+
+                    buffer.increment_ref_count();
+                    num_buffers += 1;
+
+                    DescriptorSetResource::StorageBuffer(buffer.id)
+                }
+                BindingResource::Buffer(_) => unreachable!(),
                 BindingResource::Sampler(sampler) => {
                     sampler.increment_ref_count();
+                    num_samplers += 1;
 
-                    samplers.push((entry.binding, sampler.id));
+                    DescriptorSetResource::Sampler(sampler.id)
                 }
                 BindingResource::Texture(view) => {
                     assert!(
@@ -639,15 +720,13 @@ impl<'a> CommandQueue<'a> {
                     );
 
                     view.texture.increment_ref_count();
+                    num_textures += 1;
 
-                    textures.push((
-                        entry.binding,
-                        RawTextureView {
-                            texture: view.texture.id,
-                            base_mip_level: view.base_mip_level,
-                            mip_levels: view.mip_levels,
-                        },
-                    ));
+                    DescriptorSetResource::Texture(RawTextureView {
+                        texture: view.texture.id,
+                        base_mip_level: view.base_mip_level,
+                        mip_levels: view.mip_levels,
+                    })
                 }
                 BindingResource::TextureArray(views) => {
                     for view in views {
@@ -661,8 +740,9 @@ impl<'a> CommandQueue<'a> {
                         view.texture.increment_ref_count();
                     }
 
-                    texture_arrays.push((
-                        entry.binding,
+                    num_texture_arrays += 1;
+
+                    DescriptorSetResource::TextureArray(
                         views
                             .into_iter()
                             .map(|view| RawTextureView {
@@ -671,9 +751,21 @@ impl<'a> CommandQueue<'a> {
                                 mip_levels: view.mip_levels,
                             })
                             .collect(),
-                    ));
+                    )
                 }
-            }
+            };
+
+            bindings.insert(entry.binding, resource);
+        }
+
+        if !unset_descriptors.is_empty() {
+            let text = unset_descriptors
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            panic!("no descriptors at locations {} bound", text);
         }
 
         self.executor
@@ -689,10 +781,11 @@ impl<'a> CommandQueue<'a> {
             .resources
             .descriptor_sets
             .insert(DescriptorSetInner {
-                buffers,
-                samplers,
-                textures,
-                texture_arrays,
+                bindings,
+                num_buffers,
+                num_samplers,
+                num_textures,
+                num_texture_arrays,
                 descriptor_set: UnsafeRefCell::new(None),
                 layout: descriptor.layout.id,
                 physical_texture_views: UnsafeRefCell::new(Vec::new()),
@@ -722,6 +815,11 @@ impl<'a> CommandQueue<'a> {
             .insert(DescriptorSetLayoutInner {
                 inner,
                 ref_count: RefCount::new(),
+                bindings: descriptor
+                    .bindings
+                    .iter()
+                    .map(|v| (v.binding, *v))
+                    .collect(),
             })
             .unwrap();
 
@@ -889,6 +987,33 @@ impl<'a> CommandQueue<'a> {
                         }
                     }
                 }
+                PipelineStage::Compute(stage) => {
+                    let instance = stage.shader.instantiate(&shader::Options {
+                        bindings: HashMap::new(),
+                        stage: ShaderStage::Compute,
+                        entry_point: &stage.entry,
+                    });
+
+                    for binding in instance.bindings() {
+                        validate_shader_binding(binding, ShaderStage::Compute);
+
+                        let mut access = AccessFlags::empty();
+                        if binding.access.contains(ShaderAccess::READ) {
+                            access |= AccessFlags::COMPUTE_SHADER_READ;
+                        }
+                        if binding.access.contains(ShaderAccess::WRITE) {
+                            access |= AccessFlags::COMPUTE_SHADER_WRITE;
+                        }
+
+                        if !access.is_empty() {
+                            bindings.insert(
+                                binding.location().group,
+                                binding.location().binding,
+                                access,
+                            );
+                        }
+                    }
+                }
             }
         }
 
@@ -996,6 +1121,14 @@ impl<'a> CommandQueue<'a> {
             cmds: Vec::new(),
             last_pipeline: None,
             last_index_buffer: None,
+        }
+    }
+
+    pub fn run_compute_pass(&self) -> ComputePass<'_> {
+        ComputePass {
+            queue: self,
+            last_pipeline: None,
+            cmds: Vec::new(),
         }
     }
 
@@ -1555,6 +1688,77 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             })));
     }
 
+    /// Dispatches draw commands from the given `indirect_buffer`.
+    ///
+    /// The `indirect_buffer` must contain an array of [`DrawIndirectCommand`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the following preconditions are violated:
+    /// - No pipeline was set.
+    /// - `indirect_buffer` does not have the [`INDIRECT`] flag set.
+    /// - `indirect_buffer` does not refer to a valid array of [`DrawIndirectCommand`].
+    ///
+    /// [`INDIRECT`]: BufferUsage::INDIRECT
+    pub fn draw_indirect<T>(&mut self, indirect_buffer: &T)
+    where
+        T: IntoBufferSlice,
+    {
+        let indirect_buffer = indirect_buffer.into_buffer_slice();
+
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
+        assert!(indirect_buffer.buffer.usage.contains(BufferUsage::INDIRECT));
+
+        let len = indirect_buffer.end - indirect_buffer.start;
+        assert_eq!(len % size_of::<DrawIndirectCommand>() as u64, 0);
+        let count = len / size_of::<DrawIndirectCommand>() as u64;
+
+        indirect_buffer.buffer.increment_ref_count();
+
+        self.cmds
+            .push(DrawCmd::Draw(DrawCall::DrawIndirect(DrawIndirect {
+                buffer: indirect_buffer.buffer.id,
+                offset: indirect_buffer.start,
+                count: count as u32,
+            })));
+    }
+
+    /// Dispatches indexed draw commands from the given `indirect_buffer`.
+    ///
+    /// The `indirect_buffer` must contain an array of [`DrawIndexedIndirectCommand`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the following preconditions are violated:
+    /// - No pipeline was set.
+    /// - `indirect_buffer` does not have the [`INDIRECT`] flag set.
+    /// - `indirect_buffer` does not refer to a valid array of [`DrawIndexedIndirectCommand`].
+    ///
+    /// [`INDIRECT`]: BufferUsage::INDIRECT
+    pub fn draw_indexed_indirect<T>(&mut self, indirect_buffer: &T)
+    where
+        T: IntoBufferSlice,
+    {
+        let indirect_buffer = indirect_buffer.into_buffer_slice();
+
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
+        assert!(indirect_buffer.buffer.usage.contains(BufferUsage::INDIRECT));
+
+        let len = indirect_buffer.end - indirect_buffer.start;
+        assert_eq!(len % size_of::<DrawIndexedIndirectCommand>() as u64, 0);
+        let count = len / size_of::<DrawIndexedIndirectCommand>() as u64;
+
+        indirect_buffer.buffer.increment_ref_count();
+
+        self.cmds.push(DrawCmd::Draw(DrawCall::DrawIndexedIndirect(
+            DrawIndexedIndirect {
+                buffer: indirect_buffer.buffer.id,
+                offset: indirect_buffer.start,
+                count: count as u32,
+            },
+        )));
+    }
+
     pub fn draw_mesh_tasks(&mut self, x: u32, y: u32, z: u32) {
         assert!(self.last_pipeline.is_some(), "Pipeline is not set");
 
@@ -1574,6 +1778,79 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
             Command::RenderPass(RenderPassCmd {
                 color_attachments: self.color_attachments.clone(),
                 depth_stencil_attachment: self.depth_stencil_attachment.clone(),
+                cmds: core::mem::take(&mut self.cmds),
+            }),
+        );
+    }
+}
+
+#[derive(Debug)]
+pub struct ComputePass<'a> {
+    queue: &'a CommandQueue<'a>,
+    // Exists purely for validation.
+    last_pipeline: Option<PipelineId>,
+    cmds: Vec<ComputeCommand>,
+}
+
+impl<'a> ComputePass<'a> {
+    pub fn set_pipeline(&mut self, pipeline: &Pipeline) {
+        self.queue
+            .executor
+            .resources
+            .pipelines
+            .get(pipeline.id)
+            .unwrap()
+            .ref_count
+            .increment();
+
+        self.cmds.push(ComputeCommand::SetPipeline(pipeline.id));
+        self.last_pipeline = Some(pipeline.id);
+    }
+
+    pub fn set_descriptor_set(&mut self, index: u32, descriptor_set: &DescriptorSet) {
+        let pipeline = self.last_pipeline.expect("Pipeline is not set");
+
+        let pipeline = self
+            .queue
+            .executor
+            .resources
+            .pipelines
+            .get(pipeline)
+            .unwrap();
+
+        self.queue
+            .executor
+            .resources
+            .descriptor_sets
+            .get(descriptor_set.id)
+            .unwrap()
+            .ref_count
+            .increment();
+
+        self.cmds
+            .push(ComputeCommand::SetDescriptorSet(index, descriptor_set.id));
+    }
+
+    pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
+        self.cmds.push(ComputeCommand::SetPushConstants(
+            data.to_vec(),
+            stages,
+            offset,
+        ));
+    }
+
+    pub fn dispatch(&mut self, x: u32, y: u32, z: u32) {
+        assert!(self.last_pipeline.is_some(), "Pipeline is not set");
+
+        self.cmds.push(ComputeCommand::Dispatch(x, y, z));
+    }
+}
+
+impl<'a> Drop for ComputePass<'a> {
+    fn drop(&mut self) {
+        self.queue.executor.cmds.lock().push(
+            &self.queue.executor.resources,
+            Command::ComputePass(ComputePassCmd {
                 cmds: core::mem::take(&mut self.cmds),
             }),
         );
@@ -1624,6 +1901,8 @@ enum DrawCmd {
 enum DrawCall {
     Draw(Draw),
     DrawIndexed(DrawIndexed),
+    DrawIndirect(DrawIndirect),
+    DrawIndexedIndirect(DrawIndexedIndirect),
     DrawMeshTasks(DrawMeshTasks),
 }
 
@@ -1638,6 +1917,20 @@ struct DrawIndexed {
     indices: Range<u32>,
     vertex_offset: i32,
     instances: Range<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct DrawIndirect {
+    buffer: BufferId,
+    offset: u64,
+    count: u32,
+}
+
+#[derive(Clone, Debug)]
+struct DrawIndexedIndirect {
+    buffer: BufferId,
+    offset: u64,
+    count: u32,
 }
 
 #[derive(Copy, Clone, Debug)]

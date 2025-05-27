@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use futures::executor::block_on;
 use game_render::statistics::{AllocationKind, MemoryBlock, Statistics};
 use glam::UVec2;
 use image::{ImageBuffer, Rgba};
@@ -20,12 +21,25 @@ impl Widget for MemoryVisualizer {
         let root = Container::new().mount(parent);
 
         for (_, block) in mem.blocks.iter() {
-            Text::new(format!(
+            let mut text = format!(
                 "Size: {} Allocs: {}",
                 bytes_to_human_readable(block.size),
                 block.allocs.len()
-            ))
-            .mount(&root);
+            );
+
+            if block.device_local {
+                text.push_str(" DEVICE_LOCAL");
+            }
+
+            if block.host_visible {
+                text.push_str(" HOST_VISIBLE");
+            }
+
+            if block.dedicated {
+                text.push_str(" DEDICATED");
+            }
+
+            Text::new(text).mount(&root);
 
             let img = draw_block(self.size, block);
             Image::new().image(img).mount(&root);

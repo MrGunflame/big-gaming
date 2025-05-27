@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use game_common::collections::arena::{Arena, Key};
+use game_common::collections::arena::Arena;
 use game_common::components::Transform;
 use game_render::api::CommandQueue;
 use game_render::backend::BufferUsage;
@@ -10,6 +10,8 @@ use game_render::mesh::Mesh;
 use game_tracing::trace_span;
 use glam::{Mat3, Mat4, Vec4};
 use meshopt::VertexDataAdapter;
+
+use crate::passes::{InstanceKey, MeshKey};
 
 const VERTEX_COUNT: usize = 128;
 const TRIANGLE_COUNT: usize = 256;
@@ -42,7 +44,7 @@ impl MeshState {
         }
     }
 
-    pub fn create_mesh(&mut self, queue: &CommandQueue<'_>, mesh: &Mesh) -> MeshStrategyMeshId {
+    pub fn create_mesh(&mut self, queue: &CommandQueue<'_>, mesh: &Mesh) -> MeshKey {
         let _span = trace_span!("MeshState::create_mesh").entered();
 
         let indices = mesh.indicies().unwrap().into_u32();
@@ -103,7 +105,7 @@ impl MeshState {
 
         let meshlets_offset = self.meshlets.insert(queue, &meshlets);
 
-        MeshStrategyMeshId(self.meshes.insert(MeshData {
+        MeshKey(self.meshes.insert(MeshData {
             positions: positions_offset,
             normals: normals_offset,
             uvs: uvs_offset,
@@ -116,9 +118,9 @@ impl MeshState {
     pub fn create_instance(
         &mut self,
         transform: Transform,
-        mesh: MeshStrategyMeshId,
+        mesh: MeshKey,
         material_index: SlabIndex,
-    ) -> InstanceId {
+    ) -> InstanceKey {
         let meshlet_offset = self.meshes.get(mesh.0).unwrap().meshlets_offset as u32;
         let meshlet_count = self.meshes.get(mesh.0).unwrap().meshlet_count as u32;
 
@@ -127,7 +129,7 @@ impl MeshState {
         let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
         let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
 
-        InstanceId(
+        InstanceKey(
             self.instances.insert(&Instance {
                 transform: Mat4::from_scale_rotation_translation(
                     transform.scale,
@@ -148,19 +150,19 @@ impl MeshState {
         )
     }
 
-    pub fn remove_instance(&mut self, id: InstanceId) {
+    pub fn remove_instance(&mut self, id: InstanceKey) {
         self.instances.remove(id.0);
     }
 
-    pub fn get_meshlet_offset(&self, id: MeshStrategyMeshId) -> Option<u32> {
+    pub fn get_meshlet_offset(&self, id: MeshKey) -> Option<u32> {
         self.meshes.get(id.0).map(|m| m.meshlets_offset as u32)
     }
 
-    pub fn get_meshlet_count(&self, id: MeshStrategyMeshId) -> Option<u32> {
+    pub fn get_meshlet_count(&self, id: MeshKey) -> Option<u32> {
         self.meshes.get(id.0).map(|m| m.meshlet_count)
     }
 
-    pub fn remove(&mut self, id: MeshStrategyMeshId) {
+    pub fn remove_mesh(&mut self, id: MeshKey) {
         if let Some(mesh) = self.meshes.remove(id.0) {
             self.positions.remove(mesh.positions);
             self.normals.remove(mesh.normals);
@@ -202,12 +204,6 @@ impl GpuBuffer for Instance {
     const SIZE: usize = size_of::<Self>();
     const ALIGN: usize = 16;
 }
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MeshStrategyMeshId(Key);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct InstanceId(SlabIndex);
 
 #[derive(Copy, Clone, Debug)]
 struct MeshData {

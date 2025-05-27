@@ -3,11 +3,12 @@ use std::sync::Arc;
 
 use crossbeam_queue::SegQueue;
 use game_common::cell::UnsafeRefCell;
+use game_common::collections::vec_map::VecMap;
 use sharded_slab::Slab;
 
 use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc};
 use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
-use crate::backend::{vulkan, AccessFlags};
+use crate::backend::{vulkan, AccessFlags, DescriptorBinding};
 
 use super::{BindingMap, DeletionEvent, RawTextureView, ResourceId, ResourceMap};
 
@@ -108,19 +109,30 @@ pub struct SamplerInner {
 pub struct DescriptorSetLayoutInner {
     pub inner: vulkan::DescriptorSetLayout,
     pub ref_count: RefCount,
+    pub bindings: VecMap<u32, DescriptorBinding>,
 }
 
 #[derive(Debug)]
 pub struct DescriptorSetInner {
-    // (Binding, Resource)
-    pub buffers: Vec<(u32, BufferId)>,
-    pub samplers: Vec<(u32, SamplerId)>,
-    pub textures: Vec<(u32, RawTextureView)>,
-    pub texture_arrays: Vec<(u32, Vec<RawTextureView>)>,
+    pub bindings: VecMap<u32, DescriptorSetResource>,
+    pub num_buffers: u32,
+    pub num_samplers: u32,
+    pub num_textures: u32,
+    pub num_texture_arrays: u32,
     pub descriptor_set: UnsafeRefCell<Option<AllocatedDescriptorSet>>,
     pub layout: DescriptorSetLayoutId,
     pub physical_texture_views: UnsafeRefCell<Vec<vulkan::TextureView<'static>>>,
     pub ref_count: RefCount,
+}
+
+/// A resource that can be bound to a descriptor set.
+#[derive(Debug)]
+pub enum DescriptorSetResource {
+    UniformBuffer(BufferId),
+    StorageBuffer(BufferId),
+    Sampler(SamplerId),
+    Texture(RawTextureView),
+    TextureArray(Vec<RawTextureView>),
 }
 
 #[derive(Debug)]

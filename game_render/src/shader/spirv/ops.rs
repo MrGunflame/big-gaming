@@ -879,7 +879,7 @@ macro_rules! spirv_bitflags {
                     Some(value) => Ok(value),
                     None => {
                         return Err(Error(ErrorImpl::UnknownEnumValue(
-                            stringify!($enum_ty),
+                            stringify!($flags_ty),
                             word,
                         )));
                     }
@@ -2987,7 +2987,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
     }
 }
 
@@ -2996,7 +2996,7 @@ spirv_op! {
     pub struct OpAtomicStore {
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3008,7 +3008,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3018,9 +3018,10 @@ spirv_op! {
     pub struct OpAtomicCompareExchange {
         pub result_type: Id,
         pub result: Id,
+        pub pointer: Id,
         pub memory: Id,
-        pub equal: MemorySemantics,
-        pub unequal: MemorySemantics,
+        pub equal: Id,
+        pub unequal: Id,
         pub value: Id,
         pub comparator: Id,
     }
@@ -3047,7 +3048,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
     }
 }
 
@@ -3058,7 +3059,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
     }
 }
 
@@ -3069,7 +3070,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3081,7 +3082,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3093,7 +3094,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3105,7 +3106,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3115,8 +3116,9 @@ spirv_op! {
     pub struct OpAtomicSMax {
         pub result_type: Id,
         pub result: Id,
+        pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3127,7 +3129,8 @@ spirv_op! {
         pub result_type: Id,
         pub result: Id,
         pub pointer: Id,
-        pub semantics: MemorySemantics,
+        pub memory: Id,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3139,7 +3142,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3151,7 +3154,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3163,7 +3166,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
         pub value: Id,
     }
 }
@@ -3175,7 +3178,7 @@ spirv_op! {
         pub result: Id,
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
     }
 }
 
@@ -3184,7 +3187,7 @@ spirv_op! {
     pub struct OpAtomicFlagClear {
         pub pointer: Id,
         pub memory: Id,
-        pub semantics: MemorySemantics,
+        pub semantics: Id,
     }
 }
 

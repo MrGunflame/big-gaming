@@ -4,10 +4,11 @@ use bumpalo::Bump;
 use game_common::utils::exclusive::Exclusive;
 use hashbrown::{HashMap, HashSet};
 
-use crate::backend::{AccessFlags, ImageDataLayout};
+use crate::backend::{AccessFlags, ImageDataLayout, ShaderStages};
 
+use super::resources::{DescriptorSetId, DescriptorSetResource, PipelineId};
 use super::{
-    BufferId, ColorAttachmentOwned, DepthStencilAttachmentOwned, DrawCmd, Node, Resource,
+    BufferId, ColorAttachmentOwned, DepthStencilAttachmentOwned, DrawCall, DrawCmd, Node, Resource,
     ResourceId, Resources, TextureId, TextureMip,
 };
 
@@ -95,6 +96,7 @@ pub enum Command {
     CopyTextureToTexture(CopyTextureToTexture),
     TextureTransition(TextureTransition),
     RenderPass(RenderPassCmd),
+    ComputePass(ComputePassCmd),
 }
 
 impl Command {
@@ -209,44 +211,64 @@ impl Command {
                             visited_descriptor_sets.insert(id);
 
                             let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
-                            for (binding, buffer) in &descriptor_set.buffers {
-                                if let Some(access) = pipeline.bindings.get(*group, *binding) {
-                                    *access_flags
-                                        .entry(ResourceId::Buffer(*buffer))
-                                        .or_default() |= access;
-                                }
-                            }
 
-                            for (binding, view) in &descriptor_set.textures {
-                                if let Some(access) = pipeline.bindings.get(*group, *binding) {
-                                    for mip in view.mips() {
-                                        *access_flags
-                                            .entry(ResourceId::Texture(TextureMip {
-                                                id: view.texture,
-                                                mip_level: mip,
-                                            }))
-                                            .or_default() |= access;
-                                    }
-                                }
-                            }
-
-                            for (binding, views) in &descriptor_set.texture_arrays {
-                                if let Some(access) = pipeline.bindings.get(*group, *binding) {
-                                    for view in views {
-                                        for mip in view.mips() {
+                            for (binding, resource) in &descriptor_set.bindings {
+                                match resource {
+                                    DescriptorSetResource::UniformBuffer(buffer)
+                                    | DescriptorSetResource::StorageBuffer(buffer) => {
+                                        if let Some(access) = pipeline.bindings.get(*group, binding)
+                                        {
                                             *access_flags
-                                                .entry(ResourceId::Texture(TextureMip {
-                                                    id: view.texture,
-                                                    mip_level: mip,
-                                                }))
+                                                .entry(ResourceId::Buffer(*buffer))
                                                 .or_default() |= access;
                                         }
                                     }
+                                    DescriptorSetResource::Texture(view) => {
+                                        if let Some(access) = pipeline.bindings.get(*group, binding)
+                                        {
+                                            for mip in view.mips() {
+                                                *access_flags
+                                                    .entry(ResourceId::Texture(TextureMip {
+                                                        id: view.texture,
+                                                        mip_level: mip,
+                                                    }))
+                                                    .or_default() |= access;
+                                            }
+                                        }
+                                    }
+                                    DescriptorSetResource::TextureArray(views) => {
+                                        if let Some(access) = pipeline.bindings.get(*group, binding)
+                                        {
+                                            for view in views {
+                                                for mip in view.mips() {
+                                                    *access_flags
+                                                        .entry(ResourceId::Texture(TextureMip {
+                                                            id: view.texture,
+                                                            mip_level: mip,
+                                                        }))
+                                                        .or_default() |= access;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    DescriptorSetResource::Sampler(_) => (),
                                 }
                             }
                         }
                         DrawCmd::SetPushConstants(_, _, _) => (),
-                        DrawCmd::Draw(_) => (),
+                        DrawCmd::Draw(DrawCall::Draw(_)) => (),
+                        DrawCmd::Draw(DrawCall::DrawIndexed(_)) => (),
+                        DrawCmd::Draw(DrawCall::DrawIndirect(call)) => {
+                            *access_flags
+                                .entry(ResourceId::Buffer(call.buffer))
+                                .or_default() |= AccessFlags::INDIRECT;
+                        }
+                        DrawCmd::Draw(DrawCall::DrawIndexedIndirect(call)) => {
+                            *access_flags
+                                .entry(ResourceId::Buffer(call.buffer))
+                                .or_default() |= AccessFlags::INDIRECT;
+                        }
+                        DrawCmd::Draw(DrawCall::DrawMeshTasks(_)) => (),
                     }
                 }
 
@@ -269,6 +291,90 @@ impl Command {
                         }))
                         .or_default() |=
                         AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE;
+                }
+
+                for (id, access) in access_flags {
+                    // We should never require a resource without any flags.
+                    // This could result in a texture transition into UNDEFINED
+                    // which is always invalid.
+                    debug_assert!(!access.is_empty());
+
+                    accesses.push(Resource { id, access });
+                }
+            }
+            Self::ComputePass(cmd) => {
+                let mut access_flags = HashMap::<ResourceId, AccessFlags, _, &Bump>::new_in(alloc);
+                // The same descriptor set may get bound multiple times,
+                // but this has no effect on the access flags.
+                // As such it is cheaper to track visited descriptor sets
+                // and skip duplicate bindings.
+                let mut visited_descriptor_sets = HashSet::new_in(alloc);
+
+                let mut pipeline = None;
+
+                for cmd in &cmd.cmds {
+                    match cmd {
+                        ComputeCommand::SetPipeline(id) => {
+                            pipeline = Some(resources.pipelines.get(*id).unwrap());
+                        }
+                        ComputeCommand::SetDescriptorSet(group, id) => {
+                            let Some(pipeline) = &pipeline else {
+                                continue;
+                            };
+
+                            if visited_descriptor_sets.contains(id) {
+                                continue;
+                            }
+                            visited_descriptor_sets.insert(id);
+
+                            let descriptor_set = resources.descriptor_sets.get(*id).unwrap();
+
+                            for (binding, resource) in &descriptor_set.bindings {
+                                match resource {
+                                    DescriptorSetResource::UniformBuffer(buffer)
+                                    | DescriptorSetResource::StorageBuffer(buffer) => {
+                                        if let Some(access) = pipeline.bindings.get(*group, binding)
+                                        {
+                                            *access_flags
+                                                .entry(ResourceId::Buffer(*buffer))
+                                                .or_default() |= access;
+                                        }
+                                    }
+                                    DescriptorSetResource::Texture(view) => {
+                                        if let Some(access) = pipeline.bindings.get(*group, binding)
+                                        {
+                                            for mip in view.mips() {
+                                                *access_flags
+                                                    .entry(ResourceId::Texture(TextureMip {
+                                                        id: view.texture,
+                                                        mip_level: mip,
+                                                    }))
+                                                    .or_default() |= access;
+                                            }
+                                        }
+                                    }
+                                    DescriptorSetResource::TextureArray(views) => {
+                                        if let Some(access) = pipeline.bindings.get(*group, binding)
+                                        {
+                                            for view in views {
+                                                for mip in view.mips() {
+                                                    *access_flags
+                                                        .entry(ResourceId::Texture(TextureMip {
+                                                            id: view.texture,
+                                                            mip_level: mip,
+                                                        }))
+                                                        .or_default() |= access;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    DescriptorSetResource::Sampler(_) => (),
+                                }
+                            }
+                        }
+                        ComputeCommand::SetPushConstants(_, _, _) => (),
+                        ComputeCommand::Dispatch(_, _, _) => (),
+                    }
                 }
 
                 for (id, access) in access_flags {
@@ -328,4 +434,17 @@ pub struct RenderPassCmd {
     pub color_attachments: Vec<ColorAttachmentOwned>,
     pub depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
     pub cmds: Vec<DrawCmd>,
+}
+
+#[derive(Debug)]
+pub struct ComputePassCmd {
+    pub cmds: Vec<ComputeCommand>,
+}
+
+#[derive(Debug)]
+pub enum ComputeCommand {
+    SetPipeline(PipelineId),
+    SetDescriptorSet(u32, DescriptorSetId),
+    SetPushConstants(Vec<u8>, ShaderStages, u32),
+    Dispatch(u32, u32, u32),
 }

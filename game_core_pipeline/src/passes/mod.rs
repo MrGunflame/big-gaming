@@ -1,4 +1,5 @@
 mod forward;
+mod opaque_vertex;
 mod post_process;
 mod state;
 mod update;
@@ -6,11 +7,14 @@ mod update;
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
+use std::sync::atomic::fence;
 
 use bitflags::bitflags;
 use bytemuck::{NoUninit, Pod, Zeroable};
 use crossbeam::channel::Receiver;
 use forward::ForwardPass;
+use game_common::collections::arena::Key;
+use game_common::components::Transform;
 use game_render::api::{
     CommandQueue, DescriptorSetLayout, TextureRegion, TextureView, TextureViewDescriptor,
 };
@@ -21,10 +25,12 @@ use game_render::backend::{
 use game_render::buffer::GpuBuffer;
 use game_render::buffer::slab::{CompactSlabBuffer, SlabBuffer, SlabIndex};
 use game_render::graph::{NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
+use game_render::mesh::Mesh;
 use glam::UVec2;
+use opaque_vertex::state::VertexMeshState;
 use parking_lot::Mutex;
 use post_process::PostProcessPass;
-use state::mesh::{InstanceId, MeshState, MeshStrategyMeshId};
+use state::mesh::MeshState;
 use update::{TransformUniform, UpdatePass};
 
 use crate::camera::Camera;
@@ -47,21 +53,26 @@ pub(crate) fn init(graph: &mut RenderGraph, queue: &CommandQueue<'_>, events: Re
     let update_pass = UpdatePass::new(queue, state.clone(), events);
     graph.add_node(UPDATE_PASS, update_pass);
 
-    let forward_pass = ForwardPass::new(queue, state.clone(), HDR_TEXTURE);
-    graph.add_node(FORWARD_PASS, forward_pass);
-    graph.add_node_dependency(FORWARD_PASS, UPDATE_PASS);
-    graph.add_slot_dependency(
-        FORWARD_PASS,
-        SlotLabel::SURFACE,
-        SlotKind::Texture,
-        SlotFlags::READ,
-    );
-    graph.add_slot_dependency(
-        FORWARD_PASS,
-        HDR_TEXTURE,
-        SlotKind::Texture,
-        SlotFlags::WRITE,
-    );
+    if queue.features().mesh_shader {
+        let forward_pass = ForwardPass::new(queue, state.clone(), HDR_TEXTURE);
+        graph.add_node(FORWARD_PASS, forward_pass);
+        graph.add_node_dependency(FORWARD_PASS, UPDATE_PASS);
+
+        graph.add_slot_dependency(
+            FORWARD_PASS,
+            SlotLabel::SURFACE,
+            SlotKind::Texture,
+            SlotFlags::READ,
+        );
+        graph.add_slot_dependency(
+            FORWARD_PASS,
+            HDR_TEXTURE,
+            SlotKind::Texture,
+            SlotFlags::WRITE,
+        );
+    } else {
+        opaque_vertex::init(graph, queue, state);
+    }
 
     let post_process_pass = PostProcessPass::new(queue, HDR_TEXTURE, SlotLabel::SURFACE);
     graph.add_node(POST_PROCESS_PASS, post_process_pass);
@@ -85,9 +96,9 @@ struct State {
 
     mesh_descriptor_layout: DescriptorSetLayout,
 
-    mesh: MeshState,
+    mesh: MeshStateImpl,
 
-    meshes: HashMap<MeshId, MeshStrategyMeshId>,
+    meshes: HashMap<MeshId, MeshKey>,
     images: HashMap<ImageId, TextureSlabIndex>,
     materials: HashMap<MaterialId, SlabIndex>,
 
@@ -181,7 +192,7 @@ impl State {
             images: HashMap::new(),
             textures,
             material_slab: SlabBuffer::new(BufferUsage::STORAGE),
-            mesh: MeshState::new(queue),
+            mesh: MeshStateImpl::new(queue),
         }
     }
 }
@@ -272,7 +283,7 @@ impl SceneData {
 
 #[derive(Debug)]
 struct ObjectState {
-    id: InstanceId,
+    id: InstanceKey,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Zeroable, Pod)]
@@ -375,3 +386,58 @@ struct RawObjectData {
     pub material: SlabIndex,
     _pad0: [u32; 2],
 }
+
+#[derive(Debug)]
+enum MeshStateImpl {
+    Vertex(VertexMeshState),
+    Mesh(MeshState),
+}
+
+impl MeshStateImpl {
+    fn new(queue: &CommandQueue<'_>) -> Self {
+        if queue.features().mesh_shader {
+            Self::Mesh(MeshState::new(queue))
+        } else {
+            Self::Vertex(VertexMeshState::new(queue))
+        }
+    }
+
+    fn create_mesh(&mut self, queue: &CommandQueue<'_>, mesh: &Mesh) -> MeshKey {
+        match self {
+            Self::Mesh(state) => state.create_mesh(queue, mesh),
+            Self::Vertex(state) => state.create_mesh(queue, mesh),
+        }
+    }
+
+    fn remove_mesh(&mut self, key: MeshKey) {
+        match self {
+            Self::Mesh(state) => state.remove_mesh(key),
+            Self::Vertex(state) => state.remove_mesh(key),
+        }
+    }
+
+    fn create_instance(
+        &mut self,
+        transform: Transform,
+        mesh: MeshKey,
+        material: SlabIndex,
+    ) -> InstanceKey {
+        match self {
+            Self::Mesh(state) => state.create_instance(transform, mesh, material),
+            Self::Vertex(state) => state.create_instance(transform, mesh, material),
+        }
+    }
+
+    fn remove_instance(&mut self, key: InstanceKey) {
+        match self {
+            Self::Mesh(state) => state.remove_instance(key),
+            Self::Vertex(state) => state.remove_instance(key),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MeshKey(pub Key);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct InstanceKey(SlabIndex);
