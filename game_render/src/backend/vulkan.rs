@@ -774,7 +774,16 @@ impl Adapter {
         let mut extensions = Vec::new();
         extensions.extend(supported_extensions.names().iter().map(|v| v.as_ptr()));
 
-        let features = vk::PhysicalDeviceFeatures::default();
+        let features = vk::PhysicalDeviceFeatures::default()
+            // Allows passing a draw count greater than 1 to indirect
+            // draw calls.
+            .multi_draw_indirect(true);
+
+        let mut features11 = vk::PhysicalDeviceVulkan11Features::default()
+            // Enables `SPV_KHR_shader_draw_parameters`, which in turns provides
+            // `BaseInstance`, `BaseVertex` and `DrawIndex` needed for indirect
+            // draws.
+            .shader_draw_parameters(true);
 
         let mut dynamic_rendering =
             vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
@@ -831,7 +840,8 @@ impl Adapter {
             .push_next(&mut synchronization2)
             .push_next(&mut descriptor_indexing)
             .push_next(&mut _8bit_storage)
-            .push_next(&mut f16i8);
+            .push_next(&mut f16i8)
+            .push_next(&mut features11);
 
         if supported_extensions.swapchain_maintenance1 {
             create_info = create_info.push_next(&mut swapchain_maintenance1);
@@ -922,6 +932,12 @@ impl Adapter {
                 .limits
                 .max_descriptor_set_uniform_buffers,
             max_color_attachments: props.properties.limits.max_color_attachments,
+            max_compute_work_group_count: props.properties.limits.max_compute_work_group_count,
+            max_compute_work_group_invocations: props
+                .properties
+                .limits
+                .max_compute_work_group_invocations,
+            max_compute_work_group_size: props.properties.limits.max_compute_work_group_size,
             max_per_set_descriptors: maintenance3.max_per_set_descriptors,
             max_memory_allocation_size: maintenance3.max_memory_allocation_size,
             max_task_work_group_total_count: mesh_shader.max_task_work_group_total_count,
@@ -1563,14 +1579,12 @@ impl Device {
             // - `setLayoutCount` must be less than or equal to `VkPhysicalDeviceLimits::maxBoundDescriptorSets`.
             .set_layouts(&descriptors)
             .push_constant_ranges(&push_constant_ranges);
-        let pipeline_layout = unsafe {
+        let layout = unsafe {
             self.device
                 .create_pipeline_layout(&pipeline_layout_info, None)?
         };
 
         let mut stages = Vec::new();
-        let mut color_attchment_formats: Vec<vk::Format> = Vec::new();
-        let mut color_blend_attachments = Vec::new();
 
         let shader_modules = ScratchBuffer::new(descriptor.stages.len());
         let stage_entry_pointers = ScratchBuffer::new(descriptor.stages.len());
@@ -1580,6 +1594,7 @@ impl Device {
                 &[ShaderStage::Vertex, ShaderStage::Fragment],
                 &[ShaderStage::Task, ShaderStage::Mesh, ShaderStage::Fragment],
                 &[ShaderStage::Mesh, ShaderStage::Fragment],
+                &[ShaderStage::Compute],
             ];
 
             let requested_stages: Vec<_> = descriptor
@@ -1624,25 +1639,6 @@ impl Device {
                                 target
                             );
                         }
-
-                        color_attchment_formats.push(vk::Format::from(target.format));
-
-                        let mut color_blend_state =
-                            vk::PipelineColorBlendAttachmentState::default()
-                                .color_write_mask(vk::ColorComponentFlags::RGBA)
-                                .blend_enable(target.blend.is_some());
-
-                        if let Some(state) = target.blend {
-                            color_blend_state = color_blend_state
-                                .src_color_blend_factor(state.color_src_factor.into())
-                                .dst_color_blend_factor(state.color_dst_factor.into())
-                                .color_blend_op(state.color_op.into())
-                                .src_alpha_blend_factor(state.alpha_src_factor.into())
-                                .dst_alpha_blend_factor(state.alpha_dst_factor.into())
-                                .alpha_blend_op(state.alpha_op.into());
-                        }
-
-                        color_blend_attachments.push(color_blend_state);
                     }
 
                     let spirv = create_pipeline_shader_module(
@@ -1708,9 +1704,88 @@ impl Device {
                         .module(module.shader)
                         .name(&*name)
                 }
+                PipelineStage::Compute(stage) => {
+                    let spirv = create_pipeline_shader_module(
+                        &stage.shader,
+                        stage.entry,
+                        ShaderStage::Compute,
+                        descriptor.descriptors,
+                    );
+
+                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
+
+                    validate_shader_bindings(stage.shader, descriptor.descriptors);
+
+                    vk::PipelineShaderStageCreateInfo::default()
+                        .stage(vk::ShaderStageFlags::COMPUTE)
+                        .module(module.shader)
+                        .name(&*name)
+                }
             };
 
             stages.push(vk_stage);
+        }
+
+        let res = match descriptor.stages[0].shader_stage() {
+            ShaderStage::Compute => self.create_compute_pipeline(layout, stages[0]),
+            _ => self.create_graphics_pipeline(descriptor, layout, &stages),
+        };
+
+        let pipeline = match res {
+            Ok(pipeline) => pipeline,
+            Err(err) => {
+                unsafe {
+                    self.device.destroy_pipeline_layout(layout, None);
+                }
+
+                return Err(err);
+            }
+        };
+
+        // Shaders can be destroyed after the pipeline was created.
+        drop(shader_modules);
+
+        Ok(Pipeline {
+            device: self.device.clone(),
+            pipeline,
+            pipeline_layout: layout,
+            stages: descriptor.stages.iter().map(|v| v.shader_stage()).collect(),
+        })
+    }
+
+    fn create_graphics_pipeline(
+        &self,
+        descriptor: &PipelineDescriptor<'_>,
+        layout: vk::PipelineLayout,
+        stages: &[vk::PipelineShaderStageCreateInfo<'_>],
+    ) -> Result<vk::Pipeline, Error> {
+        let mut color_attachment_formats = Vec::<vk::Format>::new();
+        let mut color_blend_attachments = Vec::new();
+        for stage in descriptor.stages {
+            let PipelineStage::Fragment(stage) = stage else {
+                continue;
+            };
+
+            for target in stage.targets {
+                let mut color_blend_state = vk::PipelineColorBlendAttachmentState::default()
+                    .color_write_mask(vk::ColorComponentFlags::RGBA)
+                    .blend_enable(false);
+
+                if let Some(state) = target.blend {
+                    color_blend_state = color_blend_state
+                        .blend_enable(true)
+                        .src_color_blend_factor(state.color_src_factor.into())
+                        .dst_color_blend_factor(state.color_dst_factor.into())
+                        .color_blend_op(state.color_op.into())
+                        .src_alpha_blend_factor(state.alpha_src_factor.into())
+                        .dst_alpha_blend_factor(state.alpha_dst_factor.into())
+                        .alpha_blend_op(state.alpha_op.into());
+                }
+
+                color_attachment_formats.push(target.format.into());
+                color_blend_attachments.push(color_blend_state);
+            }
         }
 
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
@@ -1772,59 +1847,74 @@ impl Device {
                 .max_depth_bounds(1.0)
         });
 
-        assert!(color_attchment_formats.len() <= self.device.limits.max_color_attachments as usize);
+        assert!(
+            color_attachment_formats.len() <= self.device.limits.max_color_attachments as usize
+        );
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            // - `colorAttachmentCount` must be less than `VkPhysicalDeviceLimits::maxColorAttachments`.
-            .color_attachment_formats(&color_attchment_formats);
+            .color_attachment_formats(&color_attachment_formats);
 
         if let Some(state) = &descriptor.depth_stencil_state {
             rendering_info = rendering_info.depth_attachment_format(state.format.into());
         }
 
         let mut info = vk::GraphicsPipelineCreateInfo::default()
-            .stages(&stages)
+            .flags(vk::PipelineCreateFlags::empty())
+            .stages(stages)
             .vertex_input_state(&vertex_input_state)
             .input_assembly_state(&input_assembly_state)
             .viewport_state(&viewport_state)
             .rasterization_state(&rasterization_state)
             .multisample_state(&multisample_state)
             .color_blend_state(&color_blend_state)
-            .layout(pipeline_layout)
             .dynamic_state(&dynamic_state)
-            // Not needed since we are using VK_KHR_dynamic_rendering.
+            .layout(layout)
+            // RenderPass parameters, we use `DYNAMIC_RENDERING` instead.
             .render_pass(vk::RenderPass::null())
             .subpass(0)
+            // Pipeline derivation parameters, we don't use those.
+            .base_pipeline_handle(vk::Pipeline::null())
+            .base_pipeline_index(0)
+            // Dynamic rendering
             .push_next(&mut rendering_info);
 
-        if let Some(state) = &depth_stencil_state {
-            info = info.depth_stencil_state(&state);
+        if let Some(depth_stencil_state) = &depth_stencil_state {
+            info = info.depth_stencil_state(depth_stencil_state);
         }
 
-        let pipelines = match unsafe {
+        match unsafe {
             self.device
                 .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None)
         } {
-            Ok(pipeline) => pipeline,
+            Ok(pipelines) => Ok(pipelines[0]),
             Err((pipelines, err)) => {
                 debug_assert!(pipelines.is_empty());
-
-                unsafe {
-                    self.device.destroy_pipeline_layout(pipeline_layout, None);
-                }
-
-                return Err(err.into());
+                Err(err.into())
             }
-        };
+        }
+    }
 
-        // Shaders can be destroyed after the pipeline was created.
-        drop(shader_modules);
+    fn create_compute_pipeline(
+        &self,
+        layout: vk::PipelineLayout,
+        stage: vk::PipelineShaderStageCreateInfo<'_>,
+    ) -> Result<vk::Pipeline, Error> {
+        let info = vk::ComputePipelineCreateInfo::default()
+            .flags(vk::PipelineCreateFlags::empty())
+            .stage(stage)
+            .layout(layout)
+            .base_pipeline_handle(vk::Pipeline::null())
+            .base_pipeline_index(0);
 
-        Ok(Pipeline {
-            device: self.device.clone(),
-            pipeline: pipelines[0],
-            pipeline_layout,
-            stages: descriptor.stages.iter().map(|v| v.shader_stage()).collect(),
-        })
+        match unsafe {
+            self.device
+                .create_compute_pipelines(vk::PipelineCache::null(), &[info], None)
+        } {
+            Ok(pipelines) => Ok(pipelines[0]),
+            Err((pipelines, err)) => {
+                debug_assert!(pipelines.is_empty());
+                Err(err.into())
+            }
+        }
     }
 
     /// Creates a new [`CommandPool`].
@@ -2638,17 +2728,17 @@ impl From<ShaderStages> for vk::ShaderStageFlags {
     fn from(value: ShaderStages) -> Self {
         let mut flags = vk::ShaderStageFlags::empty();
 
-        if value.contains(ShaderStages::VERTEX) {
-            flags |= vk::ShaderStageFlags::VERTEX;
-        }
-        if value.contains(ShaderStages::FRAGMENT) {
-            flags |= vk::ShaderStageFlags::FRAGMENT;
-        }
-        if value.contains(ShaderStages::TASK) {
-            flags |= vk::ShaderStageFlags::TASK_EXT;
-        }
-        if value.contains(ShaderStages::MESH) {
-            flags |= vk::ShaderStageFlags::MESH_EXT;
+        for flag in value.iter() {
+            let vk_flag = match flag {
+                ShaderStages::VERTEX => vk::ShaderStageFlags::VERTEX,
+                ShaderStages::FRAGMENT => vk::ShaderStageFlags::FRAGMENT,
+                ShaderStages::TASK => vk::ShaderStageFlags::TASK_EXT,
+                ShaderStages::MESH => vk::ShaderStageFlags::MESH_EXT,
+                ShaderStages::COMPUTE => vk::ShaderStageFlags::COMPUTE,
+                _ => unreachable!(),
+            };
+
+            flags |= vk_flag;
         }
 
         flags
@@ -3216,6 +3306,14 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
+    pub fn begin_compute_pass<'res>(&mut self) -> ComputePass<'_, 'res> {
+        assert!(self.queue_caps.contains(QueueCapabilities::COMPUTE));
+        ComputePass {
+            encoder: self,
+            pipeline: None,
+        }
+    }
+
     /// Inserts a batch of memory/execution barriers.
     pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
         // FIXME: This function should probably require the caller to
@@ -3453,6 +3551,54 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         }
     }
 
+    /// Dispatches indirect draw commands from the given `buffer`.
+    ///
+    /// <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawIndirect.html>
+    pub fn draw_indirect(&mut self, buffer: &Buffer, offset: u64, draw_count: u32, stride: u32) {
+        assert!(buffer
+            .usages
+            .contains(vk::BufferUsageFlags::INDIRECT_BUFFER));
+
+        assert!(offset <= buffer.size);
+        assert!(offset + u64::from(draw_count) * u64::from(stride) <= buffer.size);
+
+        unsafe {
+            self.encoder.device.cmd_draw_indirect(
+                self.encoder.buffer,
+                buffer.buffer,
+                offset,
+                draw_count,
+                stride,
+            );
+        }
+    }
+
+    /// <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawIndexedIndirect.html>
+    pub fn draw_indexed_indirect(
+        &mut self,
+        buffer: &Buffer,
+        offset: u64,
+        draw_count: u32,
+        stride: u32,
+    ) {
+        assert!(buffer
+            .usages
+            .contains(vk::BufferUsageFlags::INDIRECT_BUFFER));
+
+        assert!(offset <= buffer.size);
+        assert!(offset + u64::from(draw_count) * u64::from(stride) <= buffer.size);
+
+        unsafe {
+            self.encoder.device.cmd_draw_indexed_indirect(
+                self.encoder.buffer,
+                buffer.buffer,
+                offset,
+                draw_count,
+                stride,
+            );
+        }
+    }
+
     /// Dispatches Mesh/Task shader workgroups.
     ///
     /// Requires `VK_EXT_mesh_shader`.
@@ -3543,6 +3689,93 @@ impl<'encoder, 'resources> Drop for RenderPass<'encoder, 'resources> {
                 .device
                 .device
                 .cmd_end_rendering(self.encoder.buffer);
+        }
+    }
+}
+
+pub struct ComputePass<'encoder, 'resources> {
+    encoder: &'encoder CommandEncoder<'encoder>,
+    pipeline: Option<&'resources Pipeline>,
+}
+
+impl<'encoder, 'resources> ComputePass<'encoder, 'resources> {
+    pub fn bind_pipeline(&mut self, pipeline: &'resources Pipeline) {
+        unsafe {
+            self.encoder.device.device.cmd_bind_pipeline(
+                self.encoder.buffer,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline.pipeline,
+            );
+        }
+
+        self.pipeline = Some(&pipeline);
+    }
+
+    pub fn bind_descriptor_set(&mut self, slot: u32, descriptor_set: &DescriptorSet<'_>) {
+        let pipeline = self.pipeline.as_ref().unwrap();
+
+        unsafe {
+            self.encoder.device.device.cmd_bind_descriptor_sets(
+                self.encoder.buffer,
+                vk::PipelineBindPoint::COMPUTE,
+                pipeline.pipeline_layout,
+                slot,
+                &[descriptor_set.set],
+                &[],
+            );
+        }
+    }
+
+    pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
+        // `offset` must be a multiple of 4.
+        assert_eq!(offset % 4, 0);
+        // `size` must be a multiple of 4.
+        assert_eq!(data.len() % 4, 0);
+        // `offset` must be less than `VkPhysicalDeviceLimits::maxPushConstantsSize`.
+        assert!(offset < self.encoder.device.limits.max_push_constants_size);
+        // `size` must be less than or equal to `VkPhysicalDeviceLimits::maxPushConstantsSize` minus `offset`.
+        assert!(data.len() as u32 <= self.encoder.device.limits.max_push_constants_size - offset);
+        // `stageFlags` must not be 0.
+        assert_ne!(stages, ShaderStages::empty());
+        // `size` must be greater than 0.
+        assert_ne!(data.len(), 0);
+
+        // We are in a compute pass, so `COMPUTE` is the only shader stage.
+        assert_eq!(stages, ShaderStages::COMPUTE);
+
+        let pipeline = self.pipeline.as_ref().unwrap();
+
+        unsafe {
+            self.encoder.device.device.cmd_push_constants(
+                self.encoder.buffer,
+                pipeline.pipeline_layout,
+                stages.into(),
+                0,
+                data,
+            );
+        }
+    }
+
+    /// Dispatches compute shader workgroups.
+    ///
+    /// <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDispatch.html>
+    pub fn dispatch(&mut self, x: u32, y: u32, z: u32) {
+        let pipeline = self.pipeline.as_ref().expect("Pipeline is not set");
+        match pipeline.stages[0] {
+            ShaderStage::Compute => {
+                assert!(x <= self.encoder.device.limits.max_compute_work_group_count[0]);
+                assert!(y <= self.encoder.device.limits.max_compute_work_group_count[1]);
+                assert!(z <= self.encoder.device.limits.max_compute_work_group_count[2])
+            }
+            stage => {
+                panic!("Cannot use `RenderPass::dispatch` on {:?}", stage);
+            }
+        }
+
+        unsafe {
+            self.encoder
+                .device
+                .cmd_dispatch(self.encoder.buffer, x, y, z);
         }
     }
 }
@@ -4448,6 +4681,9 @@ struct DeviceLimits {
     max_mesh_work_group_size: [u32; 3],
     max_mesh_output_vertices: u32,
     max_mesh_output_primitives: u32,
+    max_compute_work_group_count: [u32; 3],
+    max_compute_work_group_invocations: u32,
+    max_compute_work_group_size: [u32; 3],
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -4558,6 +4794,8 @@ fn convert_access_flags(flags: AccessFlags) -> vk::AccessFlags2 {
             AccessFlags::TASK_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
             AccessFlags::MESH_SHADER_READ => vk::AccessFlags2::SHADER_READ,
             AccessFlags::MESH_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
+            AccessFlags::COMPUTE_SHADER_READ => vk::AccessFlags2::SHADER_READ,
+            AccessFlags::COMPUTE_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
             AccessFlags::PRESENT => continue,
             _ => unreachable!(),
         };
@@ -4595,6 +4833,8 @@ fn access_flags_to_image_layout(flags: AccessFlags) -> vk::ImageLayout {
             AccessFlags::TASK_SHADER_WRITE => shader_write = true,
             AccessFlags::MESH_SHADER_READ => shader_read = true,
             AccessFlags::MESH_SHADER_WRITE => shader_write = true,
+            AccessFlags::COMPUTE_SHADER_READ => shader_read = true,
+            AccessFlags::COMPUTE_SHADER_WRITE => shader_write = true,
             AccessFlags::PRESENT => present = true,
             AccessFlags::INDEX => {
                 unreachable!("{:?} has no image layout", AccessFlags::INDEX)
@@ -4673,6 +4913,11 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
     }
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    enum ComputeStage {
+        Compute,
+    }
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
     enum TransferStage {
         Transfer,
     }
@@ -4680,6 +4925,13 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
     let mut transfer = None;
     if flags.contains(AccessFlags::TRANSFER_READ) | flags.contains(AccessFlags::TRANSFER_WRITE) {
         transfer = Some(TransferStage::Transfer);
+    }
+
+    let mut compute = None;
+    if flags.contains(AccessFlags::COMPUTE_SHADER_READ)
+        | flags.contains(AccessFlags::COMPUTE_SHADER_WRITE)
+    {
+        compute = Some(ComputeStage::Compute);
     }
 
     // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccessFlagBits2.html
@@ -4754,6 +5006,11 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
         None => vk::PipelineStageFlags2::empty(),
     };
 
+    let compute = match compute {
+        Some(ComputeStage::Compute) => vk::PipelineStageFlags2::COMPUTE_SHADER,
+        None => vk::PipelineStageFlags2::empty(),
+    };
+
     let graphics = match graphics {
         Some(GraphicsPrimitiveStage::DrawIndirect) => vk::PipelineStageFlags2::DRAW_INDIRECT,
         Some(GraphicsPrimitiveStage::VertexInput) => vk::PipelineStageFlags2::VERTEX_INPUT,
@@ -4771,7 +5028,7 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
         None => vk::PipelineStageFlags2::empty(),
     };
 
-    transfer | graphics
+    transfer | compute | graphics
 }
 
 fn validate_shader_bindings(shader: &Shader, descriptors: &[&DescriptorSetLayout]) {

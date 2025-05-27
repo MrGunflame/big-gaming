@@ -17,6 +17,9 @@ pub struct MemoryStatistics {
 pub struct MemoryBlock {
     pub size: u64,
     pub allocs: HashMap<u64, MemoryAlloc>,
+    pub dedicated: bool,
+    pub device_local: bool,
+    pub host_visible: bool,
 }
 
 #[derive(Clone, Debug)]

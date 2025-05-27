@@ -263,6 +263,7 @@ pub enum PipelineStage<'a> {
     Fragment(FragmentStage<'a>),
     Task(TaskStage<'a>),
     Mesh(MeshStage<'a>),
+    Compute(ComputeStage<'a>),
 }
 
 impl PipelineStage<'_> {
@@ -272,6 +273,7 @@ impl PipelineStage<'_> {
             Self::Fragment(_) => ShaderStage::Fragment,
             Self::Task(_) => ShaderStage::Task,
             Self::Mesh(_) => ShaderStage::Mesh,
+            Self::Compute(_) => ShaderStage::Compute,
         }
     }
 }
@@ -297,6 +299,12 @@ pub struct TaskStage<'a> {
 
 #[derive(Debug)]
 pub struct MeshStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
+}
+
+#[derive(Debug)]
+pub struct ComputeStage<'a> {
     pub shader: &'a Shader,
     pub entry: &'static str,
 }
@@ -422,6 +430,7 @@ pub enum ShaderStage {
     Fragment,
     Task,
     Mesh,
+    Compute,
 }
 
 impl ShaderStage {
@@ -431,6 +440,7 @@ impl ShaderStage {
             Self::Fragment => ShaderStages::FRAGMENT,
             Self::Task => ShaderStages::TASK,
             Self::Mesh => ShaderStages::MESH,
+            Self::Compute => ShaderStages::COMPUTE,
         }
     }
 }
@@ -443,11 +453,12 @@ impl From<ShaderStage> for ShaderStages {
 
 bitflags! {
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-    pub struct ShaderStages: u32 {
+    pub struct ShaderStages: u8 {
         const VERTEX = 1 << 0;
         const FRAGMENT = 1 << 1;
         const TASK = 1 << 2;
         const MESH = 1 << 3;
+        const COMPUTE = 1 << 4;
     }
 }
 
@@ -645,18 +656,32 @@ bitflags! {
         const MESH_SHADER_READ = 1 << 15;
         /// Resource can be written to in a mesh shader.
         const MESH_SHADER_WRITE = 1 << 16;
+        /// Resource can be read from in a compute shader.
+        const COMPUTE_SHADER_READ = 1 << 17;
+        /// Resource can be written to in a compute shader.
+        const COMPUTE_SHADER_WRITE = 1 << 18;
     }
 }
 
 impl AccessFlags {
     /// Resource can be bound and accessed reable in any shader.
-    pub const SHADER_READ: Self =
-        Self::from_bits(Self::VERTEX_SHADER_READ.bits() | Self::FRAGMENT_SHADER_READ.bits())
-            .unwrap();
+    pub const SHADER_READ: Self = Self::from_bits(
+        Self::VERTEX_SHADER_READ.bits()
+            | Self::FRAGMENT_SHADER_READ.bits()
+            | Self::MESH_SHADER_READ.bits()
+            | Self::TASK_SHADER_READ.bits()
+            | Self::COMPUTE_SHADER_READ.bits(),
+    )
+    .unwrap();
 
-    pub const SHADER_WRITE: Self =
-        Self::from_bits(Self::VERTEX_SHADER_WRITE.bits() | Self::FRAGMENT_SHADER_WRITE.bits())
-            .unwrap();
+    pub const SHADER_WRITE: Self = Self::from_bits(
+        Self::VERTEX_SHADER_WRITE.bits()
+            | Self::FRAGMENT_SHADER_WRITE.bits()
+            | Self::MESH_SHADER_WRITE.bits()
+            | Self::TASK_SHADER_WRITE.bits()
+            | Self::COMPUTE_SHADER_WRITE.bits(),
+    )
+    .unwrap();
 
     /// Returns `true` if all access flags are allowed to be used in a queue with the given
     /// [`QueueCapabilities`].
@@ -676,7 +701,7 @@ impl AccessFlags {
             | AccessFlags::TASK_SHADER_WRITE
             | AccessFlags::MESH_SHADER_READ
             | AccessFlags::MESH_SHADER_WRITE;
-        let compute_flags = AccessFlags::empty();
+        let compute_flags = AccessFlags::COMPUTE_SHADER_READ | AccessFlags::COMPUTE_SHADER_WRITE;
         let transfer_flags = AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE;
 
         let mut flags = *self;
@@ -876,4 +901,38 @@ pub struct SurfaceFormat {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ColorSpace {
     SrgbNonLinear,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct DrawIndirectCommand {
+    /// The number of vertices to draw.
+    pub vertex_count: u32,
+    /// The number of instances to draw.
+    pub instance_count: u32,
+    /// The index of the first vertex to draw.
+    pub first_vertex: u32,
+    /// The index of the first instance to draw.
+    pub first_instance: u32,
+}
+
+#[derive(Copy, Clone, Debug, Zeroable, Pod)]
+#[repr(C)]
+pub struct DrawIndexedIndirectCommand {
+    /// The number of vertices to draw.
+    pub index_count: u32,
+    /// The number of instances to draw.
+    pub instance_count: u32,
+    /// The base index within the index buffer.
+    pub first_index: u32,
+    /// The value added to the vertex index before indexing into the vertex buffer.
+    pub vertex_offset: u32,
+    /// The index of the first instance to draw.
+    pub first_instance: u32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Features {
+    pub mesh_shader: bool,
+    pub task_shader: bool,
 }

@@ -227,7 +227,7 @@ impl ReloadableShaderSource {
                 let bytes = slangc::compile(&path, slangc::OptLevel::Max).map_err(Error::Slang)?;
                 let module = spirv::Module::new(&bytes).map_err(Error::Spirv)?;
 
-                let sources = slangc::load_imported_files(&path).map_err(Error::Io)?;
+                let sources = slangc::load_imported_files(&path).map_err(Error::Slang)?;
                 for source in sources {
                     FileWatcher::register(source, self.cell.clone());
                 }

@@ -246,7 +246,13 @@ impl GeneralPurposeAllocator {
     ) -> BufferAlloc {
         let mut buffer = self.device.create_buffer(size, usage).unwrap();
         let req = self.device.buffer_memory_requirements(&buffer);
-        let memory = self.alloc(req.clone(), flags, Some(DedicatedResource::Buffer(&buffer)));
+
+        let dedicated_for = req
+            .dedicated
+            .is_preferred_or_required()
+            .then_some(DedicatedResource::Buffer(&buffer));
+
+        let memory = self.alloc(req.clone(), flags, dedicated_for);
         unsafe {
             self.device
                 .bind_buffer_memory(&mut buffer, memory.memory())
@@ -286,11 +292,13 @@ impl GeneralPurposeAllocator {
     ) -> TextureAlloc {
         let mut texture = self.device.create_texture(descriptor).unwrap();
         let req = self.device.image_memory_requirements(&texture);
-        let memory = self.alloc(
-            req.clone(),
-            flags,
-            Some(DedicatedResource::Texture(&texture)),
-        );
+
+        let dedicated_for = req
+            .dedicated
+            .is_preferred_or_required()
+            .then_some(DedicatedResource::Texture(&texture));
+
+        let memory = self.alloc(req.clone(), flags, dedicated_for);
         unsafe {
             self.device
                 .bind_texture_memory(&mut texture, memory.memory())
@@ -376,6 +384,10 @@ impl GeneralPurposeAllocator {
                 .flags
                 .contains(MemoryTypeFlags::HOST_VISIBLE);
 
+            let device_local = props.types[mem_typ as usize]
+                .flags
+                .contains(MemoryTypeFlags::DEVICE_LOCAL);
+
             let pool = inner
                 .pools
                 .entry(mem_typ)
@@ -387,6 +399,7 @@ impl GeneralPurposeAllocator {
                 &req,
                 host_visible,
                 dedicated_for,
+                device_local,
             ) {
                 Ok(allocation) => {
                     return DeviceMemoryRegion {
@@ -466,6 +479,7 @@ impl Pool {
         req: &MemoryRequirements,
         host_visible: bool,
         dedicated_for: Option<DedicatedResource<'_>>,
+        device_local: bool,
     ) -> Result<PoolAllocation, AllocError> {
         // If the allocation size exceeds the maximum size we will
         // attempt to do a dedicated allocation.
@@ -477,6 +491,9 @@ impl Pool {
             let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
                 size: req.size.get(),
                 allocs: HashMap::new(),
+                dedicated: dedicated_for.is_some(),
+                host_visible,
+                device_local,
             });
 
             let ptr = host_visible.then(|| memory.map().unwrap());
@@ -522,6 +539,9 @@ impl Pool {
         let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
             size: block_size.get(),
             allocs: HashMap::new(),
+            dedicated: dedicated_for.is_some(),
+            host_visible,
+            device_local,
         });
 
         let ptr = host_visible.then(|| memory.map().unwrap());

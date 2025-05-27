@@ -74,7 +74,7 @@ impl<'a, 'b> RenderContext<'a, 'b> {
         // This resource access is infalliable because we have previously
         // that the permissions are valid, indicating that the scheduler
         // allowed this access.
-        let resource = self.resources.get(&label).unwrap();
+        let resource = self.resources.get(&label).ok_or(SlotError::NotPresent)?;
         T::downcast(resource).ok_or(SlotError::InvalidType)
     }
 
@@ -276,6 +276,8 @@ pub enum SlotError {
     /// requested as.
     #[error("invalid type")]
     InvalidType,
+    #[error("not present")]
+    NotPresent,
 }
 
 /// Types that can be used in a slot.

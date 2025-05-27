@@ -71,7 +71,7 @@ impl Node for UpdatePass {
                 }
                 Event::DestroyMesh(id) => {
                     if let Some(key) = state.meshes.remove(&id) {
-                        state.mesh.remove(key);
+                        state.mesh.remove_mesh(key);
                     }
                 }
                 Event::CreateImage(id, image) => {

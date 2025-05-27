@@ -1,54 +1,47 @@
-use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use game_common::components::Color;
 use game_render::api::{
-    BindingResource, CommandQueue, DepthStencilAttachment, DescriptorSetDescriptor,
+    BindingResource, Buffer, CommandQueue, DepthStencilAttachment, DescriptorSetDescriptor,
     DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
     PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
     TextureViewDescriptor,
 };
 use game_render::backend::{
-    AddressMode, BlendState, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
-    DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, MeshStage, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TaskStage,
-    TextureDescriptor, TextureFormat, TextureUsage,
+    AddressMode, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding, DescriptorType,
+    FilterMode, FragmentStage, FrontFace, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage, VertexStage,
 };
-use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
 use game_render::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};
 use game_tracing::trace_span;
 use glam::UVec2;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
 use crate::camera::CameraUniform;
 use crate::entities::{CameraId, SceneId};
+use crate::passes::{DEPTH_FORMAT, HDR_FORMAT, HDR_TEXTURE, MeshStateImpl, State};
 
-use super::{DEPTH_FORMAT, HDR_FORMAT, MeshStateImpl, State};
+use super::{INDIRECT_DRAW_BUFFER, INSTANCE_BUFFER};
 
+const VS_SHADER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/shaders/opaque_vertex/forward_vert.slang"
+);
 const FS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_frag.slang");
 
-const MS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_mesh.slang");
-const TS_SHADER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/forward_task.slang");
-
 #[derive(Debug)]
-pub(super) struct ForwardPass {
+pub struct OpaqueVertexForwardPass {
     state: Arc<Mutex<State>>,
-    depth_stencils: RwLock<HashMap<RenderTarget, Texture>>,
-    pipeline: PipelineCache<BuildForwardPipeline>,
+    pipeline: PipelineCache<BuildPipeline>,
     linear_sampler: Sampler,
-    lights_and_sampler_descriptor: DescriptorSetLayout,
-    hdr_texture_slot: SlotLabel,
 }
 
-impl ForwardPass {
-    pub(super) fn new(
-        queue: &CommandQueue<'_>,
-        state: Arc<Mutex<State>>,
-        hdr_texture_slot: SlotLabel,
-    ) -> Self {
+impl OpaqueVertexForwardPass {
+    pub fn new(queue: &CommandQueue<'_>, state: Arc<Mutex<State>>) -> Self {
         let linear_sampler = queue.create_sampler(&SamplerDescriptor {
             address_mode_u: AddressMode::Repeat,
             address_mode_v: AddressMode::Repeat,
@@ -56,6 +49,47 @@ impl ForwardPass {
             mag_filter: FilterMode::Linear,
             min_filter: FilterMode::Linear,
             mipmap_filter: FilterMode::Linear,
+        });
+
+        let mesh_descriptor = queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
+            bindings: &[
+                DescriptorBinding {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                DescriptorBinding {
+                    binding: 1,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                DescriptorBinding {
+                    binding: 2,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                DescriptorBinding {
+                    binding: 3,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                DescriptorBinding {
+                    binding: 4,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+                DescriptorBinding {
+                    binding: 5,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
+            ],
         });
 
         let lights_and_sampler_descriptor =
@@ -101,58 +135,28 @@ impl ForwardPass {
                 ],
             });
 
-        let pipeline;
-        {
-            let state = state.lock();
-            pipeline = PipelineCache::new(
-                BuildForwardPipeline {
-                    mesh_descriptor: state.mesh_descriptor_layout.clone(),
-                    lights_and_sampler_descriptor: lights_and_sampler_descriptor.clone(),
+        let pipeline = PipelineCache::new(
+            BuildPipeline {
+                mesh_descriptor,
+                lights_and_sampler_descriptor,
+            },
+            vec![
+                ShaderConfig {
+                    source: ShaderSource::File(VS_SHADER.into()),
+                    language: ShaderLanguage::Slang,
                 },
-                vec![
-                    ShaderConfig {
-                        source: ShaderSource::File(TS_SHADER.into()),
-                        language: ShaderLanguage::Slang,
-                    },
-                    ShaderConfig {
-                        source: ShaderSource::File(MS_SHADER.into()),
-                        language: ShaderLanguage::Slang,
-                    },
-                    ShaderConfig {
-                        source: ShaderSource::File(FS_SHADER.into()),
-                        language: ShaderLanguage::Slang,
-                    },
-                ],
-            )
-        }
+                ShaderConfig {
+                    source: ShaderSource::File(FS_SHADER.into()),
+                    language: ShaderLanguage::Slang,
+                },
+            ],
+        );
 
         Self {
             state,
-            depth_stencils: RwLock::new(HashMap::new()),
             pipeline,
             linear_sampler,
-            lights_and_sampler_descriptor,
-            hdr_texture_slot,
         }
-    }
-
-    fn update_depth_stencil(&self, queue: &CommandQueue<'_>, target: RenderTarget, size: UVec2) {
-        let mut depth_stencils = self.depth_stencils.write();
-        if let Some(texture) = depth_stencils.get(&target) {
-            // Texture size unchanged, no need to recreate.
-            if texture.size() == size {
-                return;
-            }
-        }
-
-        let texture = queue.create_texture(&TextureDescriptor {
-            size,
-            mip_levels: 1,
-            format: DEPTH_FORMAT,
-            usage: TextureUsage::RENDER_ATTACHMENT,
-        });
-
-        depth_stencils.insert(target, texture);
     }
 
     fn render_scene_with_camera(
@@ -165,9 +169,23 @@ impl ForwardPass {
     ) {
         let _span = trace_span!("ForwardPass::render_scene_with_camera").entered();
 
+        let (Ok(instance_buffer), Ok(indirect_buffer)) = (
+            ctx.read::<Buffer>(INSTANCE_BUFFER),
+            ctx.read::<Buffer>(INDIRECT_DRAW_BUFFER),
+        ) else {
+            self.clear_pass(ctx);
+            return;
+        };
+
+        let detpth_texture = ctx.queue.create_texture(&TextureDescriptor {
+            size,
+            mip_levels: 1,
+            format: DEPTH_FORMAT,
+            usage: TextureUsage::RENDER_ATTACHMENT,
+        });
+
         let scene = state.scenes.get_mut(&scene).unwrap();
         let camera = scene.cameras.get(&camera).unwrap();
-        let depth_stencils = self.depth_stencils.read();
 
         let textures = state.textures.views();
         let materials = state.material_slab.buffer(ctx.queue);
@@ -178,7 +196,7 @@ impl ForwardPass {
 
         let lights_and_sampler_descriptor =
             ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
-                layout: &self.lights_and_sampler_descriptor,
+                layout: &self.pipeline.builder.lights_and_sampler_descriptor,
                 entries: &[
                     DescriptorSetEntry {
                         binding: 0,
@@ -207,15 +225,14 @@ impl ForwardPass {
                 ],
             });
 
-        let mesh_state = match &mut state.mesh {
-            MeshStateImpl::Mesh(state) => state,
-            _ => unreachable!(),
+        let MeshStateImpl::Vertex(mesh_state) = &mut state.mesh else {
+            unreachable!();
         };
 
-        let instance_buffer = mesh_state.instances.buffer(ctx.queue);
+        let offsets = mesh_state.mesh_offsets.buffer(ctx.queue);
 
         let mesh_descriptor = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
-            layout: &state.mesh_descriptor_layout,
+            layout: &self.pipeline.builder.mesh_descriptor,
             entries: &[
                 DescriptorSetEntry {
                     binding: 0,
@@ -235,25 +252,16 @@ impl ForwardPass {
                 },
                 DescriptorSetEntry {
                     binding: 4,
-                    resource: BindingResource::Buffer(mesh_state.vertex_indices.buffer()),
+                    resource: BindingResource::Buffer(offsets),
                 },
                 DescriptorSetEntry {
                     binding: 5,
-                    resource: BindingResource::Buffer(mesh_state.triangle_indices.buffer()),
-                },
-                DescriptorSetEntry {
-                    binding: 6,
-                    resource: BindingResource::Buffer(mesh_state.meshlets.buffer()),
-                },
-                DescriptorSetEntry {
-                    binding: 7,
                     resource: BindingResource::Buffer(instance_buffer),
                 },
             ],
         });
 
         let pipeline = self.pipeline.get(ctx.queue, HDR_FORMAT);
-        let depth_stencil = depth_stencils.get(&ctx.render_target).unwrap();
         let render_target = ctx.queue.create_texture(&TextureDescriptor {
             size,
             mip_levels: 1,
@@ -268,7 +276,7 @@ impl ForwardPass {
                 store_op: StoreOp::Store,
             }],
             depth_stencil_attachment: Some(&DepthStencilAttachment {
-                texture: depth_stencil,
+                texture: &detpth_texture,
                 load_op: LoadOp::Clear(0.0),
                 store_op: StoreOp::Store,
             }),
@@ -286,18 +294,18 @@ impl ForwardPass {
 
         render_pass.set_pipeline(&pipeline);
         render_pass.set_push_constants(
-            ShaderStages::MESH | ShaderStages::FRAGMENT,
+            ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             0,
             &push_constants,
         );
 
         render_pass.set_descriptor_set(0, &mesh_descriptor);
         render_pass.set_descriptor_set(1, &lights_and_sampler_descriptor);
-
-        render_pass.draw_mesh_tasks(scene.objects.len() as u32, 1, 1);
+        render_pass.set_index_buffer(mesh_state.index_buffer.buffer(), IndexFormat::U32);
+        render_pass.draw_indexed_indirect(indirect_buffer);
 
         drop(render_pass);
-        ctx.write(self.hdr_texture_slot, render_target).unwrap();
+        ctx.write(HDR_TEXTURE, render_target).unwrap();
     }
 
     fn clear_pass(&self, ctx: &mut RenderContext<'_, '_>) {
@@ -317,13 +325,13 @@ impl ForwardPass {
             depth_stencil_attachment: None,
         });
 
-        ctx.write(self.hdr_texture_slot, texture).unwrap();
+        ctx.write(HDR_TEXTURE, texture).unwrap();
     }
 }
 
-impl Node for ForwardPass {
+impl Node for OpaqueVertexForwardPass {
     fn render<'a>(&self, ctx: &'a mut RenderContext<'_, 'a>) {
-        let _span = trace_span!("ForwardPass::render").entered();
+        let _span = trace_span!("OpaqueVertexForwardPass::render").entered();
 
         let size = ctx.read::<Texture>(SlotLabel::SURFACE).unwrap().size();
 
@@ -331,7 +339,6 @@ impl Node for ForwardPass {
         for (scene_id, scene) in state.scenes.iter() {
             for (camera_id, camera) in scene.cameras.iter() {
                 if camera.target == ctx.render_target {
-                    self.update_depth_stencil(ctx.queue, ctx.render_target, size);
                     let scene_id = *scene_id;
                     let camera_id = *camera_id;
                     self.render_scene_with_camera(ctx, &mut state, scene_id, camera_id, size);
@@ -347,17 +354,17 @@ impl Node for ForwardPass {
 }
 
 #[derive(Debug)]
-struct BuildForwardPipeline {
+struct BuildPipeline {
     mesh_descriptor: DescriptorSetLayout,
     lights_and_sampler_descriptor: DescriptorSetLayout,
 }
 
-impl PipelineBuilder for BuildForwardPipeline {
+impl PipelineBuilder for BuildPipeline {
     fn build(
         &self,
         queue: &CommandQueue<'_>,
         shaders: &[Shader],
-        format: TextureFormat,
+        _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
             topology: PrimitiveTopology::TriangleList,
@@ -365,20 +372,16 @@ impl PipelineBuilder for BuildForwardPipeline {
             front_face: FrontFace::Ccw,
             descriptors: &[&self.mesh_descriptor, &self.lights_and_sampler_descriptor],
             stages: &[
-                PipelineStage::Task(TaskStage {
+                PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "main",
                 }),
-                PipelineStage::Mesh(MeshStage {
+                PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
                     entry: "main",
-                }),
-                PipelineStage::Fragment(FragmentStage {
-                    shader: &shaders[2],
-                    entry: "main",
                     targets: &[ColorTargetState {
-                        format,
-                        blend: Some(BlendState::PREMULTIPLIED_ALPHA),
+                        format: HDR_FORMAT,
+                        blend: None,
                     }],
                 }),
             ],
@@ -389,7 +392,7 @@ impl PipelineBuilder for BuildForwardPipeline {
             }),
             push_constant_ranges: &[PushConstantRange {
                 range: 0..128,
-                stages: ShaderStages::MESH | ShaderStages::FRAGMENT,
+                stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             }],
         })
     }

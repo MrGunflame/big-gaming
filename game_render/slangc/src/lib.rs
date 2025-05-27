@@ -20,9 +20,13 @@ const SLANGC_PATH: &str = concat!(
 #[cfg(all(not(target_os = "linux"), not(target_os = "windows")))]
 compile_error!("no slangc available on this OS");
 
-#[derive(Clone, Debug, Error)]
-#[error("{0}")]
-pub struct Error(String);
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(io::Error),
+    #[error("{0}")]
+    Other(String),
+}
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
@@ -37,6 +41,18 @@ pub fn compile<P>(input: P, opt_level: OptLevel) -> Result<Vec<u8>, Error>
 where
     P: AsRef<Path>,
 {
+    let input = input.as_ref();
+
+    let files = load_imported_files(input)?;
+    let mut search_paths = Vec::new();
+    for dir in &files {
+        let dir = dir.parent().unwrap().to_str().unwrap();
+        if !search_paths.contains(&dir) {
+            search_paths.push("-I");
+            search_paths.push(dir);
+        }
+    }
+
     let name = format!("{}{}", std::process::id(), rand::random::<u64>());
     let mut path = temp_dir().join(name);
     path.set_extension("spv");
@@ -60,7 +76,8 @@ where
     args.push(&opt_level);
 
     args.extend(["-o", path.to_str().unwrap()]);
-    args.extend([input.as_ref().to_str().unwrap()]);
+    args.extend(&search_paths);
+    args.push(input.to_str().unwrap());
 
     tracing::info!("{} {}", SLANGC_PATH, args.join(" "));
 
@@ -71,13 +88,13 @@ where
         .output()
     {
         Ok(output) if !output.status.success() => {
-            return Err(Error(format!("bad status code: {}", output.status)));
+            return Err(Error::Other(format!("bad status code: {}", output.status)));
         }
         Ok(_) => (),
-        Err(err) => return Err(Error(err.to_string())),
+        Err(err) => return Err(Error::Other(err.to_string())),
     };
 
-    let bytes = std::fs::read(&*path).map_err(|err| Error(err.to_string()))?;
+    let bytes = std::fs::read(&*path).map_err(Error::Io)?;
     Ok(bytes)
 }
 
@@ -98,12 +115,30 @@ impl Drop for RemoveOnDrop {
     }
 }
 
-pub fn load_imported_files(path: &Path) -> io::Result<Vec<PathBuf>> {
+pub fn load_imported_files(path: &Path) -> Result<Vec<PathBuf>, Error> {
     let mut queue = vec![PathBuf::from(path)];
     let mut visited = HashSet::new();
 
-    while let Some(p) = queue.pop() {
-        let contents = std::fs::read_to_string(&p)?;
+    while let Some(mut p) = queue.pop() {
+        while !p.try_exists().map_err(Error::Io)? {
+            let file_name = p.file_name().unwrap().to_owned();
+            let extension = p.extension().unwrap().to_owned();
+            // Remove the file name and extension.
+
+            // Remove the parent directory.
+            if !p.pop() {
+                return Err(Error::Other(format!(
+                    "cannot find import: {}",
+                    file_name.to_str().unwrap(),
+                )));
+            }
+
+            // Add the file name and extension back.
+            p.set_file_name(file_name);
+            p.set_extension(extension);
+        }
+
+        let contents = std::fs::read_to_string(&p).map_err(Error::Io)?;
         visited.insert(p);
 
         for line in contents.lines() {
