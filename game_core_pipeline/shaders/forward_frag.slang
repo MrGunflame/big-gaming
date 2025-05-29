@@ -58,7 +58,6 @@ func main(input: Input) -> Output {
     let uv = input.uv;
 
     var base_color = load_base_color(material, uv);
-    base_color.a = 1.0;
 
     if ((material.flags & MATERIAL_FLAGS_UNLIT) != 0) {
         return Output(base_color);
@@ -238,9 +237,10 @@ func get_specular_strength(input: Input) -> f32 {
 func get_roughness_from_glossiness(input: Input) -> f32 {
     let material = materials[input.material_index];
     let texture = textures[material.specular_glossiness_texture];
-    return material.roughness * (1.0 - texture.Sample(sampler, input.uv).g);
+    
+    let glossiness = 1.0 - material.roughness;
+    return 1.0 - (glossiness * texture.Sample(sampler, input.uv).g);
 }
-
 
 func compute_metallic_from_specular_color(specular_color: Vec3) -> f32 {
     return max(max(specular_color.r, specular_color.g), specular_color.b);
