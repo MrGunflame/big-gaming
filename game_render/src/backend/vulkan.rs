@@ -1,7 +1,7 @@
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::ffi::{c_void, CStr, CString};
-use std::fmt::{self, Debug, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
@@ -167,6 +167,8 @@ pub enum Error {
     MissingLayer(&'static CStr),
     #[error("missing extension: {0:?}")]
     MissingExtension(&'static CStr),
+    #[error("missing features: {0}")]
+    MissingFeatures(DeviceFeatures),
     #[error("unsupported surface")]
     UnsupportedSurface,
     #[error("invalidated swapchain")]
@@ -587,6 +589,119 @@ impl Adapter {
             .collect()
     }
 
+    fn get_supported_features(&self) -> DeviceFeatures {
+        let extensions = self.get_supported_extensions();
+
+        let mut features11 = vk::PhysicalDeviceVulkan11Features::default();
+        let mut features12 = vk::PhysicalDeviceVulkan12Features::default();
+        let mut features13 = vk::PhysicalDeviceVulkan13Features::default();
+
+        let mut swapchain_maintenance1 =
+            vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default();
+        let mut mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default();
+
+        let mut features = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut features11)
+            .push_next(&mut features12)
+            .push_next(&mut features13);
+
+        if extensions.swapchain_maintenance1 {
+            features = features.push_next(&mut swapchain_maintenance1);
+        }
+
+        if extensions.mesh_shader {
+            features = features.push_next(&mut mesh_shader);
+        }
+
+        unsafe {
+            self.instance
+                .instance
+                .get_physical_device_features2(self.physical_device, &mut features);
+        }
+
+        let features = features.features;
+
+        let cast = |v: vk::Bool32| -> bool {
+            // All bool values MUST be 0 or 1.
+            // https://registry.khronos.org/vulkan/specs/latest/man/html/VkBool32.html
+            debug_assert!(v == 0 || v == 1);
+            v != 0
+        };
+
+        DeviceFeatures {
+            mutli_draw_indirect: cast(features.multi_draw_indirect),
+            shader_draw_parameters: cast(features11.shader_draw_parameters),
+            shader_input_attachment_array_dynamic_indexing: cast(
+                features12.shader_input_attachment_array_dynamic_indexing,
+            ),
+            shader_uniform_texel_buffer_array_dynamic_indexing: cast(
+                features12.shader_uniform_texel_buffer_array_dynamic_indexing,
+            ),
+            shader_storage_texel_buffer_array_dynamic_indexing: cast(
+                features12.shader_storage_texel_buffer_array_dynamic_indexing,
+            ),
+            shader_uniform_buffer_array_non_uniform_indexing: cast(
+                features12.shader_uniform_buffer_array_non_uniform_indexing,
+            ),
+            shader_sampled_image_array_non_uniform_indexing: cast(
+                features12.shader_sampled_image_array_non_uniform_indexing,
+            ),
+            shader_storage_buffer_array_non_uniform_indexing: cast(
+                features12.shader_storage_buffer_array_non_uniform_indexing,
+            ),
+            shader_storage_image_array_non_uniform_indexing: cast(
+                features12.shader_storage_image_array_non_uniform_indexing,
+            ),
+            shader_input_attachment_array_non_uniform_indexing: cast(
+                features12.shader_input_attachment_array_non_uniform_indexing,
+            ),
+            shader_uniform_texel_buffer_array_non_uniform_indexing: cast(
+                features12.shader_uniform_texel_buffer_array_non_uniform_indexing,
+            ),
+            shader_storage_texel_buffer_array_non_uniform_indexing: cast(
+                features12.shader_storage_texel_buffer_array_non_uniform_indexing,
+            ),
+            descriptor_binding_uniform_buffer_update_after_bind: cast(
+                features12.descriptor_binding_uniform_buffer_update_after_bind,
+            ),
+            descriptor_binding_sampled_image_update_after_bind: cast(
+                features12.descriptor_binding_sampled_image_update_after_bind,
+            ),
+            descriptor_binding_storage_image_update_after_bind: cast(
+                features12.descriptor_binding_storage_image_update_after_bind,
+            ),
+            descriptor_binding_storage_buffer_update_after_bind: cast(
+                features12.descriptor_binding_storage_buffer_update_after_bind,
+            ),
+            descriptor_binding_uniform_texel_buffer_update_after_bind: cast(
+                features12.descriptor_binding_uniform_texel_buffer_update_after_bind,
+            ),
+            descriptor_binding_storage_texel_buffer_update_after_bind: cast(
+                features12.descriptor_binding_storage_texel_buffer_update_after_bind,
+            ),
+            descriptor_binding_update_unused_while_pending: cast(
+                features12.descriptor_binding_update_unused_while_pending,
+            ),
+            descriptor_binding_partially_bound: cast(features12.descriptor_binding_partially_bound),
+            descriptor_binding_variable_descriptor_count: cast(
+                features12.descriptor_binding_variable_descriptor_count,
+            ),
+            runtime_descriptor_array: cast(features12.runtime_descriptor_array),
+            storage_buffer_8bit_access: cast(features12.storage_buffer8_bit_access),
+            uniform_and_storage_buffer_8bit_access: cast(
+                features12.uniform_and_storage_buffer8_bit_access,
+            ),
+            storage_push_constant8: cast(features12.storage_push_constant8),
+            shader_float16: cast(features12.shader_float16),
+            shader_int8: cast(features12.shader_int8),
+            dynamic_rendering: cast(features13.dynamic_rendering),
+            synchronization2: cast(features13.synchronization2),
+            swapchain_maintenace1: cast(swapchain_maintenance1.swapchain_maintenance1),
+            task_shader: cast(mesh_shader.task_shader),
+            mesh_shader: cast(mesh_shader.mesh_shader),
+        }
+    }
+
     /// Queries and returns information about this `Adapter`'s memories.
     pub fn memory_properties(&self) -> AdapterMemoryProperties {
         let props = unsafe {
@@ -760,19 +875,52 @@ impl Adapter {
             layers.push(InstanceLayers::VALIDATION.as_ptr());
         }
 
+        let supported_features = self.get_supported_features();
         let supported_extensions = self.get_supported_extensions();
         if !supported_extensions.swapchain {
             return Err(Error::MissingExtension(DeviceExtensions::SWAPCHAIN));
         }
-        if !supported_extensions.dynamic_rendering {
-            return Err(Error::MissingExtension(DeviceExtensions::DYNAMIC_RENDERING));
-        }
-        if !supported_extensions.synchronization2 {
-            return Err(Error::MissingExtension(DeviceExtensions::SYNCHRONIZATION2));
-        }
 
         let mut extensions = Vec::new();
         extensions.extend(supported_extensions.names().iter().map(|v| v.as_ptr()));
+
+        let required_features = DeviceFeatures {
+            mutli_draw_indirect: true,
+            shader_draw_parameters: true,
+            shader_input_attachment_array_dynamic_indexing: true,
+            shader_uniform_texel_buffer_array_dynamic_indexing: true,
+            shader_storage_texel_buffer_array_dynamic_indexing: true,
+            shader_uniform_buffer_array_non_uniform_indexing: true,
+            shader_sampled_image_array_non_uniform_indexing: true,
+            shader_storage_buffer_array_non_uniform_indexing: true,
+            shader_storage_image_array_non_uniform_indexing: true,
+            shader_input_attachment_array_non_uniform_indexing: true,
+            shader_uniform_texel_buffer_array_non_uniform_indexing: true,
+            shader_storage_texel_buffer_array_non_uniform_indexing: true,
+            descriptor_binding_uniform_buffer_update_after_bind: true,
+            descriptor_binding_sampled_image_update_after_bind: true,
+            descriptor_binding_storage_image_update_after_bind: true,
+            descriptor_binding_storage_buffer_update_after_bind: true,
+            descriptor_binding_uniform_texel_buffer_update_after_bind: true,
+            descriptor_binding_storage_texel_buffer_update_after_bind: true,
+            descriptor_binding_update_unused_while_pending: true,
+            descriptor_binding_partially_bound: true,
+            descriptor_binding_variable_descriptor_count: true,
+            runtime_descriptor_array: true,
+            shader_float16: true,
+            shader_int8: true,
+            storage_buffer_8bit_access: true,
+            uniform_and_storage_buffer_8bit_access: true,
+            storage_push_constant8: false,
+            dynamic_rendering: true,
+            synchronization2: true,
+            // Optional features
+            task_shader: false,
+            mesh_shader: false,
+            swapchain_maintenace1: false,
+        };
+
+        supported_features.validate_requirements(required_features)?;
 
         let features = vk::PhysicalDeviceFeatures::default()
             // Allows passing a draw count greater than 1 to indirect
@@ -785,17 +933,8 @@ impl Adapter {
             // draws.
             .shader_draw_parameters(true);
 
-        let mut dynamic_rendering =
-            vk::PhysicalDeviceDynamicRenderingFeatures::default().dynamic_rendering(true);
-
-        let mut synchronization2 =
-            vk::PhysicalDeviceSynchronization2Features::default().synchronization2(true);
-
-        let mut swapchain_maintenance1 =
-            vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default()
-                .swapchain_maintenance1(true);
-
-        let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeatures::default()
+        let mut features12 = vk::PhysicalDeviceVulkan12Features::default()
+            // Runtime Descriptor indexing
             .shader_input_attachment_array_dynamic_indexing(true)
             .shader_uniform_texel_buffer_array_dynamic_indexing(true)
             .shader_storage_texel_buffer_array_dynamic_indexing(true)
@@ -803,24 +942,34 @@ impl Adapter {
             .shader_sampled_image_array_non_uniform_indexing(true)
             .shader_storage_buffer_array_non_uniform_indexing(true)
             .shader_storage_image_array_non_uniform_indexing(true)
+            .shader_uniform_texel_buffer_array_non_uniform_indexing(true)
+            .shader_storage_texel_buffer_array_non_uniform_indexing(true)
             .shader_input_attachment_array_non_uniform_indexing(true)
             .descriptor_binding_uniform_buffer_update_after_bind(true)
             .descriptor_binding_sampled_image_update_after_bind(true)
             .descriptor_binding_storage_image_update_after_bind(true)
             .descriptor_binding_storage_buffer_update_after_bind(true)
+            .descriptor_binding_uniform_texel_buffer_update_after_bind(true)
+            .descriptor_binding_storage_texel_buffer_update_after_bind(true)
             .descriptor_binding_update_unused_while_pending(true)
             .descriptor_binding_partially_bound(true)
             .descriptor_binding_variable_descriptor_count(true)
-            .runtime_descriptor_array(true);
-
-        let mut _8bit_storage = vk::PhysicalDevice8BitStorageFeatures::default()
+            .runtime_descriptor_array(true)
+            // Shader float16 and int8
+            .shader_float16(true)
+            .shader_int8(true)
+            // 8 Bit Storage
             .storage_buffer8_bit_access(true)
             .uniform_and_storage_buffer8_bit_access(true)
-            .storage_push_constant8(true);
+            .storage_push_constant8(false);
 
-        let mut f16i8 = vk::PhysicalDeviceShaderFloat16Int8Features::default()
-            .shader_float16(true)
-            .shader_int8(true);
+        let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
+            .dynamic_rendering(true)
+            .synchronization2(true);
+
+        let mut swapchain_maintenance1 =
+            vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default()
+                .swapchain_maintenance1(true);
 
         let mut mesh_shader = vk::PhysicalDeviceMeshShaderFeaturesEXT::default()
             .task_shader(true)
@@ -836,12 +985,9 @@ impl Adapter {
             .enabled_layer_names(&layers)
             .enabled_extension_names(&extensions)
             .enabled_features(&features)
-            .push_next(&mut dynamic_rendering)
-            .push_next(&mut synchronization2)
-            .push_next(&mut descriptor_indexing)
-            .push_next(&mut _8bit_storage)
-            .push_next(&mut f16i8)
-            .push_next(&mut features11);
+            .push_next(&mut features11)
+            .push_next(&mut features12)
+            .push_next(&mut features13);
 
         if supported_extensions.swapchain_maintenance1 {
             create_info = create_info.push_next(&mut swapchain_maintenance1);
@@ -4692,18 +4838,12 @@ pub struct DeviceExtensions {
     pub swapchain: bool,
     /// `VK_EXT_swapchain_maintenance1`
     pub swapchain_maintenance1: bool,
-    /// `VK_KHR_synchronization2`
-    pub synchronization2: bool,
-    /// `VK_KHR_dynamic_rendering`
-    pub dynamic_rendering: bool,
     /// `VK_EXT_mesh_shader`
     pub mesh_shader: bool,
 }
 
 impl DeviceExtensions {
     const SWAPCHAIN_MAINTENANCE1: &CStr = ash::ext::swapchain_maintenance1::NAME;
-    const SYNCHRONIZATION2: &CStr = ash::khr::synchronization2::NAME;
-    const DYNAMIC_RENDERING: &CStr = ash::khr::dynamic_rendering::NAME;
     const SWAPCHAIN: &CStr = ash::khr::swapchain::NAME;
     const MESH_SAHDER: &CStr = ash::ext::mesh_shader::NAME;
 
@@ -4712,8 +4852,6 @@ impl DeviceExtensions {
 
         for (enabled, name) in [
             (self.swapchain_maintenance1, Self::SWAPCHAIN_MAINTENANCE1),
-            (self.synchronization2, Self::SYNCHRONIZATION2),
-            (self.dynamic_rendering, Self::DYNAMIC_RENDERING),
             (self.swapchain, Self::SWAPCHAIN),
             (self.mesh_shader, Self::MESH_SAHDER),
         ] {
@@ -4737,14 +4875,333 @@ impl<'a> FromIterator<&'a CStr> for DeviceExtensions {
                 name if name == Self::SWAPCHAIN_MAINTENANCE1 => {
                     extensions.swapchain_maintenance1 = true
                 }
-                name if name == Self::SYNCHRONIZATION2 => extensions.synchronization2 = true,
-                name if name == Self::DYNAMIC_RENDERING => extensions.dynamic_rendering = true,
                 name if name == Self::SWAPCHAIN => extensions.swapchain = true,
                 name if name == Self::MESH_SAHDER => extensions.mesh_shader = true,
                 _ => (),
             }
         }
         extensions
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct DeviceFeatures {
+    /// Vulkan 1.0
+    mutli_draw_indirect: bool,
+    /// Vulkan 1.1 or `VK_KHR_shader_draw_parameters`
+    shader_draw_parameters: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_input_attachment_array_dynamic_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_uniform_texel_buffer_array_dynamic_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_storage_texel_buffer_array_dynamic_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_uniform_buffer_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_sampled_image_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_storage_buffer_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_storage_image_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_input_attachment_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_uniform_texel_buffer_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    shader_storage_texel_buffer_array_non_uniform_indexing: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_uniform_buffer_update_after_bind: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_sampled_image_update_after_bind: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_storage_image_update_after_bind: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_storage_buffer_update_after_bind: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_uniform_texel_buffer_update_after_bind: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_storage_texel_buffer_update_after_bind: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_update_unused_while_pending: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_partially_bound: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    descriptor_binding_variable_descriptor_count: bool,
+    /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
+    runtime_descriptor_array: bool,
+    /// Vulkan 1.2 or `VK_KHR_8bit_storage`
+    storage_buffer_8bit_access: bool,
+    /// Vulkan 1.2 or `VK_KHR_8bit_storage`
+    uniform_and_storage_buffer_8bit_access: bool,
+    /// Vulkan 1.2 or `VK_KHR_8bit_storage`
+    storage_push_constant8: bool,
+    /// Vulkan 1.2 or `VK_KHR_shader_float16_int8`
+    shader_float16: bool,
+    /// Vulkan 1.2 or `VK_KHR_shader_float16_int8`
+    shader_int8: bool,
+    /// Vulkan 1.3 or `VK_KHR_dynamic_rendering`
+    dynamic_rendering: bool,
+    /// Vulkan 1.3 or `VK_KHR_synchronization2`
+    synchronization2: bool,
+    /// `VK_EXT_swapchain_maintenance1`
+    swapchain_maintenace1: bool,
+    /// `VK_EXT_mesh_shader`
+    task_shader: bool,
+    /// `VK_EXT_mesh_shader`
+    mesh_shader: bool,
+}
+
+impl DeviceFeatures {
+    /// Returns `Ok()` when `self` contains all flags that are set in `features`.
+    fn validate_requirements(&self, required: Self) -> Result<(), Error> {
+        let mut missing_features = Self::default();
+
+        let Self {
+            mutli_draw_indirect,
+            shader_draw_parameters,
+            shader_input_attachment_array_dynamic_indexing,
+            shader_uniform_texel_buffer_array_dynamic_indexing,
+            shader_storage_texel_buffer_array_dynamic_indexing,
+            shader_uniform_buffer_array_non_uniform_indexing,
+            shader_sampled_image_array_non_uniform_indexing,
+            shader_storage_buffer_array_non_uniform_indexing,
+            shader_storage_image_array_non_uniform_indexing,
+            shader_input_attachment_array_non_uniform_indexing,
+            shader_uniform_texel_buffer_array_non_uniform_indexing,
+            shader_storage_texel_buffer_array_non_uniform_indexing,
+            descriptor_binding_uniform_buffer_update_after_bind,
+            descriptor_binding_sampled_image_update_after_bind,
+            descriptor_binding_storage_image_update_after_bind,
+            descriptor_binding_storage_buffer_update_after_bind,
+            descriptor_binding_uniform_texel_buffer_update_after_bind,
+            descriptor_binding_storage_texel_buffer_update_after_bind,
+            descriptor_binding_update_unused_while_pending,
+            descriptor_binding_partially_bound,
+            descriptor_binding_variable_descriptor_count,
+            runtime_descriptor_array,
+            storage_buffer_8bit_access,
+            uniform_and_storage_buffer_8bit_access,
+            storage_push_constant8,
+            shader_float16,
+            shader_int8,
+            dynamic_rendering,
+            synchronization2,
+            swapchain_maintenace1,
+            task_shader,
+            mesh_shader,
+        } = self;
+
+        macro_rules! set_missing_feature_flags {
+            ($($name:ident),*,) => {
+                $(
+                    missing_features.$name = required.$name && !$name;
+                )*
+            };
+        }
+
+        set_missing_feature_flags! {
+            mutli_draw_indirect,
+            shader_draw_parameters,
+            shader_input_attachment_array_dynamic_indexing,
+            shader_uniform_texel_buffer_array_dynamic_indexing,
+            shader_storage_texel_buffer_array_dynamic_indexing,
+            shader_uniform_buffer_array_non_uniform_indexing,
+            shader_sampled_image_array_non_uniform_indexing,
+            shader_storage_buffer_array_non_uniform_indexing,
+            shader_storage_image_array_non_uniform_indexing,
+            shader_input_attachment_array_non_uniform_indexing,
+            shader_uniform_texel_buffer_array_non_uniform_indexing,
+            shader_storage_texel_buffer_array_non_uniform_indexing,
+            descriptor_binding_uniform_buffer_update_after_bind,
+            descriptor_binding_sampled_image_update_after_bind,
+            descriptor_binding_storage_image_update_after_bind,
+            descriptor_binding_storage_buffer_update_after_bind,
+            descriptor_binding_uniform_texel_buffer_update_after_bind,
+            descriptor_binding_storage_texel_buffer_update_after_bind,
+            descriptor_binding_update_unused_while_pending,
+            descriptor_binding_partially_bound,
+            descriptor_binding_variable_descriptor_count,
+            runtime_descriptor_array,
+            storage_buffer_8bit_access,
+            uniform_and_storage_buffer_8bit_access,
+            storage_push_constant8,
+            shader_float16,
+            shader_int8,
+            dynamic_rendering,
+            synchronization2,
+            swapchain_maintenace1,
+            task_shader,
+            mesh_shader,
+        }
+
+        if missing_features.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::MissingFeatures(missing_features))
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        let Self {
+            mutli_draw_indirect,
+            shader_draw_parameters,
+            shader_input_attachment_array_dynamic_indexing,
+            shader_uniform_texel_buffer_array_dynamic_indexing,
+            shader_storage_texel_buffer_array_dynamic_indexing,
+            shader_uniform_buffer_array_non_uniform_indexing,
+            shader_sampled_image_array_non_uniform_indexing,
+            shader_storage_buffer_array_non_uniform_indexing,
+            shader_storage_image_array_non_uniform_indexing,
+            shader_input_attachment_array_non_uniform_indexing,
+            shader_uniform_texel_buffer_array_non_uniform_indexing,
+            shader_storage_texel_buffer_array_non_uniform_indexing,
+            descriptor_binding_uniform_buffer_update_after_bind,
+            descriptor_binding_sampled_image_update_after_bind,
+            descriptor_binding_storage_image_update_after_bind,
+            descriptor_binding_storage_buffer_update_after_bind,
+            descriptor_binding_uniform_texel_buffer_update_after_bind,
+            descriptor_binding_storage_texel_buffer_update_after_bind,
+            descriptor_binding_update_unused_while_pending,
+            descriptor_binding_partially_bound,
+            descriptor_binding_variable_descriptor_count,
+            runtime_descriptor_array,
+            storage_buffer_8bit_access,
+            uniform_and_storage_buffer_8bit_access,
+            storage_push_constant8,
+            shader_float16,
+            shader_int8,
+            dynamic_rendering,
+            synchronization2,
+            swapchain_maintenace1,
+            task_shader,
+            mesh_shader,
+        } = *self;
+
+        let is_not_empty = mutli_draw_indirect
+            || shader_draw_parameters
+            || shader_input_attachment_array_dynamic_indexing
+            || shader_uniform_texel_buffer_array_dynamic_indexing
+            || shader_storage_texel_buffer_array_dynamic_indexing
+            || shader_uniform_buffer_array_non_uniform_indexing
+            || shader_sampled_image_array_non_uniform_indexing
+            || shader_storage_buffer_array_non_uniform_indexing
+            || shader_storage_image_array_non_uniform_indexing
+            || shader_input_attachment_array_non_uniform_indexing
+            || shader_uniform_texel_buffer_array_non_uniform_indexing
+            || shader_storage_texel_buffer_array_non_uniform_indexing
+            || descriptor_binding_uniform_buffer_update_after_bind
+            || descriptor_binding_sampled_image_update_after_bind
+            || descriptor_binding_storage_image_update_after_bind
+            || descriptor_binding_storage_buffer_update_after_bind
+            || descriptor_binding_uniform_texel_buffer_update_after_bind
+            || descriptor_binding_storage_texel_buffer_update_after_bind
+            || descriptor_binding_update_unused_while_pending
+            || descriptor_binding_partially_bound
+            || descriptor_binding_variable_descriptor_count
+            || runtime_descriptor_array
+            || storage_buffer_8bit_access
+            || uniform_and_storage_buffer_8bit_access
+            || storage_push_constant8
+            || shader_float16
+            || shader_int8
+            || dynamic_rendering
+            || synchronization2
+            || swapchain_maintenace1
+            || task_shader
+            || mesh_shader;
+
+        !is_not_empty
+    }
+}
+
+impl Display for DeviceFeatures {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let Self {
+            mutli_draw_indirect,
+            shader_draw_parameters,
+            shader_input_attachment_array_dynamic_indexing,
+            shader_uniform_texel_buffer_array_dynamic_indexing,
+            shader_storage_texel_buffer_array_dynamic_indexing,
+            shader_uniform_buffer_array_non_uniform_indexing,
+            shader_sampled_image_array_non_uniform_indexing,
+            shader_storage_buffer_array_non_uniform_indexing,
+            shader_storage_image_array_non_uniform_indexing,
+            shader_input_attachment_array_non_uniform_indexing,
+            shader_uniform_texel_buffer_array_non_uniform_indexing,
+            shader_storage_texel_buffer_array_non_uniform_indexing,
+            descriptor_binding_uniform_buffer_update_after_bind,
+            descriptor_binding_sampled_image_update_after_bind,
+            descriptor_binding_storage_image_update_after_bind,
+            descriptor_binding_storage_buffer_update_after_bind,
+            descriptor_binding_uniform_texel_buffer_update_after_bind,
+            descriptor_binding_storage_texel_buffer_update_after_bind,
+            descriptor_binding_update_unused_while_pending,
+            descriptor_binding_partially_bound,
+            descriptor_binding_variable_descriptor_count,
+            runtime_descriptor_array,
+            storage_buffer_8bit_access,
+            uniform_and_storage_buffer_8bit_access,
+            storage_push_constant8,
+            shader_float16,
+            shader_int8,
+            dynamic_rendering,
+            synchronization2,
+            swapchain_maintenace1,
+            task_shader,
+            mesh_shader,
+        } = *self;
+
+        macro_rules! create_strings {
+            ($($name:ident),*,) => {{
+                let mut strings = Vec::new();
+
+                $(
+                    if $name {
+                        strings.push(stringify!($name));
+                    }
+                )*
+
+                strings
+            }};
+        }
+
+        let strings = create_strings! {
+            mutli_draw_indirect,
+            shader_draw_parameters,
+            shader_input_attachment_array_dynamic_indexing,
+            shader_uniform_texel_buffer_array_dynamic_indexing,
+            shader_storage_texel_buffer_array_dynamic_indexing,
+            shader_uniform_buffer_array_non_uniform_indexing,
+            shader_sampled_image_array_non_uniform_indexing,
+            shader_storage_buffer_array_non_uniform_indexing,
+            shader_storage_image_array_non_uniform_indexing,
+            shader_input_attachment_array_non_uniform_indexing,
+            shader_uniform_texel_buffer_array_non_uniform_indexing,
+            shader_storage_texel_buffer_array_non_uniform_indexing,
+            descriptor_binding_uniform_buffer_update_after_bind,
+            descriptor_binding_sampled_image_update_after_bind,
+            descriptor_binding_storage_image_update_after_bind,
+            descriptor_binding_storage_buffer_update_after_bind,
+            descriptor_binding_uniform_texel_buffer_update_after_bind,
+            descriptor_binding_storage_texel_buffer_update_after_bind,
+            descriptor_binding_update_unused_while_pending,
+            descriptor_binding_partially_bound,
+            descriptor_binding_variable_descriptor_count,
+            runtime_descriptor_array,
+            storage_buffer_8bit_access,
+            uniform_and_storage_buffer_8bit_access,
+            storage_push_constant8,
+            shader_float16,
+            shader_int8,
+            dynamic_rendering,
+            synchronization2,
+            swapchain_maintenace1,
+            task_shader,
+            mesh_shader,
+        };
+
+        f.write_str(&strings.join(", "))
     }
 }
 
