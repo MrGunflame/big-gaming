@@ -192,10 +192,18 @@ mod tests {
     use std::pin::Pin;
     use std::sync::{Arc, Barrier};
     use std::task::{Context, Poll};
+    use std::time::Duration;
 
     use futures::future::poll_fn;
 
     use crate::{noop_waker, TaskPool};
+
+    fn block_on<F>(future: F) -> F::Output
+    where
+        F: Future,
+    {
+        futures::executor::block_on(future)
+    }
 
     #[test]
     fn schedule_basic() {
@@ -389,5 +397,30 @@ mod tests {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
         while Pin::new(&mut task).poll(&mut cx).is_pending() {}
+    }
+
+    #[test]
+    fn task_schedule_while_running() {
+        // Test the possible case where a future waks the waker
+        // and then continues to block.
+        // Another thread may happen to begin polling the future
+        // again if it is scheduled immediately when awoken.
+
+        let executor = TaskPool::new(2);
+
+        let task = executor.spawn(poll_fn(move |cx| {
+            // Schedule the future again.
+            cx.waker().wake_by_ref();
+
+            // Block for a reasonably long time, until it would
+            // have been possible for another the begin polling
+            // this future again if the future was (incorrectly)
+            // scheduled immediately.
+            std::thread::sleep(Duration::from_secs(1));
+
+            Poll::Ready(())
+        }));
+
+        block_on(task);
     }
 }

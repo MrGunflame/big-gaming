@@ -93,7 +93,7 @@ where
             ManuallyDrop::drop(&mut this.waker);
         }
 
-        match this.header.state.load(Ordering::Acquire) & (STATE_DONE | STATE_CLOSED) {
+        match *this.header.state.get_mut() & (STATE_DONE | STATE_CLOSED) {
             // The `DONE` flag indicates that future has completed and been dropped.
             // The output value has not been consumed.
             // We must drop the output value in this case.
@@ -123,23 +123,21 @@ where
 
         let future = unsafe { &mut stage.future };
 
-        // Unset the `QUEUED` flag and set the `RUNNING` flag.
-        // This must happen before we start polling the future.
         let mut state = header.state.load(Ordering::Acquire);
 
-        // Completed/Closed tasks will not get scheduled again,
-        // but it is possible for the task to get scheduled while
-        // it is still running and then get closed.
-        // In this case the task is still scheduled, but we must
-        // not poll the future again.
-        if state & (STATE_DONE | STATE_CLOSED) != 0 {
-            task_waker.wake();
-            return;
-        }
-
+        // Unset the `QUEUED` flag and set the `RUNNING` flag.
+        // This must happen before we start polling the future.
         loop {
-            debug_assert_ne!(state & STATE_QUEUED, 0);
+            // To poll a future:
+            // - The future must not be polled currently.
+            // - The future must not have completed yet.
+            // - The future must not have been dropped yet.
             debug_assert_eq!(state & STATE_RUNNING, 0);
+            debug_assert_eq!(state & STATE_DONE, 0);
+            debug_assert_eq!(state & STATE_CLOSED, 0);
+
+            debug_assert_ne!(state & STATE_QUEUED, 0);
+
             let new_state = state & !STATE_QUEUED | STATE_RUNNING;
 
             match header.state.compare_exchange_weak(
@@ -148,7 +146,10 @@ where
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
-                Ok(_) => break,
+                Ok(s) => {
+                    state = s;
+                    break;
+                }
                 Err(s) => state = s,
             }
         }
@@ -157,45 +158,65 @@ where
         let pin: Pin<&mut F> = unsafe { Pin::new_unchecked(future) };
         let res = F::poll(pin, &mut cx);
 
-        // Unset the `RUNNING` flag after polling the task.
-        // Note that we are reusing the state loaded before
-        // polling the task. If the state is outdated the CAS
-        // will update it.
-        loop {
-            let new_state = state & !STATE_RUNNING;
-            match header.state.compare_exchange_weak(
-                state,
-                new_state,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-            ) {
-                Ok(_) => break,
-                Err(s) => state = s,
-            }
-        }
-
         match res {
-            Poll::Pending if state & STATE_CANCEL != 0 => {
-                unsafe {
-                    ManuallyDrop::drop(future);
-                }
-
+            Poll::Pending => {
                 loop {
-                    let new_state = state | STATE_CLOSED;
+                    let mut new_state = state & !STATE_RUNNING;
+                    if state & STATE_CANCEL != 0 {
+                        new_state |= STATE_CLOSED;
+                    }
+
                     match header.state.compare_exchange_weak(
                         state,
                         new_state,
                         Ordering::AcqRel,
                         Ordering::Acquire,
                     ) {
-                        Ok(_) => break,
+                        Ok(s) => {
+                            state = s;
+                            break;
+                        }
                         Err(s) => state = s,
                     }
                 }
 
-                task_waker.wake();
+                // If the future was marked as cancelled we have marked
+                // it as `CLOSED` and will drop the future here.
+                // The state may also have the `QUEUED` bit set, but it has
+                // no effect when the `CLOSED` bit is set, so we don't need
+                // to unset it.
+                if state & STATE_CLOSED != 0 {
+                    unsafe {
+                        ManuallyDrop::drop(future);
+                    }
+
+                    // Wake the `Task` handle to indicate that the future
+                    // has finished cancellation.
+                    task_waker.wake();
+                }
+
+                // If the future was awoken while we called poll, the waker
+                // will set the `QUEUED` bit without scheduling it, so we must
+                // schedule it.
+                // As soon as we schedule it we must no longer access any exclusive
+                // resources of this task as another thread may immediately start
+                // polling the task again.
+                if state & STATE_QUEUED != 0 && state & STATE_CANCEL == 0 {
+                    // Create a new task ptr, pointing at the current `RawTask`.
+                    // Note that the caller of `RawTask::poll` still owns the
+                    // the `ptr`, so we must increment the ref count for our
+                    // new `RawTaskPtr`.
+                    let task = RawTaskPtr { ptr };
+
+                    // SAFETY:
+                    // The underlying pointer points to a valid `RawTask`.
+                    unsafe {
+                        task.increment_ref_count();
+                    }
+
+                    header.executor.queue.push(task);
+                }
             }
-            Poll::Pending => (),
             Poll::Ready(val) => {
                 unsafe {
                     ManuallyDrop::drop(future);
@@ -203,14 +224,16 @@ where
                     stage.output = ManuallyDrop::new(val);
                 }
 
-                // Set the `DONE` bit (and remove the `QUEUED | RUNNING` bits).
-                // This must happen after the output value has been written, but
-                // before calling the waker.
-                // As soon as the `DONE` bit is set another thread is allowed to
-                // read the output value.
-
+                // Set the `DONE` bit to indicate the future was dropped and
+                // the output value has been written.
+                // As soon as the `DONE` bit is set the output value is allowed
+                // to be consumed by another thread.
+                // The state may also have the `QUEUED` bit set, but it has
+                // no effect when the `DONE` bit is set, so we don't need to
+                // unset it.
                 loop {
-                    let new_state = state | STATE_DONE;
+                    let new_state = state & !STATE_RUNNING | STATE_DONE;
+
                     match header.state.compare_exchange_weak(
                         state,
                         new_state,
@@ -222,6 +245,7 @@ where
                     }
                 }
 
+                // Wake the `Task` handle.
                 task_waker.wake();
             }
         }
@@ -367,12 +391,24 @@ impl RawTaskPtr {
                 Ordering::AcqRel,
                 Ordering::Acquire,
             ) {
-                Ok(_) => break,
+                Ok(s) => {
+                    state = s;
+                    break;
+                }
                 Err(s) => state = s,
             }
         }
 
-        header.executor.queue.push(self.clone());
+        // If the future is currently not being polled we will schedule it.
+        // Otherwise we MUST NOT schedule the future while it is
+        // being polled currently to prevent another thread from starting
+        // to poll it again while the current poll is not complete.
+        // If the future is being polled currently we will only set the
+        // `QUEUED` bit and it is the responsibility of the poller to
+        // schedule the future after it is done polling.
+        if state & STATE_RUNNING == 0 {
+            header.executor.queue.push(self.clone());
+        }
     }
 
     /// Reads the final output value.
