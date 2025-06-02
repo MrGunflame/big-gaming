@@ -37,35 +37,31 @@ impl<'a> ResourceMap for &'a Resources {
 
     fn access(&self, id: Self::Id) -> AccessFlags {
         match id {
-            ResourceId::Buffer(buffer) => {
-                let buffer = self.buffers.get(buffer).unwrap();
-                let access = unsafe { *buffer.access.borrow() };
+            ResourceId::Buffer(buffer) => unsafe {
+                let buffer = self.buffers.get(buffer).unwrap_unchecked();
+                let access = *buffer.access.borrow();
                 access
-            }
-            ResourceId::Texture(texture) => {
-                let tex = self.textures.get(texture.id).unwrap();
-                let mip = &tex.mip_access[texture.mip_level as usize];
-                let access = unsafe { *mip.borrow() };
+            },
+            ResourceId::Texture(texture) => unsafe {
+                let tex = self.textures.get(texture.id).unwrap_unchecked();
+                let mip = tex.mip_access.get_unchecked(texture.mip_level as usize);
+                let access = *mip.borrow();
                 access
-            }
+            },
         }
     }
 
     fn set_access(&mut self, id: Self::Id, access: AccessFlags) {
         match id {
-            ResourceId::Buffer(buffer) => {
-                let buffer = self.buffers.get(buffer).unwrap();
-                unsafe {
-                    *buffer.access.borrow_mut() = access;
-                }
-            }
-            ResourceId::Texture(texture) => {
-                let tex = self.textures.get(texture.id).unwrap();
-                let mip = &tex.mip_access[texture.mip_level as usize];
-                unsafe {
-                    *mip.borrow_mut() = access;
-                }
-            }
+            ResourceId::Buffer(buffer) => unsafe {
+                let buffer = self.buffers.get(buffer).unwrap_unchecked();
+                *buffer.access.borrow_mut() = access;
+            },
+            ResourceId::Texture(texture) => unsafe {
+                let tex = self.textures.get(texture.id).unwrap_unchecked();
+                let mip = tex.mip_access.get_unchecked(texture.mip_level as usize);
+                *mip.borrow_mut() = access;
+            },
         }
     }
 }

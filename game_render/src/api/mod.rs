@@ -57,6 +57,7 @@ pub struct CommandExecutor {
     adapter_props: AdapterProperties,
     allocator: Exclusive<Bump>,
     features: Features,
+    scheduler: Scheduler,
 }
 
 impl CommandExecutor {
@@ -92,6 +93,7 @@ impl CommandExecutor {
             adapter_props,
             allocator: Exclusive::new(Bump::new()),
             features,
+            scheduler: Scheduler::new(),
         }
     }
 
@@ -106,12 +108,9 @@ impl CommandExecutor {
 
         let cmds = self.cmds.get_mut().cmd_refs();
 
-        let mut scheduler = Scheduler {
-            resources: &*self.resources,
-            allocator: &*allocator,
-        };
-
-        let steps = scheduler.schedule(&cmds);
+        let steps = self
+            .scheduler
+            .schedule(&*self.resources, &*allocator, &cmds);
         allocator.reset();
         let tmp = executor::execute(&mut self.resources, steps, encoder);
         self.cmds.get_mut().clear();

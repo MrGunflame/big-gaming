@@ -1,52 +1,67 @@
+mod queue;
+
 use std::hash::Hash;
 
 use allocator_api2::alloc::Allocator;
 use allocator_api2::vec::Vec;
 use game_tracing::trace_span;
-use hashbrown::HashMap;
+use hashbrown::{HashMap, HashSet};
 use nohash_hasher::BuildNoHashHasher;
+use queue::Queue;
 
 use crate::backend::AccessFlags;
 
-type UsizeMap<T, A> = HashMap<usize, T, BuildNoHashHasher<usize>, A>;
-
 #[derive(Debug)]
-pub struct Scheduler<M, A> {
-    pub resources: M,
-    pub allocator: A,
+pub struct Scheduler {
+    resource_map_cap: usize,
+    predecessors_cap: usize,
+    sucessors_cap: usize,
 }
 
-impl<M, A> Scheduler<M, A>
-where
-    A: Allocator,
-{
-    pub fn schedule<'a, T>(&mut self, nodes: &'a [T]) -> std::vec::Vec<Step<&'a T, T::ResourceId>>
+impl Scheduler {
+    pub fn new() -> Self {
+        Self {
+            resource_map_cap: 0,
+            predecessors_cap: 0,
+            sucessors_cap: 0,
+        }
+    }
+
+    pub fn schedule<'a, T, M, A>(
+        &mut self,
+        mut resources: M,
+        allocator: A,
+        nodes: &'a [T],
+    ) -> std::vec::Vec<Step<&'a T, T::ResourceId>>
     where
         T: Node,
         T::ResourceId: Copy + Hash + Eq,
         M: ResourceMap<Id = T::ResourceId>,
+        A: Allocator,
     {
         let _span = trace_span!("Scheduler::schedule").entered();
 
         let mut resource_accesses =
-            HashMap::<_, Vec<_, &A>, _, &A>::with_capacity_in(nodes.len(), &self.allocator);
+            HashMap::<T::ResourceId, Vec<usize, &A>, _, &A>::with_capacity_in(
+                self.resource_map_cap,
+                &allocator,
+            );
         // We use linear indices as the key, they are already uniformly
         // distributed so we can skip the hashing.
-        let mut predecessors = UsizeMap::<Vec<_, &A>, _>::with_capacity_and_hasher_in(
-            nodes.len(),
-            BuildNoHashHasher::new(),
-            &self.allocator,
-        );
-        let mut successors = UsizeMap::<Vec<_, &A>, _>::with_capacity_and_hasher_in(
-            nodes.len(),
-            BuildNoHashHasher::new(),
-            &self.allocator,
-        );
+        let mut predecessors =
+            Vec::<Option<HashSet<usize, BuildNoHashHasher<usize>, &A>>, &A>::with_capacity_in(
+                self.predecessors_cap,
+                &allocator,
+            );
+        predecessors.resize(nodes.len(), None);
+        let mut successors =
+            Vec::<Vec<usize, &A>, &A>::with_capacity_in(self.sucessors_cap, &allocator);
+        successors.resize(nodes.len(), Vec::new_in(&allocator));
 
-        let mut queue = Vec::with_capacity_in(nodes.len(), &self.allocator);
+        let queue = Queue::new_in(nodes.len(), &allocator);
 
         for (index, node) in nodes.iter().enumerate() {
-            let mut node_preds = Vec::new_in(&self.allocator);
+            let mut node_preds = HashSet::with_hasher_in(BuildNoHashHasher::new(), &allocator);
 
             for resource in node.resources() {
                 // If another node accesses the same resource it must
@@ -54,7 +69,7 @@ where
                 // This can be true for many nodes.
                 if let Some(preds) = resource_accesses.get(&resource.id) {
                     for pred in preds {
-                        node_preds.push(*pred);
+                        node_preds.insert(*pred);
                     }
                 }
 
@@ -65,64 +80,71 @@ where
                 // in order for this function to operate correctly.
                 let accesses = resource_accesses
                     .entry(resource.id)
-                    .or_insert_with(|| Vec::new_in(&self.allocator));
+                    .or_insert_with(|| Vec::new_in(&allocator));
                 accesses.push(index);
                 debug_assert_eq!(accesses.iter().filter(|v| **v == index).count(), 1);
             }
 
             for succ in &node_preds {
-                successors
-                    .entry(*succ)
-                    .or_insert_with(|| Vec::new_in(&self.allocator))
-                    .push(index);
+                unsafe {
+                    successors.get_unchecked_mut(*succ).push(index);
+                }
             }
 
             if node_preds.is_empty() {
                 queue.push(index);
             } else {
-                predecessors.insert(index, node_preds);
+                unsafe {
+                    *predecessors.get_unchecked_mut(index) = Some(node_preds);
+                }
             }
         }
 
+        self.resource_map_cap = resource_accesses.capacity();
+        self.predecessors_cap = predecessors.capacity();
+        self.sucessors_cap = successors.capacity();
+
         let mut steps = std::vec::Vec::with_capacity(nodes.len());
+
         loop {
             // Gather all nodes that have no more predecessors,
             // i.e. all nodes that can be executed now.
-            let mut indices = Vec::with_capacity_in(queue.len(), &self.allocator);
-            indices.extend(queue.drain(..));
+            let indices = queue.take_and_advance();
 
             // Since we have no cycles in predecessors, this loop will always
             // terminate at some point.
             if indices.is_empty() {
-                debug_assert!(predecessors.is_empty());
+                debug_assert!(predecessors.iter().all(|v| v.is_none()));
                 break;
             }
-
-            // We should keep the order of nodes if possible.
-            // The `VecMap` iterator already guarantees that elements are in order
-            // of their index.
-            debug_assert!(indices.is_sorted());
 
             // We batch all barriers required to run all nodes.
             // This allows the caller to insert all barriers
             // using a single call.
 
-            for &index in &indices {
-                if let Some(succs) = successors.get(&index) {
-                    for succ in succs {
-                        if let Some(preds) = predecessors.get_mut(succ) {
-                            preds.retain(|pred| *pred != index);
-                            if preds.is_empty() {
-                                predecessors.remove(succ);
-                                queue.push(*succ);
+            for &index in indices {
+                for succ in &successors[index] {
+                    if let Some(preds) = &mut predecessors[*succ] {
+                        preds.remove(&index);
+                        if preds.is_empty() {
+                            predecessors[*succ] = None;
+
+                            // Safety:
+                            // We have allocated a `Queue` with exactly the number of
+                            // nodes to schedule.
+                            // Since we remove the node after pushing it no node will
+                            // ever get inserted twice.
+                            unsafe {
+                                queue.push_unchecked(*succ);
                             }
                         }
                     }
                 }
 
-                let node = &nodes[index];
+                let node = unsafe { nodes.get_unchecked(index) };
+
                 for res in node.resources() {
-                    let access = self.resources.access(res.id);
+                    let access = resources.access(res.id);
 
                     // We can skip a barrier if the resource is already tagged with the
                     // required access flags, but this is only possible for read-only
@@ -138,18 +160,13 @@ where
                         dst_access: res.access,
                     }));
 
-                    self.resources.set_access(res.id, res.access);
+                    resources.set_access(res.id, res.access);
                 }
             }
 
-            // The above is possible to get fucked up like so:
-            // 0 -> 5
-            // 1 -> 2
-            // FIXME: Time to redo this entire thing.
-            queue.sort();
-
-            for index in &indices {
-                steps.push(Step::Node(&nodes[*index]));
+            for &index in indices {
+                let node = unsafe { nodes.get_unchecked(index) };
+                steps.push(Step::Node(node));
             }
         }
 
@@ -242,11 +259,8 @@ mod tests {
         resources: &'a mut HashMap<u64, Resource<u64>>,
         nodes: &'a [TestNode],
     ) -> Vec<Step<&'a TestNode, u64>> {
-        let mut scheduler = Scheduler {
-            resources,
-            allocator: Global,
-        };
-        scheduler.schedule(nodes)
+        let mut scheduler = Scheduler::new();
+        scheduler.schedule(resources, Global, nodes)
     }
 
     #[test]
