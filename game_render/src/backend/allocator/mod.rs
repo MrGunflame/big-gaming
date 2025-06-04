@@ -1,6 +1,8 @@
 mod buddy;
 mod bump;
 
+pub use buddy::BuddyAllocator;
+
 use std::alloc::Layout;
 use std::collections::HashMap;
 use std::fmt::{self, Debug, Formatter};
@@ -11,7 +13,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use bitflags::bitflags;
-pub use buddy::BuddyAllocator;
 use game_tracing::trace_span;
 use parking_lot::Mutex;
 use slab::Slab;
@@ -402,6 +403,9 @@ impl GeneralPurposeAllocator {
                 device_local,
             ) {
                 Ok(allocation) => {
+                    let mut stats = self.statistics.memory.write();
+                    stats.blocks[allocation.statistics_mem_block_id].used += req.size.get();
+
                     return DeviceMemoryRegion {
                         allocator: self.clone(),
                         memory: allocation.memory.clone(),
@@ -412,7 +416,8 @@ impl GeneralPurposeAllocator {
                         flags: props.types[mem_typ as usize].flags,
                         statistics_mem_block_id: allocation.statistics_mem_block_id,
                         statistics_mem_alloc_id: allocation.statistics_mem_alloc_id,
-                    }
+                        statistics_size: req.size.get(),
+                    };
                 }
                 Err(err) => {
                     tracing::error!(
@@ -490,6 +495,7 @@ impl Pool {
             let mut memory = manager.allocate(req.size, self.memory_type, dedicated_for)?;
             let statistics_mem_block_id = statistics.memory.write().blocks.insert(MemoryBlock {
                 size: req.size.get(),
+                used: 0,
                 allocs: HashMap::new(),
                 dedicated: dedicated_for.is_some(),
                 host_visible,
@@ -542,6 +548,7 @@ impl Pool {
             dedicated: dedicated_for.is_some(),
             host_visible,
             device_local,
+            used: 0,
         });
 
         let ptr = host_visible.then(|| memory.map().unwrap());
@@ -652,6 +659,7 @@ pub struct DeviceMemoryRegion {
     flags: MemoryTypeFlags,
     statistics_mem_block_id: usize,
     statistics_mem_alloc_id: u64,
+    statistics_size: u64,
 }
 
 // We lose the `Send` impl because of `memory_host_ptr`, but
@@ -676,6 +684,7 @@ impl Drop for DeviceMemoryRegion {
             } else {
                 let block = stats.blocks.get_mut(self.statistics_mem_block_id).unwrap();
                 block.allocs.remove(&self.statistics_mem_alloc_id);
+                block.used -= self.statistics_size;
             }
         }
 
