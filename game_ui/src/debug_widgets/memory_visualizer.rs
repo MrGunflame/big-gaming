@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use futures::executor::block_on;
 use game_render::statistics::{AllocationKind, MemoryBlock, Statistics};
 use glam::UVec2;
 use image::{ImageBuffer, Rgba};
@@ -22,8 +21,10 @@ impl Widget for MemoryVisualizer {
 
         for (_, block) in mem.blocks.iter() {
             let mut text = format!(
-                "Size: {} Allocs: {}",
+                "Size: {} Used: {} Usage Ratio: {:.2} Allocations: {}",
                 bytes_to_human_readable(block.size),
+                bytes_to_human_readable(block.used),
+                block.used as f64 / block.size as f64,
                 block.allocs.len()
             );
 
@@ -89,7 +90,7 @@ fn draw_block(size: UVec2, block: &MemoryBlock) -> ImageBuffer<Rgba<u8>, Vec<u8>
 }
 
 fn bytes_to_human_readable(mut bytes: u64) -> String {
-    for unit in ["", "kiB", "MiB", "GiB"] {
+    for unit in ["", "KiB"] {
         if bytes < 1024 {
             return format!("{} {}", bytes, unit);
         }
@@ -97,5 +98,5 @@ fn bytes_to_human_readable(mut bytes: u64) -> String {
         bytes /= 1024;
     }
 
-    format!("{} TiB", bytes)
+    format!("{} MiB", bytes)
 }
