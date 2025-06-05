@@ -53,26 +53,26 @@ pub(crate) fn init(graph: &mut RenderGraph, queue: &CommandQueue<'_>, events: Re
     let update_pass = UpdatePass::new(queue, state.clone(), events);
     graph.add_node(UPDATE_PASS, update_pass);
 
-    if queue.features().mesh_shader {
-        let forward_pass = ForwardPass::new(queue, state.clone(), HDR_TEXTURE);
-        graph.add_node(FORWARD_PASS, forward_pass);
-        graph.add_node_dependency(FORWARD_PASS, UPDATE_PASS);
+    // if queue.features().mesh_shader {
+    //     let forward_pass = ForwardPass::new(queue, state.clone(), HDR_TEXTURE);
+    //     graph.add_node(FORWARD_PASS, forward_pass);
+    //     graph.add_node_dependency(FORWARD_PASS, UPDATE_PASS);
 
-        graph.add_slot_dependency(
-            FORWARD_PASS,
-            SlotLabel::SURFACE,
-            SlotKind::Texture,
-            SlotFlags::READ,
-        );
-        graph.add_slot_dependency(
-            FORWARD_PASS,
-            HDR_TEXTURE,
-            SlotKind::Texture,
-            SlotFlags::WRITE,
-        );
-    } else {
-        opaque_vertex::init(graph, queue, state);
-    }
+    //     graph.add_slot_dependency(
+    //         FORWARD_PASS,
+    //         SlotLabel::SURFACE,
+    //         SlotKind::Texture,
+    //         SlotFlags::READ,
+    //     );
+    //     graph.add_slot_dependency(
+    //         FORWARD_PASS,
+    //         HDR_TEXTURE,
+    //         SlotKind::Texture,
+    //         SlotFlags::WRITE,
+    //     );
+    // } else {
+    opaque_vertex::init(graph, queue, state);
+    // }
 
     let post_process_pass = PostProcessPass::new(queue, HDR_TEXTURE, SlotLabel::SURFACE);
     graph.add_node(POST_PROCESS_PASS, post_process_pass);
@@ -395,11 +395,13 @@ enum MeshStateImpl {
 
 impl MeshStateImpl {
     fn new(queue: &CommandQueue<'_>) -> Self {
-        if queue.features().mesh_shader {
-            Self::Mesh(MeshState::new(queue))
-        } else {
-            Self::Vertex(VertexMeshState::new(queue))
-        }
+        // if queue.features().mesh_shader {
+        //     Self::Mesh(MeshState::new(queue))
+        // } else {
+        //     Self::Vertex(VertexMeshState::new(queue))
+        // }
+
+        Self::Vertex(VertexMeshState::new(queue))
     }
 
     fn create_mesh(&mut self, queue: &CommandQueue<'_>, mesh: &Mesh) -> MeshKey {

@@ -89,6 +89,12 @@ impl OpaqueVertexForwardPass {
                     kind: DescriptorType::Storage,
                     count: NonZeroU32::MIN,
                 },
+                DescriptorBinding {
+                    binding: 6,
+                    visibility: ShaderStages::VERTEX,
+                    kind: DescriptorType::Storage,
+                    count: NonZeroU32::MIN,
+                },
             ],
         });
 
@@ -252,10 +258,14 @@ impl OpaqueVertexForwardPass {
                 },
                 DescriptorSetEntry {
                     binding: 4,
-                    resource: BindingResource::Buffer(offsets),
+                    resource: BindingResource::Buffer(mesh_state.colors.buffer()),
                 },
                 DescriptorSetEntry {
                     binding: 5,
+                    resource: BindingResource::Buffer(offsets),
+                },
+                DescriptorSetEntry {
+                    binding: 6,
                     resource: BindingResource::Buffer(instance_buffer),
                 },
             ],
