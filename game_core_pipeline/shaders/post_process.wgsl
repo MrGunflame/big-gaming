@@ -43,7 +43,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 }
 
 fn tonemap(color: vec3<f32>) -> vec3<f32> {
-    return color / (color + vec3(1.0));
+    // return color / (color + vec3(1.0));
+    return aces_fitted(color);
 }
 
 fn gamma_correct(color: vec3<f32>) -> vec3<f32> {
@@ -80,4 +81,28 @@ fn screen_space_dither(uv: vec2<f32>) -> vec3<f32> {
     var dither = vec3<f32>(dot(vec2<f32>(171.0, 231.0), uv)).xxx;
     dither = fract(dither.rgb / vec3<f32>(103.0, 71.0, 97.0));
     return (dither - 0.5) / 255.0;
+}
+
+// https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
+
+const ACES_INPUT_MATRIX: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(0.59719, 0.35458, 0.04823),
+    vec3<f32>(0.07600, 0.90834, 0.01566),
+    vec3<f32>(0.02840, 0.13383, 0.83777)
+);
+
+const ACES_OUTPUT_MATRIX: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>( 1.60475, -0.53108, -0.07367),
+    vec3<f32>(-0.10208,  1.10813, -0.00605),
+    vec3<f32>(-0.00327, -0.07276,  1.07602)
+);
+
+fn aces_fitted(color: vec3<f32>) -> vec3<f32> {
+    return rtt_and_odt_fit(color * ACES_INPUT_MATRIX) * ACES_OUTPUT_MATRIX;
+}
+
+fn rtt_and_odt_fit(v: vec3<f32>) -> vec3<f32> {
+    let a = v * (v + 0.0245786) - 0.000090537;
+    let b = v * (0.983729 * v + 0.4329510) + 0.238081;
+    return a/b;
 }
