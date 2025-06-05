@@ -8,8 +8,9 @@ import shared;
 [[vk::binding(1, 0)]] StructuredBuffer<f32> normals;
 [[vk::binding(2, 0)]] StructuredBuffer<f32> uvs;
 [[vk::binding(3, 0)]] StructuredBuffer<f32> tangents;
-[[vk::binding(4, 0)]] StructuredBuffer<MeshOffsets> offsets;
-[[vk::binding(5, 0)]] StructuredBuffer<InstanceOut> instances;
+[[vk::binding(4, 0)]] StructuredBuffer<f32> colors;
+[[vk::binding(5, 0)]] StructuredBuffer<MeshOffsets> offsets;
+[[vk::binding(6, 0)]] StructuredBuffer<InstanceOut> instances;
 
 struct Input {
     u32 draw_id: SV_DrawIndex;
@@ -23,6 +24,7 @@ struct Output {
     [[vk::location(2)]] Vec2 uv;
     [[vk::location(3)]] Vec4 world_tangent;
     [[vk::location(4)]] u32 material_index;
+    [[vk::location(5)]] Vec4 vertex_color;
 }
 
 [shader("vertex")]
@@ -35,6 +37,7 @@ func main(input: Input) -> Output {
     let normal = fetch<3>(normals, offsets.normal, input.vertex_index);
     let uv = fetch<2>(uvs, offsets.uv, input.vertex_index);
     let tangent = fetch<4>(tangents, offsets.tangent, input.vertex_index);
+    let color = fetch<4>(colors, offsets.color, input.vertex_index);
 
     Output output;
     output.clip_position = mul(mul(camera.view_proj, instance.transform), Vec4(position, 1.0));
@@ -43,6 +46,7 @@ func main(input: Input) -> Output {
     output.world_tangent = Vec4(mul(instance.normal, tangent.xyz), tangent.w);
     output.uv = uv;
     output.material_index = instance.material_index;
+    output.vertex_color = color;
     return output;
 }
 

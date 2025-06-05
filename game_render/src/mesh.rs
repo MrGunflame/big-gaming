@@ -14,6 +14,7 @@ pub struct Mesh {
     uvs: Vec<Vec2>,
     tangents: Vec<Vec4>,
     tangents_set: bool,
+    colors: Vec<Vec4>,
 }
 
 impl Mesh {
@@ -25,6 +26,7 @@ impl Mesh {
             uvs: vec![],
             tangents: vec![],
             tangents_set: false,
+            colors: Vec::new(),
         }
     }
 
@@ -52,9 +54,17 @@ impl Mesh {
         &self.tangents
     }
 
+    pub fn colors(&self) -> &[Vec4] {
+        &self.colors
+    }
+
     pub fn set_tangents(&mut self, tangents: Vec<Vec4>) {
         self.tangents = tangents;
         self.tangents_set = true;
+    }
+
+    pub fn set_colors(&mut self, colors: Vec<Vec4>) {
+        self.colors = colors;
     }
 
     pub fn set_uvs(&mut self, uvs: Vec<Vec2>) {

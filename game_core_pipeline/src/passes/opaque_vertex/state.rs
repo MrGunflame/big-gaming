@@ -18,6 +18,7 @@ pub struct VertexMeshState {
     pub normals: SubAllocatedGrowableBuffer<f32>,
     pub uvs: SubAllocatedGrowableBuffer<f32>,
     pub tangents: SubAllocatedGrowableBuffer<f32>,
+    pub colors: SubAllocatedGrowableBuffer<f32>,
     pub index_buffer: SubAllocatedGrowableBuffer<u32>,
     pub instances: CompactSlabBuffer<Instance>,
     pub mesh_offsets: SlabBuffer<MeshOffsets>,
@@ -32,6 +33,7 @@ impl VertexMeshState {
             normals: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             uvs: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             tangents: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
+            colors: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             index_buffer: SubAllocatedGrowableBuffer::new(queue, BufferUsage::INDEX),
             instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
             mesh_offsets: SlabBuffer::new(BufferUsage::STORAGE),
@@ -58,6 +60,17 @@ impl VertexMeshState {
             .tangents
             .insert(queue, bytemuck::must_cast_slice(mesh.tangents()));
 
+        // If no colors are set we set all colors to 1.0
+        // which corresponds to no effect.
+        // TODO: Instead of duplicating a bunch of 1.0s for each mesh
+        // we should share them between meshes.
+        let mut colors = mesh.colors().to_vec();
+        colors.resize(mesh.positions().len(), Vec4::ONE);
+
+        let colors_offset = self
+            .colors
+            .insert(queue, bytemuck::must_cast_slice::<Vec4, f32>(&colors));
+
         let indices_offset = self.index_buffer.insert(queue, &indices);
 
         let offsets = self.mesh_offsets.insert(&MeshOffsets {
@@ -65,6 +78,10 @@ impl VertexMeshState {
             normals_offset: normals_offset as u32,
             uvs_offset: uvs_offset as u32,
             tangents_offset: tangents_offset as u32,
+            colors_offset: colors_offset as u32,
+            _pad0: 0,
+            _pad1: 0,
+            _pad2: 0,
         });
 
         MeshKey(self.meshes.insert(MeshData {
@@ -73,6 +90,7 @@ impl VertexMeshState {
             uvs_offset,
             tangents_offset,
             indices_offset,
+            colors_offset,
             indices_count: indices.len() as u64,
             offsets,
         }))
@@ -84,6 +102,7 @@ impl VertexMeshState {
             self.normals.remove(mesh.normals_offset);
             self.uvs.remove(mesh.uvs_offset);
             self.tangents.remove(mesh.tangents_offset);
+            self.colors.remove(mesh.colors_offset);
             self.index_buffer.remove(mesh.indices_offset);
             self.mesh_offsets.remove(mesh.offsets);
         }
@@ -156,6 +175,10 @@ pub struct MeshOffsets {
     normals_offset: u32,
     uvs_offset: u32,
     tangents_offset: u32,
+    colors_offset: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 }
 
 impl GpuBuffer for MeshOffsets {
@@ -169,6 +192,7 @@ struct MeshData {
     normals_offset: u64,
     uvs_offset: u64,
     tangents_offset: u64,
+    colors_offset: u64,
     indices_offset: u64,
     indices_count: u64,
     offsets: SlabIndex,

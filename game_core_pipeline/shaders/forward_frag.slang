@@ -46,6 +46,7 @@ struct Input {
     [[vk::location(2)]] Vec2 uv;
     [[vk::location(3)]] Vec4 world_tangent;
     [[vk::location(4)]] u32 material_index;
+    [[vk::location(5)]] Vec4 vertex_color;
 }
 
 struct Output {
@@ -57,7 +58,7 @@ func main(input: Input) -> Output {
     let material = materials[input.material_index];
     let uv = input.uv;
 
-    var base_color = load_base_color(material, uv);
+    var base_color = load_base_color(material, uv) * input.vertex_color;
 
     if ((material.flags & MATERIAL_FLAGS_UNLIT) != 0) {
         return Output(base_color);
