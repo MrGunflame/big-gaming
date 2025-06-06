@@ -100,6 +100,7 @@ impl MipMapGenerator {
             });
 
             let mut render_pass = queue.run_render_pass(&RenderPassDescriptor {
+                name: "Mipmap Generation",
                 color_attachments: &[RenderPassColorAttachment {
                     target: dst_view,
                     load_op: LoadOp::Clear(Color::BLACK),

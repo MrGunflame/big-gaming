@@ -103,6 +103,7 @@ impl Node for PostProcessPass {
             });
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+            name: "Post Process",
             color_attachments: &[RenderPassColorAttachment {
                 target: &output.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Clear(Color::BLACK),

@@ -1,4 +1,5 @@
 use std::hash::Hash;
+use std::num::NonZeroU32;
 use std::slice;
 use std::sync::Arc;
 
@@ -11,14 +12,15 @@ use crate::backend::vulkan::{self, CommandEncoder, TextureView};
 use crate::backend::{
     AccessFlags, BufferBarrier, CopyBuffer, DrawIndexedIndirectCommand, DrawIndirectCommand,
     MemoryTypeFlags, PipelineBarriers, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, TextureBarrier, TextureViewDescriptor, WriteDescriptorBinding,
-    WriteDescriptorResource, WriteDescriptorResources,
+    RenderPassDescriptor, TextureBarrier, TextureViewDescriptor, TimestampPipelineStage,
+    WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
 
 use super::commands::{
-    Command, ComputeCommand, ComputePassCmd, CopyBufferToBuffer, CopyBufferToTexture,
+    Command, CommandRef, ComputeCommand, ComputePassCmd, CopyBufferToBuffer, CopyBufferToTexture,
     CopyTextureToTexture, RenderPassCmd, WriteBuffer,
 };
+use super::queries::{ManagedQueryPool, QueryObject, QueryPoolSet};
 use super::resources::DescriptorSetResource;
 use super::scheduler::{Barrier, Step};
 use super::{
@@ -26,20 +28,45 @@ use super::{
     SamplerId, TextureId,
 };
 
-pub(super) fn execute<I, T>(
+pub(super) fn execute(
     resources: &Resources,
-    steps: I,
+    steps: Vec<Step<&CommandRef<'_>, ResourceId>>,
     encoder: &mut CommandEncoder<'_>,
-) -> TemporaryResources
-where
-    I: IntoIterator<Item = Step<T, ResourceId>>,
-    T: AsRef<Command>,
-{
+    queries: &QueryPoolSet,
+) -> TemporaryResources {
     let _span = trace_span!("execute").entered();
+
+    let mut render_passes = 0;
+    let mut compute_passes = 0;
+
+    for step in &steps {
+        match step {
+            Step::Node(cmd) => match cmd.as_ref() {
+                Command::RenderPass(_) => {
+                    render_passes += 1;
+                }
+                Command::ComputePass(_) => {
+                    compute_passes += 1;
+                }
+                _ => (),
+            },
+            _ => (),
+        }
+    }
+
+    // Two timestamps for each pass: 1 before and 1 after
+    // plus two timestamps to measure the entire command buffer time.
+    let query_count = NonZeroU32::new(render_passes * 2 + compute_passes * 2 + 2).unwrap();
+    let mut query_pool = queries.get(query_count);
 
     let mut tmp = TemporaryResources::default();
 
     let mut barriers = Vec::new();
+
+    unsafe {
+        let index = query_pool.next_index(QueryObject::BeginCommands);
+        encoder.write_timestamp_query(query_pool.pool(), index, TimestampPipelineStage::None);
+    }
 
     for step in steps {
         // Batch all barrier steps together, then when the new step is not
@@ -70,10 +97,10 @@ where
                     tmp.textures.insert(cmd.texture.id);
                 }
                 Command::RenderPass(cmd) => {
-                    run_render_pass(resources, &mut tmp, cmd, encoder);
+                    run_render_pass(resources, &mut tmp, cmd, encoder, &mut query_pool);
                 }
                 Command::ComputePass(cmd) => {
-                    run_compute_pass(resources, &mut tmp, cmd, encoder);
+                    run_compute_pass(resources, &mut tmp, cmd, encoder, &mut query_pool);
                 }
             },
             Step::Barrier(barrier) => {
@@ -86,6 +113,13 @@ where
     if !barriers.is_empty() {
         insert_barriers(resources, &barriers, encoder);
     }
+
+    unsafe {
+        let index = query_pool.next_index(QueryObject::EndCommands);
+        encoder.write_timestamp_query(query_pool.pool(), index, TimestampPipelineStage::All);
+    }
+
+    tmp.query_pool = Some(query_pool);
 
     tmp
 }
@@ -199,6 +233,7 @@ fn run_render_pass(
     tmp: &mut TemporaryResources,
     cmd: &RenderPassCmd,
     encoder: &mut CommandEncoder<'_>,
+    query_pool: &mut ManagedQueryPool,
 ) {
     // Ensure all physical descriptor sets are created before
     // the render pass begins.
@@ -266,6 +301,12 @@ fn run_render_pass(
             access: AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE,
         }
     });
+
+    // Record a timestamp before running the render pass.
+    unsafe {
+        let index = query_pool.next_index(QueryObject::BeginPass(cmd.name));
+        encoder.write_timestamp_query(query_pool.pool(), index, TimestampPipelineStage::None);
+    }
 
     // SAFETY: We have inserted the necessary barrier so that all
     // color/depth attachments have the appropriate access flags set.
@@ -358,6 +399,12 @@ fn run_render_pass(
 
     drop(render_pass);
 
+    // Record a second timestamp after the render pass render pass.
+    unsafe {
+        let index = query_pool.next_index(QueryObject::EndPass(cmd.name));
+        encoder.write_timestamp_query(query_pool.pool(), index, TimestampPipelineStage::Graphics);
+    }
+
     tmp.texture_views.extend(attachment_views);
 }
 
@@ -366,6 +413,7 @@ fn run_compute_pass(
     tmp: &mut TemporaryResources,
     cmd: &ComputePassCmd,
     encoder: &mut CommandEncoder<'_>,
+    query_pool: &mut ManagedQueryPool,
 ) {
     // Ensure all physical descriptor sets are created before
     // the render pass begins.
@@ -379,6 +427,12 @@ fn run_compute_pass(
             }
             _ => (),
         }
+    }
+
+    // Record a timestamp before running the compute pass.
+    unsafe {
+        let index = query_pool.next_index(QueryObject::BeginPass(cmd.name));
+        encoder.write_timestamp_query(query_pool.pool(), index, TimestampPipelineStage::None);
     }
 
     let mut compute_pass = encoder.begin_compute_pass();
@@ -420,6 +474,12 @@ fn run_compute_pass(
     }
 
     drop(compute_pass);
+
+    // Record a second timestamp after the render compute render pass.
+    unsafe {
+        let index = query_pool.next_index(QueryObject::EndPass(cmd.name));
+        encoder.write_timestamp_query(query_pool.pool(), index, TimestampPipelineStage::Compute);
+    }
 }
 
 fn build_descriptor_set(resources: &Resources, id: DescriptorSetId) {
@@ -587,6 +647,7 @@ pub struct TemporaryResources {
     textures: CountingSet<TextureId>,
     pipelines: CountingSet<PipelineId>,
     samplers: CountingSet<SamplerId>,
+    pub query_pool: Option<ManagedQueryPool>,
 }
 
 impl TemporaryResources {
@@ -632,6 +693,12 @@ impl TemporaryResources {
 
             if pipeline.ref_count.decrement_many(count) {
                 resources.deletion_queue.push(DeletionEvent::Pipeline(id));
+            }
+        }
+
+        if let Some(query_pool) = self.query_pool {
+            unsafe {
+                query_pool.release();
             }
         }
     }
