@@ -431,6 +431,7 @@ pub struct TextureTransition {
 
 #[derive(Debug)]
 pub struct RenderPassCmd {
+    pub name: &'static str,
     pub color_attachments: Vec<ColorAttachmentOwned>,
     pub depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
     pub cmds: Vec<DrawCmd>,
@@ -438,6 +439,7 @@ pub struct RenderPassCmd {
 
 #[derive(Debug)]
 pub struct ComputePassCmd {
+    pub name: &'static str,
     pub cmds: Vec<ComputeCommand>,
 }
 

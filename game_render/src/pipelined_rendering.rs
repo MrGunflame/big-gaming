@@ -1,12 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::sync::{mpsc, Arc};
+use std::time::Duration;
 
 use game_common::cell::UnsafeRefCell;
 use game_tasks::park::Parker;
 use game_tracing::trace_span;
 use game_window::windows::{WindowId, WindowState};
 
+use crate::api::queries::{ManagedQueryPool, QueryObject};
 use crate::api::{CommandExecutor, TextureRegion};
 use crate::backend::vulkan::{Adapter, Device, Instance, Queue};
 use crate::backend::{AccessFlags, QueuePresent, QueueSubmit, TextureUsage};
@@ -14,7 +16,7 @@ use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::scheduler::RenderGraphScheduler;
 use crate::graph::{NodeLabel, RenderContext, RenderGraph, SlotLabel, SlotValueInner};
-use crate::statistics::Statistics;
+use crate::statistics::{Pass, Statistics};
 use crate::surface::{RenderSurfaces, SurfaceConfig};
 
 #[derive(Clone, Debug)]
@@ -31,6 +33,7 @@ pub struct SharedState {
     pub device: Device,
     pub graph: UnsafeRefCell<RenderGraph>,
     pub scheduler: UnsafeRefCell<CommandExecutor>,
+    pub statistics: Arc<Statistics>,
 }
 
 pub struct RenderThreadHandle {
@@ -53,7 +56,7 @@ impl RenderThreadHandle {
         let executor = CommandExecutor::new(
             device.clone(),
             adapter.memory_properties(),
-            statistics,
+            statistics.clone(),
             adapter.properties(),
         );
 
@@ -62,6 +65,7 @@ impl RenderThreadHandle {
             device,
             graph: UnsafeRefCell::new(RenderGraph::default()),
             scheduler: UnsafeRefCell::new(executor),
+            statistics,
         });
 
         let (tx, rx) = mpsc::channel();
@@ -216,6 +220,17 @@ impl RenderThread {
                 frame.submit_done.wait(None).unwrap();
             }
 
+            if let Some(query_pool) = &frame.resources.query_pool {
+                unsafe {
+                    record_query_statistics(
+                        &self.shared.device,
+                        &self.queue,
+                        query_pool,
+                        &self.shared.statistics,
+                    );
+                }
+            }
+
             // Destroy all resources that were required for the commands.
             scheduler.destroy(core::mem::take(&mut frame.resources));
             if let Some(texture) = frame.swapchain_texture.take() {
@@ -306,4 +321,61 @@ impl RenderThread {
             drop(output);
         }
     }
+}
+
+unsafe fn record_query_statistics(
+    device: &Device,
+    queue: &Queue,
+    query_pool: &ManagedQueryPool,
+    statistics: &Statistics,
+) {
+    let factor = device.limits().timestamp_period_nanos;
+    let timestamp_bits = queue.family().timestamp_bits;
+
+    let mut passes = Vec::new();
+    let mut started_passes = BTreeMap::new();
+
+    let mut timestamps = unsafe { query_pool.get() };
+    for timestamp in &mut timestamps {
+        if timestamp_bits < size_of::<u64>() as u32 {
+            // Only the first starting bits are valid.
+            *timestamp &= (1 << timestamp_bits) - 1;
+        }
+    }
+
+    let mut submit_start = 0;
+    let mut submit_end = 0;
+
+    for (object, timestamp) in query_pool.objects.iter().zip(&timestamps) {
+        match object {
+            QueryObject::BeginCommands => {
+                submit_start = *timestamp;
+            }
+            QueryObject::EndCommands => {
+                submit_end = *timestamp;
+            }
+            QueryObject::BeginPass(name) => {
+                started_passes.insert(name, *timestamp);
+            }
+            QueryObject::EndPass(name) => {
+                let Some(start) = started_passes.remove(name) else {
+                    continue;
+                };
+
+                let end = *timestamp;
+
+                let elapsed = end.wrapping_sub(start) as f32 * factor;
+                let time = Duration::from_nanos(elapsed as u64);
+
+                passes.push(Pass { name, time });
+            }
+        }
+    }
+
+    let elapsed = submit_end.wrapping_sub(submit_start) as f32 * factor;
+    let time = Duration::from_nanos(elapsed as u64);
+
+    let mut timings = statistics.gpu_timings.write();
+    timings.time = time;
+    timings.passes = passes;
 }

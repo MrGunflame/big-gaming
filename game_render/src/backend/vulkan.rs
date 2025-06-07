@@ -31,10 +31,11 @@ use super::{
     BlendOp, BufferUsage, BufferView, ColorSpace, CompareOp, CopyBuffer, DedicatedResource,
     DescriptorPoolDescriptor, DescriptorSetDescriptor, Face, FilterMode, FrontFace, IndexFormat,
     LoadOp, MemoryHeap, MemoryHeapFlags, MemoryRequirements, MemoryType, MemoryTypeFlags,
-    PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology,
-    QueueCapabilities, QueueFamily, QueueFamilyId, QueuePresent, QueueSubmit, RenderPassDescriptor,
-    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, SwapchainCapabilities, SwapchainConfig,
-    TextureDescriptor, TextureFormat, TextureUsage, TextureViewDescriptor, WriteDescriptorResource,
+    PipelineBarriers, PipelineDescriptor, PipelineStage, PresentMode, PrimitiveTopology, QueryKind,
+    QueryPoolDescriptor, QueueCapabilities, QueueFamily, QueueFamilyId, QueuePresent, QueueSubmit,
+    RenderPassDescriptor, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp,
+    SwapchainCapabilities, SwapchainConfig, TextureDescriptor, TextureFormat, TextureUsage,
+    TextureViewDescriptor, TimestampPipelineStage, WriteDescriptorResource,
     WriteDescriptorResources,
 };
 
@@ -197,6 +198,8 @@ pub struct Config {
     pub validation: bool,
     /// GPU Assisted validation. Expensive
     pub gpuav: bool,
+    /// Enable support for GPU assisted performance counters.
+    pub performance_counters: bool,
 }
 
 /// Entrypoint for the Vulkan API.
@@ -694,6 +697,7 @@ impl Adapter {
             storage_push_constant8: cast(features12.storage_push_constant8),
             shader_float16: cast(features12.shader_float16),
             shader_int8: cast(features12.shader_int8),
+            host_query_reset: cast(features12.host_query_reset),
             dynamic_rendering: cast(features13.dynamic_rendering),
             synchronization2: cast(features13.synchronization2),
             swapchain_maintenace1: cast(swapchain_maintenance1.swapchain_maintenance1),
@@ -813,6 +817,7 @@ impl Adapter {
                     id: QueueFamilyId(index as u32),
                     count: queue.queue_count,
                     capabilities,
+                    timestamp_bits: queue.timestamp_valid_bits,
                 }
             })
             .collect()
@@ -918,6 +923,7 @@ impl Adapter {
             task_shader: false,
             mesh_shader: false,
             swapchain_maintenace1: false,
+            host_query_reset: self.instance.config.performance_counters,
         };
 
         supported_features.validate_requirements(required_features)?;
@@ -961,7 +967,9 @@ impl Adapter {
             // 8 Bit Storage
             .storage_buffer8_bit_access(true)
             .uniform_and_storage_buffer8_bit_access(true)
-            .storage_push_constant8(false);
+            .storage_push_constant8(false)
+            // Needed for performance measuring.
+            .host_query_reset(self.instance.config.performance_counters);
 
         let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
@@ -1026,6 +1034,7 @@ impl Adapter {
                 memory_properties: self.memory_properties(),
                 num_allocations: Arc::new(AtomicU32::new(0)),
                 queues,
+                queue_families: queue_families.to_vec(),
             }),
         })
     }
@@ -1084,6 +1093,7 @@ impl Adapter {
                 .limits
                 .max_compute_work_group_invocations,
             max_compute_work_group_size: props.properties.limits.max_compute_work_group_size,
+            timestamp_period_nanos: props.properties.limits.timestamp_period,
             max_per_set_descriptors: maintenance3.max_per_set_descriptors,
             max_memory_allocation_size: maintenance3.max_memory_allocation_size,
             max_task_work_group_total_count: mesh_shader.max_task_work_group_total_count,
@@ -1129,6 +1139,10 @@ impl Device {
         self.device.extensions
     }
 
+    pub fn limits(&self) -> DeviceLimits {
+        self.device.limits
+    }
+
     ///
     /// # Safety
     ///
@@ -1171,11 +1185,19 @@ impl Device {
 
         let queue = unsafe { self.device.get_device_queue2(&info) };
 
+        let family_data = self
+            .device
+            .queue_families
+            .iter()
+            .find(|f| f.id == family)
+            .unwrap();
+
         Ok(Queue {
             device: self.device.clone(),
             queue,
             queue_family: family,
             queue_index,
+            family: *family_data,
         })
     }
 
@@ -2208,6 +2230,34 @@ impl Device {
             sampler,
         })
     }
+
+    pub fn create_query_pool(&self, descriptor: &QueryPoolDescriptor) -> Result<QueryPool, Error> {
+        assert!(
+            self.device.instance.config.performance_counters,
+            "Device::create_query_pool requires Config::performance_counts to be enabled",
+        );
+
+        let info = vk::QueryPoolCreateInfo::default()
+            .flags(vk::QueryPoolCreateFlags::empty())
+            .query_type(descriptor.kind.into())
+            .query_count(descriptor.count.get())
+            // Not used for timestamp queries.
+            .pipeline_statistics(vk::QueryPipelineStatisticFlags::empty());
+
+        let pool = unsafe { self.device.create_query_pool(&info, None)? };
+
+        // Seems like we need to reset before first use.
+        unsafe {
+            self.device
+                .reset_query_pool(pool, 0, descriptor.count.get());
+        }
+
+        Ok(QueryPool {
+            device: self.device.clone(),
+            pool,
+            query_count: descriptor.count,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -2216,12 +2266,13 @@ pub struct Queue {
     queue: vk::Queue,
     queue_family: QueueFamilyId,
     queue_index: u32,
+    family: QueueFamily,
 }
 
 impl Queue {
     /// Returns the [`QueueFamily`] ID that was used to create this `Queue`.
-    pub fn family(&self) -> QueueFamilyId {
-        self.queue_family
+    pub fn family(&self) -> QueueFamily {
+        self.family
     }
 
     /// Submits a list of [`CommandBuffer`]s to this `Queue`.
@@ -2868,6 +2919,11 @@ vk_enum! {
 vk_enum! {
     BlendOp => vk::BlendOp,
     BlendOp::Add => vk::BlendOp::ADD,
+}
+
+vk_enum! {
+    QueryKind => vk::QueryType,
+    QueryKind::Timestamp => vk::QueryType::TIMESTAMP,
 }
 
 impl From<ShaderStages> for vk::ShaderStageFlags {
@@ -3569,6 +3625,27 @@ impl<'a> CommandEncoder<'a> {
 
         unsafe {
             self.device.device.cmd_pipeline_barrier2(self.buffer, &info);
+        }
+    }
+
+    pub unsafe fn write_timestamp_query(
+        &self,
+        pool: &QueryPool,
+        index: u32,
+        stage: TimestampPipelineStage,
+    ) {
+        assert!(index < pool.query_count.get());
+
+        let stage = match stage {
+            TimestampPipelineStage::None => vk::PipelineStageFlags2::NONE,
+            TimestampPipelineStage::Graphics => vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            TimestampPipelineStage::Compute => vk::PipelineStageFlags2::COMPUTE_SHADER,
+            TimestampPipelineStage::All => vk::PipelineStageFlags2::BOTTOM_OF_PIPE,
+        };
+
+        unsafe {
+            self.device
+                .cmd_write_timestamp2(self.buffer, stage, pool.pool, index);
         }
     }
 
@@ -4659,6 +4736,56 @@ impl Drop for Sampler {
     }
 }
 
+#[derive(Debug)]
+pub struct QueryPool {
+    device: Arc<DeviceShared>,
+    pool: vk::QueryPool,
+    query_count: NonZeroU32,
+}
+
+impl QueryPool {
+    /// Resets all queries in this pool.
+    ///
+    /// # Safety
+    ///
+    /// All submissions that write to this `QueryPool` must have completed.
+    pub unsafe fn reset(&self) {
+        unsafe {
+            self.device
+                .reset_query_pool(self.pool, 0, self.query_count.get());
+        }
+    }
+
+    pub unsafe fn get(&self, offset: u32, count: u32) -> Result<Vec<u64>, Error> {
+        assert!(offset + count <= self.query_count.get());
+
+        let mut data = vec![0; count as usize];
+
+        unsafe {
+            self.device.get_query_pool_results::<u64>(
+                self.pool,
+                offset,
+                &mut data,
+                vk::QueryResultFlags::TYPE_64,
+            )?;
+        }
+
+        Ok(data)
+    }
+}
+
+impl Drop for QueryPool {
+    fn drop(&mut self) {
+        if thread::panicking() {
+            return;
+        }
+
+        unsafe {
+            self.device.destroy_query_pool(self.pool, None);
+        }
+    }
+}
+
 extern "system" fn debug_callback(
     severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     typ: vk::DebugUtilsMessageTypeFlagsEXT,
@@ -4751,6 +4878,7 @@ struct DeviceShared {
     /// Number of currently active allocations.
     num_allocations: Arc<AtomicU32>,
     queues: Arc<[QueueSlot]>,
+    queue_families: Vec<QueueFamily>,
 }
 
 impl DeviceShared {
@@ -4797,7 +4925,7 @@ struct QueueSlot {
 }
 
 #[derive(Copy, Clone, Debug)]
-struct DeviceLimits {
+pub struct DeviceLimits {
     max_push_constants_size: u32,
     max_bound_descriptor_sets: u32,
     max_memory_allocation_count: u32,
@@ -4830,6 +4958,7 @@ struct DeviceLimits {
     max_compute_work_group_count: [u32; 3],
     max_compute_work_group_invocations: u32,
     max_compute_work_group_size: [u32; 3],
+    pub timestamp_period_nanos: f32,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -4940,6 +5069,8 @@ pub struct DeviceFeatures {
     shader_float16: bool,
     /// Vulkan 1.2 or `VK_KHR_shader_float16_int8`
     shader_int8: bool,
+    /// Vulkan 1.2 or `VK_EXT_host_query_reset`
+    host_query_reset: bool,
     /// Vulkan 1.3 or `VK_KHR_dynamic_rendering`
     dynamic_rendering: bool,
     /// Vulkan 1.3 or `VK_KHR_synchronization2`
@@ -4985,6 +5116,7 @@ impl DeviceFeatures {
             storage_push_constant8,
             shader_float16,
             shader_int8,
+            host_query_reset,
             dynamic_rendering,
             synchronization2,
             swapchain_maintenace1,
@@ -5028,6 +5160,7 @@ impl DeviceFeatures {
             storage_push_constant8,
             shader_float16,
             shader_int8,
+            host_query_reset,
             dynamic_rendering,
             synchronization2,
             swapchain_maintenace1,
@@ -5071,6 +5204,7 @@ impl DeviceFeatures {
             storage_push_constant8,
             shader_float16,
             shader_int8,
+            host_query_reset,
             dynamic_rendering,
             synchronization2,
             swapchain_maintenace1,
@@ -5105,6 +5239,7 @@ impl DeviceFeatures {
             || storage_push_constant8
             || shader_float16
             || shader_int8
+            || host_query_reset
             || dynamic_rendering
             || synchronization2
             || swapchain_maintenace1
@@ -5145,6 +5280,7 @@ impl Display for DeviceFeatures {
             storage_push_constant8,
             shader_float16,
             shader_int8,
+            host_query_reset,
             dynamic_rendering,
             synchronization2,
             swapchain_maintenace1,
@@ -5194,6 +5330,7 @@ impl Display for DeviceFeatures {
             storage_push_constant8,
             shader_float16,
             shader_int8,
+            host_query_reset,
             dynamic_rendering,
             synchronization2,
             swapchain_maintenace1,

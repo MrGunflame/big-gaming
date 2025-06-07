@@ -89,6 +89,7 @@ pub struct QueueFamily {
     pub id: QueueFamilyId,
     pub count: u32,
     pub capabilities: QueueCapabilities,
+    pub timestamp_bits: u32,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -935,4 +936,24 @@ pub struct DrawIndexedIndirectCommand {
 pub struct Features {
     pub mesh_shader: bool,
     pub task_shader: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct QueryPoolDescriptor {
+    pub kind: QueryKind,
+    pub count: NonZeroU32,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum QueryKind {
+    Timestamp,
+}
+
+/// Defines which commands need to complete before the timestamp can be written.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum TimestampPipelineStage {
+    None,
+    Graphics,
+    Compute,
+    All,
 }

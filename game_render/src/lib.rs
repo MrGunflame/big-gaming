@@ -85,6 +85,7 @@ impl Renderer {
         let mut config = Config::default();
         config.validation = debug::debug_enabled();
         config.gpuav = debug::gpuav_enabled();
+        config.performance_counters = true;
 
         let instance = Instance::new(config).unwrap();
 

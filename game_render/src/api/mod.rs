@@ -1,7 +1,9 @@
 //! Rendering API
 
-mod commands;
 pub mod executor;
+pub mod queries;
+
+mod commands;
 mod resources;
 mod scheduler;
 
@@ -24,6 +26,7 @@ use game_tracing::trace_span;
 use glam::UVec2;
 use hashbrown::{HashMap, HashSet};
 use parking_lot::Mutex;
+use queries::QueryPoolSet;
 use resources::{
     BufferId, BufferInner, DescriptorSetId, DescriptorSetInner, DescriptorSetLayoutId,
     DescriptorSetLayoutInner, DescriptorSetResource, PipelineId, PipelineInner, RefCount,
@@ -58,6 +61,7 @@ pub struct CommandExecutor {
     allocator: Exclusive<Bump>,
     features: Features,
     scheduler: Scheduler,
+    query_pools: QueryPoolSet,
 }
 
 impl CommandExecutor {
@@ -89,6 +93,7 @@ impl CommandExecutor {
                 deletion_queue: SegQueue::new(),
             }),
             cmds: Mutex::new(CommandStream::new()),
+            query_pools: QueryPoolSet::new(device.clone()),
             device,
             adapter_props,
             allocator: Exclusive::new(Bump::new()),
@@ -112,7 +117,7 @@ impl CommandExecutor {
             .scheduler
             .schedule(&*self.resources, &*allocator, &cmds);
         allocator.reset();
-        let tmp = executor::execute(&mut self.resources, steps, encoder);
+        let tmp = executor::execute(&mut self.resources, steps, encoder, &self.query_pools);
         self.cmds.get_mut().clear();
 
         tmp
@@ -1114,6 +1119,7 @@ impl<'a> CommandQueue<'a> {
         });
 
         RenderPass {
+            name: descriptor.name,
             ctx: self,
             color_attachments,
             depth_stencil_attachment,
@@ -1123,8 +1129,9 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    pub fn run_compute_pass(&self) -> ComputePass<'_> {
+    pub fn run_compute_pass(&self, descriptor: &ComputePassDescriptor) -> ComputePass<'_> {
         ComputePass {
+            name: descriptor.name,
             queue: self,
             last_pipeline: None,
             cmds: Vec::new(),
@@ -1577,6 +1584,7 @@ pub struct TextureViewDescriptor {
 }
 
 pub struct RenderPass<'a, 'b> {
+    name: &'static str,
     ctx: &'b CommandQueue<'a>,
     color_attachments: Vec<ColorAttachmentOwned>,
     depth_stencil_attachment: Option<DepthStencilAttachmentOwned>,
@@ -1775,6 +1783,7 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
         self.ctx.executor.cmds.lock().push(
             &self.ctx.executor.resources,
             Command::RenderPass(RenderPassCmd {
+                name: self.name,
                 color_attachments: self.color_attachments.clone(),
                 depth_stencil_attachment: self.depth_stencil_attachment.clone(),
                 cmds: core::mem::take(&mut self.cmds),
@@ -1785,6 +1794,7 @@ impl<'a, 'b> Drop for RenderPass<'a, 'b> {
 
 #[derive(Debug)]
 pub struct ComputePass<'a> {
+    name: &'static str,
     queue: &'a CommandQueue<'a>,
     // Exists purely for validation.
     last_pipeline: Option<PipelineId>,
@@ -1850,6 +1860,7 @@ impl<'a> Drop for ComputePass<'a> {
         self.queue.executor.cmds.lock().push(
             &self.queue.executor.resources,
             Command::ComputePass(ComputePassCmd {
+                name: self.name,
                 cmds: core::mem::take(&mut self.cmds),
             }),
         );
@@ -1857,6 +1868,7 @@ impl<'a> Drop for ComputePass<'a> {
 }
 
 pub struct RenderPassDescriptor<'a> {
+    pub name: &'static str,
     pub color_attachments: &'a [RenderPassColorAttachment<'a>],
     pub depth_stencil_attachment: Option<&'a DepthStencilAttachment<'a>>,
 }
@@ -1937,4 +1949,9 @@ struct DrawMeshTasks {
     x: u32,
     y: u32,
     z: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct ComputePassDescriptor {
+    pub name: &'static str,
 }

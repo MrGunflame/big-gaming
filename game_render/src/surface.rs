@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use spirv::Op;
 
 use crate::api::executor::TemporaryResources;
 use crate::api::Texture;
 use crate::backend::vulkan::{
-    CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
+    CommandPool, Device, Fence, Instance, QueryPool, Queue, Semaphore, Surface, Swapchain,
 };
 use crate::backend::{
     AccessFlags, ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
@@ -147,7 +148,7 @@ fn create_surface(
             submit_done_used: false,
             present_done: device.create_fence().unwrap(),
             present_done_used: false,
-            command_pool: device.create_command_pool(queue.family()).unwrap(),
+            command_pool: device.create_command_pool(queue.family().id).unwrap(),
             resources: TemporaryResources::default(),
             swapchain_texture: None,
         })
@@ -189,7 +190,7 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, siz
                 submit_done_used: false,
                 present_done: device.create_fence().unwrap(),
                 present_done_used: false,
-                command_pool: device.create_command_pool(queue.family()).unwrap(),
+                command_pool: device.create_command_pool(queue.family().id).unwrap(),
                 resources: TemporaryResources::default(),
                 swapchain_texture: None,
             });

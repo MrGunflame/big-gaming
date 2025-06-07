@@ -2,8 +2,9 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use game_render::api::{
-    BindingResource, BufferDescriptor, CommandQueue, DescriptorSetDescriptor, DescriptorSetEntry,
-    DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor,
+    BindingResource, BufferDescriptor, CommandQueue, ComputePassDescriptor,
+    DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
+    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
@@ -116,7 +117,9 @@ impl Node for DrawcallGenPass {
             ],
         });
 
-        let mut compute_pass = ctx.queue.run_compute_pass();
+        let mut compute_pass = ctx.queue.run_compute_pass(&ComputePassDescriptor {
+            name: "Drawcall Generation",
+        });
 
         let workgroups = mesh_state.num_instances.div_ceil(WORKGROUP_SIZE);
 

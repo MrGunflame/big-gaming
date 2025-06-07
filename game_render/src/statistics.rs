@@ -1,10 +1,12 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use parking_lot::RwLock;
 use slab::Slab;
 
 #[derive(Debug, Default)]
 pub struct Statistics {
+    pub gpu_timings: RwLock<Timings>,
     pub memory: RwLock<MemoryStatistics>,
 }
 
@@ -34,4 +36,16 @@ pub struct MemoryAlloc {
 pub enum AllocationKind {
     Buffer,
     Texture,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Timings {
+    pub time: Duration,
+    pub passes: Vec<Pass>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Pass {
+    pub name: &'static str,
+    pub time: Duration,
 }

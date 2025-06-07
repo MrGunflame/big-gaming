@@ -262,6 +262,7 @@ impl ForwardPass {
         });
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+            name: "Forward",
             color_attachments: &[RenderPassColorAttachment {
                 target: &render_target.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Clear(Color::BLACK),
@@ -309,6 +310,7 @@ impl ForwardPass {
         });
 
         ctx.queue.run_render_pass(&RenderPassDescriptor {
+            name: "Forward",
             color_attachments: &[RenderPassColorAttachment {
                 target: &texture.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Clear(Color::BLACK),

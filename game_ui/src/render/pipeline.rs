@@ -312,6 +312,7 @@ impl Node for UiPass {
             .get(&mut ctx.queue, surface_texture.format());
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+            name: "UI",
             color_attachments: &[RenderPassColorAttachment {
                 target: &surface_texture.create_view(&TextureViewDescriptor::default()),
                 load_op: LoadOp::Load,
