@@ -8,7 +8,7 @@ mod layer;
 #[cfg(feature = "tracy")]
 pub use allocator::ProfiledAllocator;
 #[cfg(feature = "tracy")]
-pub use layer::{ProfilerConfig, ProfilingLayer};
+pub use layer::TracyLayer;
 #[cfg(feature = "tracy")]
 pub use tracy_client::Client;
 
