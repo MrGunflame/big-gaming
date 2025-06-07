@@ -21,9 +21,7 @@ static LOGGER: OnceLock<Logger> = OnceLock::new();
 pub fn init() {
     let layer = tracing_subscriber::registry();
     #[cfg(feature = "tracy")]
-    let layer = layer.with(game_tracing::ProfilingLayer::new(
-        game_tracing::ProfilerConfig::default(),
-    ));
+    let layer = layer.with(game_tracing::TracyLayer::new());
 
     let logger = LOGGER.get_or_init(Logger::new);
     let layer = layer.with(logger);

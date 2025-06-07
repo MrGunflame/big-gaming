@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 
 [features]
 default = []
-tracy = ["tracing-tracy", "tracy-client"]
+tracy = ["tracy-client", "tracy-client-sys"]
 
 [lints]
 workspace = true
@@ -18,12 +18,10 @@ tracing = "0.1.40"
 
 tracing-subscriber = "0.3.18"
 
-[dependencies.tracing-tracy]
-version = "=0.11.1"
-optional = true
+tracy-client-sys = { version = "=0.25.0", optional = true }
 
 [dependencies.tracy-client]
-version = "=0.17.1"
+version = "=0.18.1"
 optional = true
 default-features = false
 features = [
@@ -35,4 +33,6 @@ features = [
     "callstack-inlines",
     "code-transfer",
     "broadcast",
+    "ondemand",
+    "sampling",
 ]

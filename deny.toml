@@ -36,7 +36,8 @@ allow = [
 ]
 
 exceptions = [
-    { allow = ["Unicode-DFS-2016"], name = "unicode-ident" },
+    { allow = ["Unicode-DFS-2016", "Unicode-3.0"], name = "unicode-ident" },
+    { allow = ["NCSA"], name = "libfuzzer-sys" },
 
     # Only for us.
     { allow = ["GPL-3.0"], name = "game_ai" },
