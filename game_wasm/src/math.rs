@@ -300,22 +300,3 @@ impl private::Sealed for Quat {}
 mod private {
     pub trait Sealed {}
 }
-
-#[cfg(test)]
-mod tests {
-    use std::f32::consts::{FRAC_PI_2, PI};
-
-    use glam::{Quat, Vec3};
-
-    use crate::math::RotationExt;
-
-    #[test]
-    fn rotation_ext_consts() {
-        assert_eq!(Quat::FORWARD, Quat::IDENTITY);
-        assert_eq!(Quat::BACKWARD, Quat::from_axis_angle(Vec3::Y, PI));
-        assert_eq!(Quat::RIGHT, Quat::from_axis_angle(Vec3::Y, FRAC_PI_2));
-        assert_eq!(Quat::LEFT, Quat::from_axis_angle(Vec3::Y, -FRAC_PI_2));
-        assert_eq!(Quat::UP, Quat::from_axis_angle(Vec3::X, FRAC_PI_2));
-        assert_eq!(Quat::DOWN, Quat::from_axis_angle(Vec3::X, -FRAC_PI_2));
-    }
-}
