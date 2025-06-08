@@ -2802,6 +2802,8 @@ vk_enum! {
 
 vk_enum! {
     TextureFormat => vk::Format,
+    TextureFormat::Rgb8Unorm => vk::Format::R8G8B8_UNORM,
+    TextureFormat::Rgb8UnormSrgb => vk::Format::R8G8B8_SRGB,
     TextureFormat::Rgba8Unorm => vk::Format::R8G8B8A8_UNORM,
     TextureFormat::Rgba8UnormSrgb => vk::Format::R8G8B8A8_SRGB,
     TextureFormat::Bgra8Unorm => vk::Format::B8G8R8A8_UNORM,
@@ -3217,15 +3219,15 @@ impl<'a> CommandEncoder<'a> {
         assert_ne!(dst.size.x, 0);
         assert_ne!(dst.size.y, 0);
 
-        let bytes_to_copy = src.layout.bytes_per_row as u64 * src.layout.rows_per_image as u64;
-        assert!(src.buffer.size > src.offset);
-        assert!(src.buffer.size - src.offset >= bytes_to_copy);
-
         assert!(mip_level < dst.mip_levels);
 
         // Use the size of the selected mip level.
         // https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-image-mip-level-sizing
         let dst_size = UVec2::max(UVec2::ONE, dst.size >> mip_level);
+
+        let bytes_to_copy = src.layout.format.storage_size(dst_size) as u64;
+        assert!(src.buffer.size > src.offset);
+        assert!(src.buffer.size - src.offset >= bytes_to_copy);
 
         let aspect_mask = if dst.format.is_depth() {
             vk::ImageAspectFlags::DEPTH

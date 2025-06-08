@@ -360,8 +360,7 @@ fn create_element(
         },
         &cmd.image,
         ImageDataLayout {
-            rows_per_image: 4 * cmd.image.width(),
-            bytes_per_row: cmd.image.height(),
+            format: TextureFormat::Rgba8UnormSrgb,
         },
     );
 

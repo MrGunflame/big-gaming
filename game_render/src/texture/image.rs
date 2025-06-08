@@ -91,10 +91,11 @@ impl Image {
     }
 
     fn validate_size(&self) {
-        // Bytes for a 4x4 block.
-        let block_size = self.format.bytes_per_block();
-        let size = u32::max(1, self.width / 4) * u32::max(1, self.height / 4) * block_size;
-        assert_eq!(size as usize, self.bytes.len());
+        assert_eq!(
+            self.format
+                .storage_size(UVec2::new(self.width, self.height)),
+            self.bytes.len()
+        );
     }
 }
 
