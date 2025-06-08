@@ -224,9 +224,6 @@ fn create_image(
     });
 
     for (mip_level, mip) in image.mips().iter().enumerate() {
-        let bytes_per_row = u32::max(1, mip.width() / 4) * mip.format().bytes_per_block();
-        let rows_per_image = u32::max(1, mip.height() / 4);
-
         queue.write_texture(
             TextureRegion {
                 texture: &texture,
@@ -234,8 +231,7 @@ fn create_image(
             },
             mip.as_bytes(),
             ImageDataLayout {
-                bytes_per_row,
-                rows_per_image,
+                format: mip.format(),
             },
         );
     }

@@ -235,10 +235,7 @@ impl DefaultTextures {
                     mip_level: 0,
                 },
                 &data,
-                ImageDataLayout {
-                    bytes_per_row: 4,
-                    rows_per_image: 1,
-                },
+                ImageDataLayout { format },
             );
 
             textures.insert(texture.create_view(&TextureViewDescriptor::default()))

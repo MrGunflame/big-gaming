@@ -284,10 +284,7 @@ impl DefaultTextures {
                     mip_level: 0,
                 },
                 &data,
-                ImageDataLayout {
-                    bytes_per_row: 4,
-                    rows_per_image: 1,
-                },
+                ImageDataLayout { format },
             );
 
             texture
@@ -861,8 +858,7 @@ fn upload_material_texture(
         },
         image.as_bytes(),
         ImageDataLayout {
-            bytes_per_row: 4 * image.width(),
-            rows_per_image: image.height(),
+            format: image.format(),
         },
     );
 

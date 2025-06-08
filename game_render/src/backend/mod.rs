@@ -119,6 +119,8 @@ pub enum PresentMode {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TextureFormat {
+    Rgb8Unorm,
+    Rgb8UnormSrgb,
     Rgba8Unorm,
     Rgba8UnormSrgb,
     Bgra8Unorm,
@@ -144,6 +146,7 @@ pub enum TextureFormat {
 impl TextureFormat {
     pub const fn is_srgb(&self) -> bool {
         match self {
+            Self::Rgb8UnormSrgb => true,
             Self::Rgba8UnormSrgb => true,
             Self::Bgra8UnormSrgb => true,
             Self::Bc1RgbaUnormSrgb => true,
@@ -158,35 +161,51 @@ impl TextureFormat {
         matches!(self, Self::Depth32Float)
     }
 
-    /// Returns the number of bytes per 4x4 block.
-    pub const fn bytes_per_block(&self) -> u32 {
+    /// Returns the storage size in bytes that is needed to store a texture of the given format
+    /// and dimensions.
+    pub fn storage_size(&self, dim: UVec2) -> usize {
         match self {
-            // 8-bit
-            TextureFormat::Rgba8Unorm => 64,
-            TextureFormat::Rgba8UnormSrgb => 64,
-            TextureFormat::Bgra8Unorm => 64,
-            TextureFormat::Bgra8UnormSrgb => 64,
-            TextureFormat::Rgba16Float => 128,
-            TextureFormat::Depth32Float => 64,
-            TextureFormat::Bc1RgbaUnorm => 8,
-            TextureFormat::Bc1RgbaUnormSrgb => 8,
-            TextureFormat::Bc2RgbaUnorm => 16,
-            TextureFormat::Bc2RgbaUnormSrgb => 16,
-            TextureFormat::Bc3RgbaUnorm => 16,
-            TextureFormat::Bc3RgbaUnormSrgb => 16,
-            TextureFormat::Bc4RUnorm => 8,
-            TextureFormat::Bc4RSnorm => 8,
-            TextureFormat::Bc5RgSnorm => 16,
-            TextureFormat::Bc5RgUnorm => 16,
-            TextureFormat::Bc6HRgbUFloat => 16,
-            TextureFormat::Bc6HRgbSFloat => 16,
-            TextureFormat::Bc7RgbaUnorm => 16,
-            TextureFormat::Bc7RgbaUnormSrgb => 16,
+            Self::Rgb8Unorm | Self::Rgb8UnormSrgb => dim.x as usize * dim.y as usize * 3,
+            Self::Rgba8Unorm | Self::Rgba8UnormSrgb | Self::Bgra8Unorm | Self::Bgra8UnormSrgb => {
+                dim.x as usize * dim.y as usize * 4
+            }
+            Self::Rgba16Float => dim.x as usize * dim.y as usize * 8,
+            Self::Depth32Float => dim.x as usize * dim.y as usize * 4,
+            Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb => {
+                let block_size = 8;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
+            Self::Bc2RgbaUnorm | Self::Bc2RgbaUnormSrgb => {
+                let block_size = 16;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
+            Self::Bc3RgbaUnorm | Self::Bc3RgbaUnormSrgb => {
+                let block_size = 16;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
+            Self::Bc4RUnorm | Self::Bc4RSnorm => {
+                let block_size = 8;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
+            Self::Bc5RgUnorm | Self::Bc5RgSnorm => {
+                let block_size = 16;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
+            Self::Bc6HRgbUFloat | Self::Bc6HRgbSFloat => {
+                let block_size = 16;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
+            Self::Bc7RgbaUnorm | Self::Bc7RgbaUnormSrgb => {
+                let block_size = 16;
+                (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
+            }
         }
     }
 
     pub fn all() -> &'static [Self] {
         &[
+            Self::Rgb8Unorm,
+            Self::Rgb8UnormSrgb,
             Self::Rgba8Unorm,
             Self::Rgba8UnormSrgb,
             Self::Bgra8Unorm,
@@ -765,8 +784,8 @@ pub struct CopyBuffer<'a> {
 
 #[derive(Copy, Clone, Debug)]
 pub struct ImageDataLayout {
-    pub bytes_per_row: u32,
-    pub rows_per_image: u32,
+    /// The texture format of the image data.
+    pub format: TextureFormat,
 }
 
 #[derive(Debug)]

@@ -465,6 +465,18 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
+    /// Writes data into a texture.
+    ///
+    /// The physical layout of `data` is specified in [`ImageDataLayout`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the following preconditions are violated:
+    /// - The texture does not have [`TRANSFER_DST`] set.
+    /// - The selected mip level is out of bounds.
+    /// - The number of bytes in `data` is not equal to the number of the texture region.
+    ///
+    /// [`TRANSFER_DST`]: TextureUsage::TRANSFER_DST
     #[track_caller]
     pub fn write_texture(&self, texture: TextureRegion<'_>, data: &[u8], layout: ImageDataLayout) {
         assert!(
@@ -472,10 +484,10 @@ impl<'a> CommandQueue<'a> {
             "Texture cannot be written to: TRANSFER_DST usage not set",
         );
 
-        assert_eq!(
-            data.len(),
-            layout.bytes_per_row as usize * layout.rows_per_image as usize
-        );
+        assert!(texture.mip_level < texture.texture.mip_levels);
+
+        let mip_size = texture.texture.size >> texture.mip_level;
+        assert_eq!(layout.format.storage_size(mip_size), data.len());
 
         let staging_buffer = self.create_buffer_init(&BufferInitDescriptor {
             contents: data,
