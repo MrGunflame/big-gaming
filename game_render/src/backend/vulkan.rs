@@ -2824,6 +2824,7 @@ vk_enum! {
     TextureFormat::Bc6HRgbSFloat => vk::Format::BC6H_SFLOAT_BLOCK,
     TextureFormat::Bc7RgbaUnorm => vk::Format::BC7_UNORM_BLOCK,
     TextureFormat::Bc7RgbaUnormSrgb => vk::Format::BC7_SRGB_BLOCK,
+    TextureFormat::Rgb9E5Ufloat => vk::Format::E5B9G9R9_UFLOAT_PACK32,
 }
 
 vk_enum! {

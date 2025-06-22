@@ -141,6 +141,9 @@ pub enum TextureFormat {
     Bc6HRgbSFloat,
     Bc7RgbaUnorm,
     Bc7RgbaUnormSrgb,
+    /// Three component RGB encoded as three unsigned floats with 9 bits mantissa and 5 bits shared
+    /// exponent. Packed as 32-bits.
+    Rgb9E5Ufloat,
 }
 
 impl TextureFormat {
@@ -199,6 +202,7 @@ impl TextureFormat {
                 let block_size = 16;
                 (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
             }
+            Self::Rgb9E5Ufloat => dim.x as usize * dim.y as usize * 4,
         }
     }
 
@@ -220,6 +224,11 @@ impl TextureFormat {
             Self::Bc3RgbaUnormSrgb,
             Self::Bc5RgUnorm,
             Self::Bc5RgSnorm,
+            Self::Bc6HRgbUFloat,
+            Self::Bc6HRgbSFloat,
+            Self::Bc7RgbaUnorm,
+            Self::Bc7RgbaUnormSrgb,
+            Self::Rgb9E5Ufloat,
         ]
     }
 }
