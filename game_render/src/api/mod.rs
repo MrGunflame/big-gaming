@@ -165,10 +165,6 @@ impl CommandExecutor {
                 }
                 DeletionEvent::DescriptorSetLayout(id) => {
                     self.resources.descriptor_set_layouts.remove(id);
-
-                    self.cmds
-                        .lock()
-                        .push(&self.resources, Command::DestroyDescriptorSet(id));
                 }
                 DeletionEvent::Pipeline(id) => {
                     self.resources.pipelines.remove(id);
@@ -178,6 +174,10 @@ impl CommandExecutor {
                 }
                 DeletionEvent::DescriptorSet(id) => {
                     let set = self.resources.descriptor_sets.take(id).unwrap();
+
+                    self.cmds
+                        .lock()
+                        .push(&self.resources, Command::DestroyDescriptorSet(id));
 
                     for resource in set.bindings.into_values() {
                         match resource {
