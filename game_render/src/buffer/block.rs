@@ -1,6 +1,8 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeSet, BinaryHeap};
 
+use game_tracing::trace_span;
+
 use crate::api::{Buffer, BufferDescriptor, CommandQueue};
 use crate::backend::allocator::UsageFlags;
 use crate::backend::BufferUsage;
@@ -41,8 +43,41 @@ impl BlockBuffer {
         let index = self.free_blocks.pop().unwrap().0 as u32;
 
         self.occupied_blocks.insert(index);
-        self.writes_queued
-            .push(BufferWrite::Data(index, bytes.to_vec()));
+
+        let padding_bytes = self.block_size - bytes.len();
+
+        // If possible we attempt to coalesce our write with a write to
+        // the previous block index.
+        // This takes a significant amount of pressure from the staging buffer
+        // allocator.
+        // This only works if the new block are adjacent, however this already
+        // makes the biggest difference when a new area is loaded and many new
+        // blocks are inserted at the same time.
+        match self.writes_queued.last_mut() {
+            Some(BufferWrite::Data(last_index, buf)) => {
+                debug_assert_eq!(buf.len() % self.block_size, 0);
+                let count = (buf.len() / self.block_size) as u32;
+
+                if last_index.checked_add(count) == Some(index) {
+                    buf.reserve(bytes.len() + padding_bytes);
+                    buf.extend_from_slice(bytes);
+                    buf.resize(buf.len() + padding_bytes, 0);
+                } else {
+                    let mut buf = Vec::with_capacity(bytes.len() + padding_bytes);
+                    buf.extend_from_slice(bytes);
+                    buf.resize(buf.len() + padding_bytes, 0);
+
+                    self.writes_queued.push(BufferWrite::Data(index, buf));
+                }
+            }
+            _ => {
+                let mut buf = Vec::with_capacity(bytes.len() + padding_bytes);
+                buf.extend_from_slice(bytes);
+                buf.resize(buf.len() + padding_bytes, 0);
+
+                self.writes_queued.push(BufferWrite::Data(index, buf));
+            }
+        }
 
         index
     }
@@ -57,9 +92,7 @@ impl BlockBuffer {
             self.free_blocks.push(Reverse(index as u32));
         }
 
-        if self.buffer.is_some()
-            && !matches!(self.writes_queued.get(0), Some(BufferWrite::BufferExpand))
-        {
+        if !matches!(self.writes_queued.get(0), Some(BufferWrite::BufferExpand)) {
             self.writes_queued.insert(0, BufferWrite::BufferExpand);
         }
     }
@@ -103,6 +136,8 @@ impl BlockBuffer {
     }
 
     pub fn buffer(&mut self, queue: &CommandQueue<'_>) -> &Buffer {
+        let _span = trace_span!("BlockBuffer::buffer").entered();
+
         let buffer = self.buffer.get_or_insert_with(|| {
             let size = (self.block_size * self.buffer_size.max(1)) as u64;
 
@@ -193,6 +228,23 @@ mod tests {
         assert_eq!(
             buffer.writes_queued,
             [BufferWrite::BufferCopy { src: i1, dst: i0 }]
+        );
+    }
+
+    #[test]
+    fn block_buffer_insert_coalesce() {
+        let mut buffer = BlockBuffer::new(2, BufferUsage::empty());
+        buffer.insert(&[0, 1]);
+        buffer.insert(&[2, 3]);
+        buffer.insert(&[4, 5]);
+        buffer.insert(&[6, 7]);
+
+        assert_eq!(
+            buffer.writes_queued,
+            [
+                BufferWrite::BufferExpand,
+                BufferWrite::Data(0, vec![0, 1, 2, 3, 4, 5, 6, 7])
+            ]
         );
     }
 }
