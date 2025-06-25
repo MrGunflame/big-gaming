@@ -55,11 +55,7 @@ impl DescriptorSetAllocator {
         }
     }
 
-    // FIXME: Why is this unsafe again?
-    pub unsafe fn alloc(
-        &self,
-        layout: &DescriptorSetLayout,
-    ) -> Result<AllocatedDescriptorSet, Error> {
+    pub fn alloc(&self, layout: &DescriptorSetLayout) -> Result<AllocatedDescriptorSet, Error> {
         let _span = trace_span!("DescriptorSetAllocator::alloc").entered();
 
         let mut count = DescriptorSetResourceCount::default();

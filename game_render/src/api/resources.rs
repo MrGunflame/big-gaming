@@ -6,8 +6,7 @@ use game_common::cell::UnsafeRefCell;
 use game_common::collections::vec_map::VecMap;
 use sharded_slab::Slab;
 
-use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc};
-use crate::backend::descriptors::{AllocatedDescriptorSet, DescriptorSetAllocator};
+use crate::backend::descriptors::DescriptorSetAllocator;
 use crate::backend::{vulkan, AccessFlags, DescriptorBinding};
 
 use super::{BindingMap, DeletionEvent, RawTextureView, ResourceId, ResourceMap};
@@ -27,7 +26,6 @@ pub struct Resources {
     pub descriptor_set_layouts: Slab<DescriptorSetLayoutInner>,
     pub descriptor_sets: Slab<DescriptorSetInner>,
     pub pipelines: Slab<PipelineInner>,
-    pub allocator: GeneralPurposeAllocator,
     pub descriptor_allocator: DescriptorSetAllocator,
     pub deletion_queue: SegQueue<DeletionEvent>,
 }
@@ -68,31 +66,14 @@ impl<'a> ResourceMap for &'a Resources {
 
 #[derive(Debug)]
 pub struct BufferInner {
-    pub buffer: UnsafeRefCell<BufferAlloc>,
     pub access: UnsafeRefCell<AccessFlags>,
     pub ref_count: RefCount,
 }
 
 #[derive(Debug)]
 pub struct TextureInner {
-    pub texture: TextureData,
     pub ref_count: RefCount,
     pub mip_access: Vec<UnsafeRefCell<AccessFlags>>,
-}
-
-impl TextureInner {
-    pub fn texture(&self) -> &vulkan::Texture {
-        match &self.texture {
-            TextureData::Physical(tex) => tex,
-            TextureData::Virtual(tex) => tex.texture(),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum TextureData {
-    Physical(vulkan::Texture),
-    Virtual(TextureAlloc),
 }
 
 #[derive(Debug)]
@@ -115,9 +96,7 @@ pub struct DescriptorSetInner {
     pub num_samplers: u32,
     pub num_textures: u32,
     pub num_texture_arrays: u32,
-    pub descriptor_set: UnsafeRefCell<Option<AllocatedDescriptorSet>>,
     pub layout: DescriptorSetLayoutId,
-    pub physical_texture_views: UnsafeRefCell<Vec<vulkan::TextureView<'static>>>,
     pub ref_count: RefCount,
 }
 

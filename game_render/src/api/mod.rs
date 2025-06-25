@@ -30,11 +30,13 @@ use queries::QueryPoolSet;
 use resources::{
     BufferId, BufferInner, DescriptorSetId, DescriptorSetInner, DescriptorSetLayoutId,
     DescriptorSetLayoutInner, DescriptorSetResource, PipelineId, PipelineInner, RefCount,
-    Resources, SamplerId, SamplerInner, TextureData, TextureId, TextureInner,
+    Resources, SamplerId, SamplerInner, TextureId, TextureInner,
 };
 use scheduler::{Node, Resource, ResourceMap, Scheduler};
 use sharded_slab::Slab;
 
+use crate::api::commands::{CreateBuffer, CreateTexture};
+use crate::api::executor::Executor;
 use crate::backend::allocator::{GeneralPurposeAllocator, MemoryManager, UsageFlags};
 use crate::backend::descriptors::DescriptorSetAllocator;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
@@ -62,6 +64,7 @@ pub struct CommandExecutor {
     features: Features,
     scheduler: Scheduler,
     query_pools: QueryPoolSet,
+    executor: Executor,
 }
 
 impl CommandExecutor {
@@ -76,6 +79,12 @@ impl CommandExecutor {
             task_shader: device.extensions().mesh_shader,
         };
 
+        let allocator = GeneralPurposeAllocator::new(
+            device.clone(),
+            MemoryManager::new(device.clone(), memory_props),
+            statistics,
+        );
+
         Self {
             resources: Arc::new(Resources {
                 pipelines: Slab::new(),
@@ -83,11 +92,6 @@ impl CommandExecutor {
                 textures: Slab::new(),
                 descriptor_sets: Slab::new(),
                 descriptor_set_layouts: Slab::new(),
-                allocator: GeneralPurposeAllocator::new(
-                    device.clone(),
-                    MemoryManager::new(device.clone(), memory_props),
-                    statistics,
-                ),
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
                 samplers: Slab::new(),
                 deletion_queue: SegQueue::new(),
@@ -99,6 +103,7 @@ impl CommandExecutor {
             allocator: Exclusive::new(Bump::new()),
             features,
             scheduler: Scheduler::new(),
+            executor: Executor::new(allocator),
         }
     }
 
@@ -111,13 +116,24 @@ impl CommandExecutor {
 
         let allocator = self.allocator.get_mut();
 
-        let cmds = self.cmds.get_mut().cmd_refs();
+        let cmd_stream = self.cmds.get_mut();
 
-        let steps = self
+        let cmds = cmd_stream.cmd_refs();
+
+        let mut steps = self
             .scheduler
             .schedule(&*self.resources, &*allocator, &cmds);
         allocator.reset();
-        let tmp = executor::execute(&mut self.resources, steps, encoder, &self.query_pools);
+
+        let prio_cmds = cmd_stream.priority_cmds();
+        for (index, cmd) in prio_cmds.iter().enumerate() {
+            steps.insert(index, scheduler::Step::Node(cmd));
+        }
+
+        let tmp = self
+            .executor
+            .execute(&self.resources, steps, encoder, &self.query_pools);
+
         self.cmds.get_mut().clear();
 
         tmp
@@ -135,12 +151,24 @@ impl CommandExecutor {
             match cmd {
                 DeletionEvent::Buffer(id) => {
                     self.resources.buffers.remove(id);
+
+                    self.cmds
+                        .lock()
+                        .push(&self.resources, Command::DestoryBuffer(id));
                 }
                 DeletionEvent::Texture(id) => {
                     self.resources.textures.remove(id);
+
+                    self.cmds
+                        .lock()
+                        .push(&self.resources, Command::DestroyTexture(id));
                 }
                 DeletionEvent::DescriptorSetLayout(id) => {
                     self.resources.descriptor_set_layouts.remove(id);
+
+                    self.cmds
+                        .lock()
+                        .push(&self.resources, Command::DestroyDescriptorSet(id));
                 }
                 DeletionEvent::Pipeline(id) => {
                     self.resources.pipelines.remove(id);
@@ -243,22 +271,23 @@ impl<'a> CommandQueue<'a> {
 
     /// Creates a new [`Buffer`].
     pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> Buffer {
-        let buffer = self.executor.resources.allocator.create_buffer(
-            descriptor.size.try_into().unwrap(),
-            descriptor.usage,
-            descriptor.flags,
-        );
-
         let id = self
             .executor
             .resources
             .buffers
             .insert(BufferInner {
-                buffer: UnsafeRefCell::new(buffer),
                 access: UnsafeRefCell::new(AccessFlags::empty()),
                 ref_count: RefCount::new(),
             })
             .unwrap();
+
+        self.executor.cmds.lock().push(
+            &self.executor.resources,
+            Command::CreateBuffer(CreateBuffer {
+                id,
+                descriptor: *descriptor,
+            }),
+        );
 
         Buffer {
             id,
@@ -385,12 +414,6 @@ impl<'a> CommandQueue<'a> {
             .unwrap_or(TextureUsage::empty());
         if supported_usages.contains(descriptor.usage) {}
 
-        let texture = self
-            .executor
-            .resources
-            .allocator
-            .create_texture(&descriptor, UsageFlags::empty());
-
         let mut mip_access = Vec::with_capacity(descriptor.mip_levels as usize);
         for _ in 0..descriptor.mip_levels {
             mip_access.push(UnsafeRefCell::new(AccessFlags::empty()));
@@ -401,11 +424,19 @@ impl<'a> CommandQueue<'a> {
             .resources
             .textures
             .insert(TextureInner {
-                texture: TextureData::Virtual(texture),
                 mip_access,
                 ref_count: RefCount::new(),
             })
             .unwrap();
+
+        self.executor.cmds.lock().push(
+            &self.executor.resources,
+            Command::CreateTexture(CreateTexture {
+                id,
+                descriptor: *descriptor,
+                resource: Mutex::new(None),
+            }),
+        );
 
         Texture {
             id,
@@ -418,19 +449,30 @@ impl<'a> CommandQueue<'a> {
         }
     }
 
-    #[track_caller]
-    pub(crate) fn import_texture(
+    /// Imports an external texture.
+    ///
+    /// The [`TextureDescriptor`] must represent the texture layout of the external texture.
+    /// The [`AccessFlags`] must represent the state of the texture at the current time.
+    ///
+    /// All texture subresources (texel regions, mips) must be in the same state specified by the
+    /// [`AccessFlags`].
+    ///
+    /// # Safety
+    ///
+    /// The passed [`TextureDescriptor`] and [`AccessFlags`] must be valid and represent the state
+    /// of the imported texture.
+    pub(crate) unsafe fn import_texture(
         &mut self,
         texture: vulkan::Texture,
+        descriptor: TextureDescriptor,
         access: AccessFlags,
-        usage: TextureUsage,
     ) -> Texture {
-        let size = texture.size();
-        let format = texture.format();
-        let mip_levels = texture.mip_levels();
+        debug_assert_eq!(texture.size(), descriptor.size);
+        debug_assert_eq!(texture.format(), descriptor.format);
+        debug_assert_eq!(texture.mip_levels(), descriptor.mip_levels);
 
-        let mut mip_access = Vec::with_capacity(mip_levels as usize);
-        for _ in 0..mip_levels {
+        let mut mip_access = Vec::with_capacity(descriptor.mip_levels as usize);
+        for _ in 0..descriptor.mip_levels {
             mip_access.push(UnsafeRefCell::new(access));
         }
 
@@ -439,18 +481,26 @@ impl<'a> CommandQueue<'a> {
             .resources
             .textures
             .insert(TextureInner {
-                texture: TextureData::Physical(texture),
                 mip_access,
                 ref_count: RefCount::new(),
             })
             .unwrap();
 
+        self.executor.cmds.lock().push(
+            &self.executor.resources,
+            Command::CreateTexture(CreateTexture {
+                id,
+                descriptor,
+                resource: Mutex::new(Some(texture)),
+            }),
+        );
+
         Texture {
             id,
-            size,
-            format,
-            usage,
-            mip_levels,
+            size: descriptor.size,
+            format: descriptor.format,
+            usage: descriptor.usage,
+            mip_levels: descriptor.mip_levels,
             manually_managed: true,
             resources: self.executor.resources.clone(),
         }
@@ -802,12 +852,15 @@ impl<'a> CommandQueue<'a> {
                 num_samplers,
                 num_textures,
                 num_texture_arrays,
-                descriptor_set: UnsafeRefCell::new(None),
                 layout: descriptor.layout.id,
-                physical_texture_views: UnsafeRefCell::new(Vec::new()),
                 ref_count: RefCount::new(),
             })
             .unwrap();
+
+        self.executor
+            .cmds
+            .lock()
+            .push(&self.executor.resources, Command::CreateDescriptorSet(id));
 
         DescriptorSet {
             id,
@@ -1244,7 +1297,7 @@ impl Drop for Sampler {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct PipelineDescriptor<'a> {
     pub topology: PrimitiveTopology,
     pub front_face: FrontFace,
@@ -1690,14 +1743,14 @@ impl<'a, 'b> RenderPass<'a, 'b> {
         };
 
         let buffer = self.ctx.executor.resources.buffers.get(buffer).unwrap();
-        let buffer_size = unsafe { buffer.buffer.borrow().size() };
-        assert!(
-            buffer_size >= min_size.into(),
-            "index buffer of size {} is too small for indices={:?} format={:?}",
-            buffer_size,
-            indices,
-            format,
-        );
+        // let buffer_size = unsafe { buffer.buffer.borrow().size() };
+        // assert!(
+        //     buffer_size >= min_size.into(),
+        //     "index buffer of size {} is too small for indices={:?} format={:?}",
+        //     buffer_size,
+        //     indices,
+        //     format,
+        // );
 
         self.cmds
             .push(DrawCmd::Draw(DrawCall::DrawIndexed(DrawIndexed {
