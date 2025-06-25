@@ -18,6 +18,7 @@ use parking_lot::Mutex;
 use slab::Slab;
 use thiserror::Error;
 
+use crate::api::BufferDescriptor;
 use crate::backend::MemoryTypeFlags;
 use crate::statistics::{AllocationKind, MemoryAlloc, MemoryBlock, Statistics};
 
@@ -239,13 +240,10 @@ impl GeneralPurposeAllocator {
         }
     }
 
-    pub fn create_buffer(
-        &self,
-        size: NonZeroU64,
-        usage: BufferUsage,
-        flags: UsageFlags,
-    ) -> BufferAlloc {
-        let mut buffer = self.device.create_buffer(size, usage).unwrap();
+    pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> BufferAlloc {
+        let size = NonZeroU64::new(descriptor.size).unwrap();
+
+        let mut buffer = self.device.create_buffer(size, descriptor.usage).unwrap();
         let req = self.device.buffer_memory_requirements(&buffer);
 
         let dedicated_for = req
@@ -253,7 +251,7 @@ impl GeneralPurposeAllocator {
             .is_preferred_or_required()
             .then_some(DedicatedResource::Buffer(&buffer));
 
-        let memory = self.alloc(req.clone(), flags, dedicated_for);
+        let memory = self.alloc(req.clone(), descriptor.flags, dedicated_for);
         unsafe {
             self.device
                 .bind_buffer_memory(&mut buffer, memory.memory())

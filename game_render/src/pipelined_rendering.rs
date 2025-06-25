@@ -11,7 +11,7 @@ use game_window::windows::{WindowId, WindowState};
 use crate::api::queries::{ManagedQueryPool, QueryObject};
 use crate::api::{CommandExecutor, TextureRegion};
 use crate::backend::vulkan::{Adapter, Device, Instance, Queue};
-use crate::backend::{AccessFlags, QueuePresent, QueueSubmit, TextureUsage};
+use crate::backend::{AccessFlags, QueuePresent, QueueSubmit, TextureDescriptor, TextureUsage};
 use crate::camera::RenderTarget;
 use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::scheduler::RenderGraphScheduler;
@@ -243,11 +243,17 @@ impl RenderThread {
 
             let mut queue = scheduler.queue();
 
-            let swapchain_texture = queue.import_texture(
-                unsafe { output.take_texture() },
-                AccessFlags::empty(),
-                TextureUsage::RENDER_ATTACHMENT,
-            );
+            let swapchain_texture = unsafe {
+                let texture = output.take_texture();
+                let descriptor = TextureDescriptor {
+                    size: texture.size(),
+                    mip_levels: texture.mip_levels(),
+                    format: texture.format(),
+                    usage: TextureUsage::RENDER_ATTACHMENT,
+                };
+
+                queue.import_texture(texture, descriptor, AccessFlags::empty())
+            };
 
             let mut resources = HashMap::new();
             resources.insert(

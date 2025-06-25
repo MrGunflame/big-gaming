@@ -3,8 +3,10 @@ use std::num::NonZeroU64;
 use bumpalo::Bump;
 use game_common::utils::exclusive::Exclusive;
 use hashbrown::{HashMap, HashSet};
+use parking_lot::Mutex;
 
-use crate::backend::{AccessFlags, ImageDataLayout, ShaderStages};
+use crate::api::BufferDescriptor;
+use crate::backend::{vulkan, AccessFlags, ImageDataLayout, ShaderStages, TextureDescriptor};
 
 use super::resources::{DescriptorSetId, DescriptorSetResource, PipelineId};
 use super::{
@@ -18,6 +20,7 @@ pub struct CommandStream {
     accesses: Vec<Resource<ResourceId>>,
     cmd_accesses: Vec<AcccessIndex>,
     allocator: Exclusive<Bump>,
+    priority_cmds: Vec<Command>,
 }
 
 impl CommandStream {
@@ -27,10 +30,24 @@ impl CommandStream {
             accesses: Vec::new(),
             cmd_accesses: Vec::new(),
             allocator: Exclusive::new(Bump::new()),
+            priority_cmds: Vec::new(),
         }
     }
 
     pub fn push(&mut self, resources: &Resources, cmd: Command) {
+        if matches!(
+            cmd,
+            Command::CreateBuffer(_)
+                | Command::CreateTexture(_)
+                | Command::CreateDescriptorSet(_)
+                | Command::DestoryBuffer(_)
+                | Command::DestroyTexture(_)
+                | Command::DestroyDescriptorSet(_)
+        ) {
+            self.priority_cmds.push(cmd);
+            return;
+        }
+
         let allocator = self.allocator.get_mut();
         let offset = self.accesses.len();
         cmd.write_accesses(resources, &mut self.accesses, &allocator);
@@ -39,6 +56,17 @@ impl CommandStream {
 
         self.cmds.push(cmd);
         self.cmd_accesses.push(AcccessIndex { offset, count });
+    }
+
+    pub fn priority_cmds(&self) -> Vec<CommandRef<'_>> {
+        self.priority_cmds
+            .iter()
+            .map(|cmd| CommandRef {
+                stream: self,
+                index: usize::MAX,
+                cmd,
+            })
+            .collect()
     }
 
     pub fn cmd_refs(&self) -> Vec<CommandRef<'_>> {
@@ -57,6 +85,7 @@ impl CommandStream {
         self.cmds.clear();
         self.accesses.clear();
         self.cmd_accesses.clear();
+        self.priority_cmds.clear();
     }
 }
 
@@ -66,7 +95,7 @@ struct AcccessIndex {
     count: usize,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct CommandRef<'a> {
     stream: &'a CommandStream,
     index: usize,
@@ -88,6 +117,15 @@ impl AsRef<Command> for CommandRef<'_> {
     }
 }
 
+impl std::fmt::Debug for CommandRef<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandRef")
+            .field("index", &self.index)
+            .field("cmd", &self.cmd)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Debug)]
 pub enum Command {
     WriteBuffer(WriteBuffer),
@@ -97,6 +135,12 @@ pub enum Command {
     TextureTransition(TextureTransition),
     RenderPass(RenderPassCmd),
     ComputePass(ComputePassCmd),
+    CreateBuffer(CreateBuffer),
+    CreateTexture(CreateTexture),
+    CreateDescriptorSet(DescriptorSetId),
+    DestoryBuffer(BufferId),
+    DestroyTexture(TextureId),
+    DestroyDescriptorSet(DescriptorSetId),
 }
 
 impl Command {
@@ -386,15 +430,29 @@ impl Command {
                     accesses.push(Resource { id, access });
                 }
             }
+            Self::CreateBuffer(_) => (),
+            Self::CreateTexture(_) => (),
+            Self::CreateDescriptorSet(_) => (),
+            Self::DestoryBuffer(_) => (),
+            Self::DestroyTexture(_) => (),
+            Self::DestroyDescriptorSet(_) => (),
         }
     }
 }
 
-#[derive(Debug)]
 pub struct WriteBuffer {
     pub buffer: BufferId,
     pub offset: u64,
     pub data: Vec<u8>,
+}
+
+impl std::fmt::Debug for WriteBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("WriteBuffer")
+            .field("buffer", &self.buffer)
+            .field("offset", &self.offset)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -449,4 +507,18 @@ pub enum ComputeCommand {
     SetDescriptorSet(u32, DescriptorSetId),
     SetPushConstants(Vec<u8>, ShaderStages, u32),
     Dispatch(u32, u32, u32),
+}
+
+#[derive(Debug)]
+pub struct CreateBuffer {
+    pub id: BufferId,
+    pub descriptor: BufferDescriptor,
+}
+
+#[derive(Debug)]
+pub struct CreateTexture {
+    pub id: TextureId,
+    pub descriptor: TextureDescriptor,
+    // TODO: Remove this mutex
+    pub resource: Mutex<Option<vulkan::Texture>>,
 }

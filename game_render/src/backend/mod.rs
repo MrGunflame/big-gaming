@@ -5,7 +5,7 @@ pub mod vulkan;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::Range;
 
-use ash::vk::{self, DecompressMemoryRegionNV};
+use ash::vk;
 use bitflags::bitflags;
 use bytemuck::{Pod, Zeroable};
 use game_common::components::Color;
@@ -620,7 +620,7 @@ impl<'a> BufferView<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct TextureDescriptor {
     pub size: UVec2,
     pub mip_levels: u32,
