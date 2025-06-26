@@ -14,16 +14,12 @@ use crate::backend::AccessFlags;
 #[derive(Debug)]
 pub struct Scheduler {
     resource_map_cap: usize,
-    predecessors_cap: usize,
-    sucessors_cap: usize,
 }
 
 impl Scheduler {
     pub fn new() -> Self {
         Self {
             resource_map_cap: 0,
-            predecessors_cap: 0,
-            sucessors_cap: 0,
         }
     }
 
@@ -46,22 +42,30 @@ impl Scheduler {
                 self.resource_map_cap,
                 &allocator,
             );
-        // We use linear indices as the key, they are already uniformly
-        // distributed so we can skip the hashing.
-        let mut predecessors =
-            Vec::<Option<HashSet<usize, BuildNoHashHasher<usize>, &A>>, &A>::with_capacity_in(
-                self.predecessors_cap,
-                &allocator,
-            );
-        predecessors.resize(nodes.len(), None);
-        let mut successors =
-            Vec::<Vec<usize, &A>, &A>::with_capacity_in(self.sucessors_cap, &allocator);
+
+        // For every node we track the predecessors, i.e. nodes that need to run
+        // before this node and sucessors, i.e. nodes that need this node to run
+        // before they can run themselves.
+        // If a node has no predecessors it will be scheduled right away.
+        // Every index in the successor list corresponds to exactly a count of 1
+        // in the predecessor map. This allows us to schedule the index once the
+        // count reaches 0, without explicitly tracking the predecessor nodes.
+        let mut successors = Vec::<Vec<usize, &A>, &A>::with_capacity_in(nodes.len(), &allocator);
         successors.resize(nodes.len(), Vec::new_in(&allocator));
+
+        let mut predecessor_count = Vec::with_capacity_in(nodes.len(), &allocator);
+        // FIXME: Not strictly necessary to fill.
+        // The loop wil visit every index once and write to every slot.
+        // Need to check that that compiler can elide this.
+        predecessor_count.resize(nodes.len(), 0);
 
         let queue = Queue::new_in(nodes.len(), &allocator);
 
         for (index, node) in nodes.iter().enumerate() {
-            let mut node_preds = HashSet::with_hasher_in(BuildNoHashHasher::new(), &allocator);
+            let mut node_preds = HashSet::<usize, BuildNoHashHasher<usize>, _>::with_hasher_in(
+                BuildNoHashHasher::new(),
+                &allocator,
+            );
 
             for resource in node.resources() {
                 // If another node accesses the same resource it must
@@ -91,18 +95,23 @@ impl Scheduler {
                 }
             }
 
+            // We always write the count, even if it is 0.
+            // If we write 0 it has no logical effect, but still
+            // guarantees that all elements have been written and
+            // predecessor_count does not need to be initialized before
+            // this loop.
+            // SAFETY: `index` is in range `0..nodes.len()` and `predecessor_count`
+            // was initialized with `nodes.len()` elements.
+            unsafe {
+                *predecessor_count.get_unchecked_mut(index) = node_preds.len();
+            }
+
             if node_preds.is_empty() {
                 queue.push(index);
-            } else {
-                unsafe {
-                    *predecessors.get_unchecked_mut(index) = Some(node_preds);
-                }
             }
         }
 
         self.resource_map_cap = resource_accesses.capacity();
-        self.predecessors_cap = predecessors.capacity();
-        self.sucessors_cap = successors.capacity();
 
         let mut steps = std::vec::Vec::with_capacity(nodes.len());
 
@@ -114,7 +123,7 @@ impl Scheduler {
             // Since we have no cycles in predecessors, this loop will always
             // terminate at some point.
             if indices.is_empty() {
-                debug_assert!(predecessors.iter().all(|v| v.is_none()));
+                debug_assert!(predecessor_count.iter().all(|v| *v == 0));
                 break;
             }
 
@@ -123,20 +132,28 @@ impl Scheduler {
             // using a single call.
 
             for &index in indices {
-                for succ in &successors[index] {
-                    if let Some(preds) = &mut predecessors[*succ] {
-                        preds.remove(&index);
-                        if preds.is_empty() {
-                            predecessors[*succ] = None;
+                debug_assert_eq!(predecessor_count[index], 0);
 
-                            // Safety:
-                            // We have allocated a `Queue` with exactly the number of
-                            // nodes to schedule.
-                            // Since we remove the node after pushing it no node will
-                            // ever get inserted twice.
-                            unsafe {
-                                queue.push_unchecked(*succ);
-                            }
+                // There is a direct mapping between our successor entry and the
+                // predecessor of the successor:
+                // For every predecessor -> successor link that exists there
+                // exists a count of 1 in the predecessor count of the sucessor.
+                // This means to remove the link we only need to decrement by 1
+                // and we are guaranteed that at least a count of 1 exists because
+                // of our link.
+                for succ in unsafe { successors.get_unchecked(index) } {
+                    let count = unsafe { predecessor_count.get_unchecked_mut(*succ) };
+                    debug_assert_ne!(*count, 0);
+                    *count -= 1;
+
+                    if *count == 0 {
+                        // Safety:
+                        // We have allocated a `Queue` with exactly the number of
+                        // nodes to schedule.
+                        // Since we remove the node after pushing it no node will
+                        // ever get inserted twice.
+                        unsafe {
+                            queue.push_unchecked(*succ);
                         }
                     }
                 }
