@@ -1,3 +1,4 @@
+use std::alloc::Layout;
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
 use std::ffi::{c_void, CStr, CString};
@@ -17,9 +18,11 @@ use ash::{vk, Entry};
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
 use hashbrown::HashMap;
+use notify::null;
 use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
+use tracing::instrument::WithSubscriber;
 
 use crate::backend::{
     mip_level_size_2d, DedicatedAllocation, DescriptorType, SurfaceFormat, TextureLayout,
@@ -319,17 +322,17 @@ impl Instance {
             info = info.push_next(&mut layer_settings);
         }
 
-        let instance = unsafe { entry.create_instance(&info, None)? };
+        let instance = unsafe { entry.create_instance(&info, ALLOC)? };
 
         let messenger = if config.validation {
             let instance_d = debug_utils::Instance::new(&entry, &instance);
-            match unsafe { instance_d.create_debug_utils_messenger(&debug_info, None) } {
+            match unsafe { instance_d.create_debug_utils_messenger(&debug_info, ALLOC) } {
                 Ok(messenger) => Some(messenger),
                 Err(err) => {
                     // We must manually destroy the instance if an error occurs,
                     // otherwise the vkInstance would leak.
                     unsafe {
-                        instance.destroy_instance(None);
+                        instance.destroy_instance(ALLOC);
                     }
 
                     return Err(err.into());
@@ -407,7 +410,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::wayland_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_wayland_surface(&info, None)? }
+                unsafe { instance.create_wayland_surface(&info, ALLOC)? }
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
@@ -425,7 +428,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::xcb_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_xcb_surface(&info, None)? }
+                unsafe { instance.create_xcb_surface(&info, ALLOC)? }
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
@@ -443,7 +446,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::xlib_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_xlib_surface(&info, None)? }
+                unsafe { instance.create_xlib_surface(&info, ALLOC)? }
             }
             #[cfg(target_os = "windows")]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
@@ -461,7 +464,7 @@ impl Instance {
 
                 let instance =
                     ash::khr::win32_surface::Instance::new(&self.instance.entry, &self.instance);
-                unsafe { instance.create_win32_surface(&info, None)? }
+                unsafe { instance.create_win32_surface(&info, ALLOC)? }
             }
             _ => return Err(Error::UnsupportedSurface),
         };
@@ -1008,7 +1011,7 @@ impl Adapter {
         let device = unsafe {
             self.instance
                 .instance
-                .create_device(self.physical_device, &create_info, None)?
+                .create_device(self.physical_device, &create_info, ALLOC)?
         };
 
         let queues = queue_families
@@ -1236,7 +1239,7 @@ impl Device {
             .usage(buffer_usage_flags)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
-        let buffer = unsafe { self.device.create_buffer(&info, None)? };
+        let buffer = unsafe { self.device.create_buffer(&info, ALLOC)? };
         Ok(Buffer {
             buffer,
             device: self.device.clone(),
@@ -1315,7 +1318,7 @@ impl Device {
             // - `allocationSize` must be less than or equal to `memoryHeaps[heap].size`.
             // - `memoryTypeIndex` must be less than `VkPhysicalDeviceMemoryProperties::memoryTypeCount`.
             // - There must be less than `VkPhysicalDeviceLimits::maxMemoryAllocationCount` active.
-            self.device.allocate_memory(&info, None)
+            self.device.allocate_memory(&info, ALLOC)
         };
 
         match res {
@@ -1605,7 +1608,7 @@ impl Device {
             .samples(vk::SampleCountFlags::TYPE_1)
             .flags(vk::ImageCreateFlags::empty());
 
-        let image = unsafe { self.device.create_image(&info, None)? };
+        let image = unsafe { self.device.create_image(&info, ALLOC)? };
         Ok(Texture {
             device: self.device.clone(),
             image,
@@ -1622,7 +1625,7 @@ impl Device {
 
         let info = vk::ShaderModuleCreateInfo::default().code(code);
 
-        let shader = unsafe { self.device.create_shader_module(&info, None).unwrap() };
+        let shader = unsafe { self.device.create_shader_module(&info, ALLOC).unwrap() };
         ShaderModule {
             device: self.device.clone(),
             shader,
@@ -1655,7 +1658,7 @@ impl Device {
             .bindings(&bindings)
             .push_next(&mut flags)
             .flags(vk::DescriptorSetLayoutCreateFlags::empty());
-        let layout = unsafe { self.device.create_descriptor_set_layout(&info, None)? };
+        let layout = unsafe { self.device.create_descriptor_set_layout(&info, ALLOC)? };
 
         Ok(DescriptorSetLayout {
             device: self.device.clone(),
@@ -1749,7 +1752,7 @@ impl Device {
             .push_constant_ranges(&push_constant_ranges);
         let layout = unsafe {
             self.device
-                .create_pipeline_layout(&pipeline_layout_info, None)?
+                .create_pipeline_layout(&pipeline_layout_info, ALLOC)?
         };
 
         let mut stages = Vec::new();
@@ -1904,7 +1907,7 @@ impl Device {
             Ok(pipeline) => pipeline,
             Err(err) => {
                 unsafe {
-                    self.device.destroy_pipeline_layout(layout, None);
+                    self.device.destroy_pipeline_layout(layout, ALLOC);
                 }
 
                 return Err(err);
@@ -2051,7 +2054,7 @@ impl Device {
 
         match unsafe {
             self.device
-                .create_graphics_pipelines(vk::PipelineCache::null(), &[info], None)
+                .create_graphics_pipelines(vk::PipelineCache::null(), &[info], ALLOC)
         } {
             Ok(pipelines) => Ok(pipelines[0]),
             Err((pipelines, err)) => {
@@ -2075,7 +2078,7 @@ impl Device {
 
         match unsafe {
             self.device
-                .create_compute_pipelines(vk::PipelineCache::null(), &[info], None)
+                .create_compute_pipelines(vk::PipelineCache::null(), &[info], ALLOC)
         } {
             Ok(pipelines) => Ok(pipelines[0]),
             Err((pipelines, err)) => {
@@ -2107,7 +2110,7 @@ impl Device {
             .flags(vk::CommandPoolCreateFlags::empty())
             .queue_family_index(queue_family.0);
 
-        let pool = unsafe { self.device.create_command_pool(&info, None)? };
+        let pool = unsafe { self.device.create_command_pool(&info, ALLOC)? };
 
         let info = vk::CommandBufferAllocateInfo::default()
             .command_pool(pool)
@@ -2120,7 +2123,7 @@ impl Device {
                 // Destroy the previously created pool. It is not destroyed
                 // automatically in this function.
                 unsafe {
-                    self.device.destroy_command_pool(pool, None);
+                    self.device.destroy_command_pool(pool, ALLOC);
                 }
 
                 return Err(err.into());
@@ -2141,7 +2144,7 @@ impl Device {
     pub fn create_semaphore(&self) -> Result<Semaphore, Error> {
         let info = vk::SemaphoreCreateInfo::default();
 
-        let semaphore = unsafe { self.device.create_semaphore(&info, None)? };
+        let semaphore = unsafe { self.device.create_semaphore(&info, ALLOC)? };
 
         Ok(Semaphore {
             device: self.device.clone(),
@@ -2188,7 +2191,7 @@ impl Device {
             // - `maxSets` must be greater than 0.
             .max_sets(descriptor.max_sets.get());
 
-        let pool = unsafe { self.device.create_descriptor_pool(&info, None)? };
+        let pool = unsafe { self.device.create_descriptor_pool(&info, ALLOC)? };
 
         Ok(DescriptorPool {
             device: self.device.clone(),
@@ -2200,7 +2203,7 @@ impl Device {
     pub fn create_fence(&self) -> Result<Fence, Error> {
         let info = vk::FenceCreateInfo::default();
 
-        let fence = unsafe { self.device.create_fence(&info, None)? };
+        let fence = unsafe { self.device.create_fence(&info, ALLOC)? };
         Ok(Fence {
             device: self.device.clone(),
             fence,
@@ -2224,7 +2227,7 @@ impl Device {
             .anisotropy_enable(false)
             .max_anisotropy(1.0);
 
-        let sampler = unsafe { self.device.create_sampler(&info, None)? };
+        let sampler = unsafe { self.device.create_sampler(&info, ALLOC)? };
         Ok(Sampler {
             device: self.device.clone(),
             sampler,
@@ -2244,7 +2247,7 @@ impl Device {
             // Not used for timestamp queries.
             .pipeline_statistics(vk::QueryPipelineStatisticFlags::empty());
 
-        let pool = unsafe { self.device.create_query_pool(&info, None)? };
+        let pool = unsafe { self.device.create_query_pool(&info, ALLOC)? };
 
         // Seems like we need to reset before first use.
         unsafe {
@@ -2467,7 +2470,7 @@ impl SurfaceShared {
         }
 
         let khr_device = ash::khr::swapchain::Device::new(&self.instance.instance, &device.device);
-        let swapchain = unsafe { khr_device.create_swapchain(&info, None)? };
+        let swapchain = unsafe { khr_device.create_swapchain(&info, ALLOC)? };
 
         let images = match unsafe { khr_device.get_swapchain_images(swapchain) } {
             Ok(images) => images,
@@ -2476,7 +2479,7 @@ impl SurfaceShared {
                 // on error. This means the newly created swapchain needs to be
                 // destroyed manually, otherwise it will leak.
                 unsafe {
-                    khr_device.destroy_swapchain(swapchain, None);
+                    khr_device.destroy_swapchain(swapchain, ALLOC);
                 }
 
                 return Err(err.into());
@@ -2497,7 +2500,7 @@ impl Drop for SurfaceShared {
             ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
 
         unsafe {
-            instance.destroy_surface(self.surface, None);
+            instance.destroy_surface(self.surface, ALLOC);
         }
     }
 }
@@ -2661,7 +2664,7 @@ impl Swapchain {
                             &self.surface.instance.instance,
                             &self.device.device,
                         );
-                        device.destroy_swapchain(self.swapchain, None);
+                        device.destroy_swapchain(self.swapchain, ALLOC);
                     }
                 }
 
@@ -2679,7 +2682,7 @@ impl Swapchain {
                     &self.surface.instance.instance,
                     &self.device.device,
                 );
-                device.destroy_swapchain(self.swapchain, None);
+                device.destroy_swapchain(self.swapchain, ALLOC);
             }
         }
 
@@ -2760,7 +2763,7 @@ impl Drop for Swapchain {
         let device =
             ash::khr::swapchain::Device::new(&self.surface.instance.instance, &self.device.device);
         unsafe {
-            device.destroy_swapchain(self.swapchain, None);
+            device.destroy_swapchain(self.swapchain, ALLOC);
         }
     }
 }
@@ -2979,7 +2982,7 @@ impl Drop for ShaderModule {
         }
 
         unsafe {
-            self.device.device.destroy_shader_module(self.shader, None);
+            self.device.device.destroy_shader_module(self.shader, ALLOC);
         }
     }
 }
@@ -2999,10 +3002,10 @@ impl Drop for Pipeline {
         }
 
         unsafe {
-            self.device.device.destroy_pipeline(self.pipeline, None);
+            self.device.device.destroy_pipeline(self.pipeline, ALLOC);
             self.device
                 .device
-                .destroy_pipeline_layout(self.pipeline_layout, None);
+                .destroy_pipeline_layout(self.pipeline_layout, ALLOC);
         }
     }
 }
@@ -3111,7 +3114,7 @@ impl Drop for CommandPool {
         // of all buffers.)
         // - Access to command pool must be externally synchronized. (Asserted by exclusive access.)
         unsafe {
-            self.device.device.destroy_command_pool(self.pool, None);
+            self.device.device.destroy_command_pool(self.pool, ALLOC);
         }
     }
 }
@@ -4027,7 +4030,7 @@ impl Drop for Semaphore {
         }
 
         unsafe {
-            self.device.device.destroy_semaphore(self.semaphore, None);
+            self.device.device.destroy_semaphore(self.semaphore, ALLOC);
         }
     }
 }
@@ -4185,7 +4188,7 @@ impl Texture {
             .subresource_range(subresource_range)
             .components(components);
 
-        let view = unsafe { self.device.device.create_image_view(&info, None).unwrap() };
+        let view = unsafe { self.device.device.create_image_view(&info, ALLOC).unwrap() };
         TextureView {
             device: self.device.clone(),
             view,
@@ -4203,7 +4206,7 @@ impl Drop for Texture {
 
         if self.destroy_on_drop {
             unsafe {
-                self.device.device.destroy_image(self.image, None);
+                self.device.device.destroy_image(self.image, ALLOC);
             }
         }
     }
@@ -4231,7 +4234,7 @@ impl<'a> TextureView<'a> {
 impl<'a> Drop for TextureView<'a> {
     fn drop(&mut self) {
         unsafe {
-            self.device.device.destroy_image_view(self.view, None);
+            self.device.device.destroy_image_view(self.view, ALLOC);
         }
     }
 }
@@ -4275,7 +4278,7 @@ impl Drop for Buffer {
         }
 
         unsafe {
-            self.device.destroy_buffer(self.buffer, None);
+            self.device.destroy_buffer(self.buffer, ALLOC);
         }
     }
 }
@@ -4375,7 +4378,7 @@ impl Drop for DeviceMemory {
         }
 
         unsafe {
-            self.device.free_memory(self.memory, None);
+            self.device.free_memory(self.memory, ALLOC);
         }
 
         self.device.num_allocations.fetch_sub(1, Ordering::Release);
@@ -4410,7 +4413,8 @@ impl Drop for DescriptorSetLayout {
         }
 
         unsafe {
-            self.device.destroy_descriptor_set_layout(self.layout, None);
+            self.device
+                .destroy_descriptor_set_layout(self.layout, ALLOC);
         }
     }
 }
@@ -4454,7 +4458,7 @@ impl DescriptorPool {
 impl Drop for DescriptorPool {
     fn drop(&mut self) {
         unsafe {
-            self.device.destroy_descriptor_pool(self.pool, None);
+            self.device.destroy_descriptor_pool(self.pool, ALLOC);
         }
     }
 }
@@ -4716,7 +4720,7 @@ impl Drop for Fence {
         }
 
         unsafe {
-            self.device.destroy_fence(self.fence, None);
+            self.device.destroy_fence(self.fence, ALLOC);
         }
     }
 }
@@ -4734,7 +4738,7 @@ impl Drop for Sampler {
         }
 
         unsafe {
-            self.device.destroy_sampler(self.sampler, None);
+            self.device.destroy_sampler(self.sampler, ALLOC);
         }
     }
 }
@@ -4784,7 +4788,7 @@ impl Drop for QueryPool {
         }
 
         unsafe {
-            self.device.destroy_query_pool(self.pool, None);
+            self.device.destroy_query_pool(self.pool, ALLOC);
         }
     }
 }
@@ -4861,12 +4865,12 @@ impl Drop for InstanceShared {
         if let Some(messenger) = self.messenger.take() {
             unsafe {
                 let instance = debug_utils::Instance::new(&self.entry, &self.instance);
-                instance.destroy_debug_utils_messenger(messenger, None);
+                instance.destroy_debug_utils_messenger(messenger, ALLOC);
             }
         }
 
         unsafe {
-            self.instance.destroy_instance(None);
+            self.instance.destroy_instance(ALLOC);
         }
     }
 }
@@ -4914,7 +4918,7 @@ impl Drop for DeviceShared {
         }
 
         unsafe {
-            self.device.destroy_device(None);
+            self.device.destroy_device(ALLOC);
         }
     }
 }
@@ -5702,4 +5706,201 @@ fn create_pipeline_shader_module(
     });
 
     instance.to_spirv()
+}
+
+const ALLOC: Option<&vk::AllocationCallbacks<'static>> = Some(&vk::AllocationCallbacks {
+    p_user_data: null_mut(),
+    pfn_allocation: Some(vk_alloc),
+    pfn_reallocation: Some(vk_realloc),
+    pfn_free: Some(vk_dealloc),
+    pfn_internal_allocation: None,
+    pfn_internal_free: None,
+    _marker: PhantomData,
+});
+
+/// Header providing information about a allocation.
+///
+/// We need this because `PFN_vkReallocationFunction` and `PFN_vkFreeFunction` do not provide the
+/// size of the allocation so we must store it somewhere.
+///
+/// This header is prepended to every allocation, but it is important that we place the header
+/// exactly before the pointer that we return and as such might need extra padding before the
+/// header.
+///
+/// The entire allocation then looks as follows:
+///
+/// ```text
+/// ---------------------------------
+/// | Padding | Header | Allocation |
+/// ---------------------------------
+/// ```
+#[derive(Copy, Clone, Debug)]
+struct VkAllocHeader {
+    ptr: *mut u8,
+    layout: Layout,
+}
+
+unsafe extern "system" fn vk_alloc(
+    _: *mut c_void,
+    size: usize,
+    align: usize,
+    _scope: vk::SystemAllocationScope,
+) -> *mut c_void {
+    debug_assert!(align.is_power_of_two());
+
+    if size == 0 {
+        return null_mut();
+    }
+
+    // Allocations with small alignment need to aligned up
+    // so that the header is always aligned.
+    let align_up = usize::max(align, align_of::<VkAllocHeader>());
+
+    // Round up the size of the header so that is a multiple of the align.
+    // All bytes except for the sizeof header bytes are padding.
+    let header_padding_size = (size_of::<VkAllocHeader>() + align_up - 1) & !(align_up - 1);
+    let padding = header_padding_size - size_of::<VkAllocHeader>();
+
+    let layout = unsafe { Layout::from_size_align_unchecked(header_padding_size + size, align_up) };
+
+    unsafe {
+        let ptr = std::alloc::alloc(layout);
+        if ptr.is_null() {
+            return null_mut();
+        }
+
+        let header = ptr.byte_add(padding);
+        let data = ptr.byte_add(padding + size_of::<VkAllocHeader>());
+
+        debug_assert!(ptr.addr() + layout.size() - data.addr() >= size);
+        debug_assert_eq!(data.addr() % align, 0);
+
+        header
+            .cast::<VkAllocHeader>()
+            .write(VkAllocHeader { ptr, layout });
+
+        data.cast::<c_void>()
+    }
+}
+
+unsafe extern "system" fn vk_realloc(
+    _: *mut c_void,
+    ptr: *mut c_void,
+    size: usize,
+    align: usize,
+    scope: vk::SystemAllocationScope,
+) -> *mut c_void {
+    if ptr.is_null() {
+        return unsafe { vk_alloc(null_mut(), size, align, scope) };
+    }
+
+    if size == 0 {
+        unsafe {
+            vk_dealloc(null_mut(), ptr);
+        }
+
+        return null_mut();
+    }
+
+    unsafe {
+        let header = ptr.cast::<VkAllocHeader>().sub(1).read();
+        let header_padding_size =
+            (size_of::<VkAllocHeader>() + header.layout.align() - 1) & !(header.layout.align() - 1);
+        let old_size = header.layout.size() - header_padding_size;
+
+        let new_ptr = vk_alloc(null_mut(), size, align, scope);
+
+        // If the new allocation fails we MUST NOT deallocate
+        // the old allocation.
+        if new_ptr.is_null() {
+            return null_mut();
+        }
+
+        let count = usize::min(old_size, size);
+        core::ptr::copy_nonoverlapping(ptr.cast::<u8>(), new_ptr.cast::<u8>(), count);
+
+        vk_dealloc(null_mut(), ptr);
+
+        new_ptr
+    }
+}
+
+unsafe extern "system" fn vk_dealloc(_: *mut c_void, ptr: *mut c_void) {
+    if ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        let header = ptr.cast::<VkAllocHeader>().sub(1).read();
+        std::alloc::dealloc(header.ptr, header.layout);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ptr::null_mut;
+
+    use ash::vk::SystemAllocationScope;
+    use tracing::Instrument;
+
+    use super::{vk_alloc, vk_dealloc, vk_realloc};
+
+    #[test]
+    fn alloc_and_dealloc() {
+        unsafe {
+            let a = vk_alloc(null_mut(), 1, 1, SystemAllocationScope::INSTANCE);
+            assert!(!a.is_null());
+            assert_eq!(a.addr() % 1, 0);
+            let b = vk_alloc(null_mut(), 123, 2, SystemAllocationScope::INSTANCE);
+            assert!(!b.is_null());
+            assert_eq!(b.addr() % 2, 0);
+
+            vk_dealloc(null_mut(), a);
+            vk_dealloc(null_mut(), b);
+        }
+    }
+
+    #[test]
+    fn realloc_nullptr() {
+        unsafe {
+            let a = vk_realloc(
+                null_mut(),
+                null_mut(),
+                1,
+                1,
+                SystemAllocationScope::INSTANCE,
+            );
+            vk_dealloc(null_mut(), a);
+        }
+    }
+
+    #[test]
+    fn realloc_grow_align() {
+        unsafe {
+            let a = vk_alloc(null_mut(), 1, 1, SystemAllocationScope::INSTANCE);
+            assert!(!a.is_null());
+            assert_eq!(a.addr() % 1, 0);
+
+            let b = vk_realloc(null_mut(), a, 23, 4, SystemAllocationScope::INSTANCE);
+            assert!(!b.is_null());
+            assert_eq!(a.addr() % 4, 0);
+
+            vk_dealloc(null_mut(), b);
+        }
+    }
+
+    #[test]
+    fn realloc_shrink_align() {
+        unsafe {
+            let a = vk_alloc(null_mut(), 42, 2048, SystemAllocationScope::INSTANCE);
+            assert!(!a.is_null());
+            assert_eq!(a.addr() % 2048, 0);
+
+            let b = vk_realloc(null_mut(), a, 64, 4, SystemAllocationScope::INSTANCE);
+            assert!(!b.is_null());
+            assert_eq!(b.addr() % 4, 0);
+
+            vk_dealloc(null_mut(), b);
+        }
+    }
 }
