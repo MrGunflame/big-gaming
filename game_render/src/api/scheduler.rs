@@ -37,11 +37,10 @@ impl Scheduler {
     {
         let _span = trace_span!("Scheduler::schedule").entered();
 
-        let mut resource_accesses =
-            HashMap::<T::ResourceId, Vec<usize, &A>, _, &A>::with_capacity_in(
-                self.resource_map_cap,
-                &allocator,
-            );
+        let mut resource_accesses = HashMap::<T::ResourceId, usize, _, &A>::with_capacity_in(
+            self.resource_map_cap,
+            &allocator,
+        );
 
         // For every node we track the predecessors, i.e. nodes that need to run
         // before this node and sucessors, i.e. nodes that need this node to run
@@ -70,23 +69,19 @@ impl Scheduler {
             for resource in node.resources() {
                 // If another node accesses the same resource it must
                 // run before this node, i.e. become its predecessor.
-                // This can be true for many nodes.
-                if let Some(preds) = resource_accesses.get(&resource.id) {
-                    for pred in preds {
-                        node_preds.insert(*pred);
-                    }
+                // We can exploit the property that if nodes A and B access the resource
+                // B must be ordered after A. This means that a node C also accessing the
+                // resource must come after A and B, however since B already implies A we
+                // only need to track B.
+                // This means we only need to track a single node for each resource and we
+                // also get a transitive reduction of the graph "for free" which makes the
+                // following topological sort less expensive.
+                // IMPORTANT NOTE: This assumption is only correct as long as every node
+                // returns every resource only once as is required by the `Node` implementor.
+                let pred = resource_accesses.insert(resource.id, index);
+                if let Some(pred) = pred {
+                    node_preds.insert(pred);
                 }
-
-                // Node::resources should return every resource only once.
-                // This means that every if is unique and only inserted
-                // once into `accesses`.
-                // The implementation of `Node::resources` must guarantee this
-                // in order for this function to operate correctly.
-                let accesses = resource_accesses
-                    .entry(resource.id)
-                    .or_insert_with(|| Vec::new_in(&allocator));
-                accesses.push(index);
-                debug_assert_eq!(accesses.iter().filter(|v| **v == index).count(), 1);
             }
 
             for succ in &node_preds {
