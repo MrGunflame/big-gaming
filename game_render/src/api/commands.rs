@@ -440,19 +440,15 @@ impl Command {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct WriteBuffer {
     pub buffer: BufferId,
+    /// Offset in the buffer object.
     pub offset: u64,
-    pub data: Vec<u8>,
-}
-
-impl std::fmt::Debug for WriteBuffer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("WriteBuffer")
-            .field("buffer", &self.buffer)
-            .field("offset", &self.offset)
-            .finish_non_exhaustive()
-    }
+    /// Starting index into the shared staging memory pool
+    pub staging_memory_offset: usize,
+    /// Number of bytes to copy.
+    pub count: usize,
 }
 
 #[derive(Copy, Clone, Debug)]

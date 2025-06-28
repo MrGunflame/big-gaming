@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crossbeam_queue::SegQueue;
 use game_common::cell::UnsafeRefCell;
 use game_common::collections::vec_map::VecMap;
+use parking_lot::Mutex;
 use sharded_slab::Slab;
 
 use crate::backend::descriptors::DescriptorSetAllocator;
@@ -28,6 +29,8 @@ pub struct Resources {
     pub pipelines: Slab<PipelineInner>,
     pub descriptor_allocator: DescriptorSetAllocator,
     pub deletion_queue: SegQueue<DeletionEvent>,
+    /// Staging memory used to `WriteBuffer` commands.
+    pub staging_memory: Mutex<Vec<u8>>,
 }
 
 impl<'a> ResourceMap for &'a Resources {

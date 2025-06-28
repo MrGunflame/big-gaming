@@ -53,6 +53,14 @@ impl Executor {
     ) -> TemporaryResources {
         let _span = trace_span!("Executor::execute").entered();
 
+        // Note that we are taking the Vec and dropping it
+        // at the end of the execution. We do this instead of
+        // reusing the allocated memory because there may sometimes
+        // be big chunks of data to be uploaded and that would result
+        // in significant memory waste for most frames. Reallocating the
+        // Vec is relatively cheap.
+        let staging_memory_pool = core::mem::take(&mut *resources.staging_memory.lock());
+
         let mut render_passes = 0;
         let mut compute_passes = 0;
 
@@ -135,8 +143,11 @@ impl Executor {
                     Command::WriteBuffer(cmd) => {
                         let buffer = self.buffers.get_mut(&cmd.buffer).unwrap();
 
-                        buffer.map()[cmd.offset as usize..cmd.offset as usize + cmd.data.len()]
-                            .copy_from_slice(&cmd.data);
+                        let data = &staging_memory_pool
+                            [cmd.staging_memory_offset..cmd.staging_memory_offset + cmd.count];
+
+                        buffer.map()[cmd.offset as usize..cmd.offset as usize + cmd.count]
+                            .copy_from_slice(&data);
 
                         // If the memory of the buffer is not HOST_COHERENT it needs to
                         // be flushed, otherwise it may never become visible to the device.
