@@ -578,7 +578,9 @@ fn insert_barriers(
     encoder: &mut CommandEncoder<'_>,
 ) {
     let mut buffer_barriers = Vec::new();
-    let mut texture_barriers = Vec::new();
+    let mut texture_barriers = Vec::<TextureBarrier<'_>>::new();
+
+    let mut last_texture_barrier_id = None;
 
     for barrier in barriers {
         match barrier.resource {
@@ -596,6 +598,22 @@ fn insert_barriers(
             ResourceId::Texture(tex) => {
                 let texture = executor.textures.get(&tex.id).unwrap();
 
+                // If possible barriers are emitted in batches for each texture
+                // with the mip levels ascending, so if a chain of consecutive
+                // mip levels is modified we can batch all those barriers into one.
+                if let Some(last_barrier) = texture_barriers.last_mut() {
+                    if last_texture_barrier_id == Some(tex.id)
+                        && last_barrier.src_access == barrier.src_access
+                        && last_barrier.dst_access == barrier.dst_access
+                        && last_barrier.base_mip_level + last_barrier.mip_levels == tex.mip_level
+                    {
+                        last_barrier.mip_levels += 1;
+
+                        last_texture_barrier_id = Some(tex.id);
+                        continue;
+                    }
+                }
+
                 texture_barriers.push(TextureBarrier {
                     texture: texture.texture(),
                     src_access: barrier.src_access,
@@ -603,6 +621,8 @@ fn insert_barriers(
                     base_mip_level: tex.mip_level,
                     mip_levels: 1,
                 });
+
+                last_texture_barrier_id = Some(tex.id);
             }
         }
     }
