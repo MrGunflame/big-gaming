@@ -95,6 +95,7 @@ impl CommandExecutor {
                 descriptor_allocator: DescriptorSetAllocator::new(device.clone()),
                 samplers: Slab::new(),
                 deletion_queue: SegQueue::new(),
+                staging_memory: Mutex::new(Vec::new()),
             }),
             cmds: Mutex::new(CommandStream::new()),
             query_pools: QueryPoolSet::new(device.clone()),
@@ -341,6 +342,10 @@ impl<'a> CommandQueue<'a> {
             data.len(),
         );
 
+        let mut pool = self.executor.resources.staging_memory.lock();
+        let staging_memory_offset = pool.len();
+        pool.extend_from_slice(data);
+
         // If the buffer is host visible we can map and write
         // to it directly.
         if buffer.buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
@@ -353,7 +358,8 @@ impl<'a> CommandQueue<'a> {
                 Command::WriteBuffer(WriteBuffer {
                     buffer: buffer.buffer.id,
                     offset: buffer.start,
-                    data: data.to_vec(),
+                    staging_memory_offset,
+                    count: data.len(),
                 }),
             );
         } else {
@@ -377,7 +383,8 @@ impl<'a> CommandQueue<'a> {
                 Command::WriteBuffer(WriteBuffer {
                     buffer: staging_buffer.id,
                     offset: 0,
-                    data: data.to_vec(),
+                    staging_memory_offset,
+                    count: data.len(),
                 }),
             );
 
