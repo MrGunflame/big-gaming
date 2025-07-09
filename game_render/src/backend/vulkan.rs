@@ -5374,35 +5374,68 @@ where
     }
 }
 
-fn convert_access_flags(flags: AccessFlags) -> vk::AccessFlags2 {
+fn convert_access_flags(mut flags: AccessFlags) -> vk::AccessFlags2 {
     let mut access = vk::AccessFlags2::empty();
 
-    for flag in flags.iter() {
-        let vk_flag = match flag {
-            AccessFlags::TRANSFER_READ => vk::AccessFlags2::TRANSFER_READ,
-            AccessFlags::TRANSFER_WRITE => vk::AccessFlags2::TRANSFER_WRITE,
-            AccessFlags::COLOR_ATTACHMENT_READ => vk::AccessFlags2::COLOR_ATTACHMENT_READ,
-            AccessFlags::COLOR_ATTACHMENT_WRITE => vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
-            AccessFlags::INDEX => vk::AccessFlags2::INDEX_READ,
-            AccessFlags::INDIRECT => vk::AccessFlags2::INDIRECT_COMMAND_READ,
-            AccessFlags::DEPTH_ATTACHMENT_READ => vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
-            AccessFlags::DEPTH_ATTACHMENT_WRITE => vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            AccessFlags::VERTEX_SHADER_READ => vk::AccessFlags2::SHADER_READ,
-            AccessFlags::VERTEX_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
-            AccessFlags::FRAGMENT_SHADER_READ => vk::AccessFlags2::SHADER_READ,
-            AccessFlags::FRAGMENT_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
-            AccessFlags::TASK_SHADER_READ => vk::AccessFlags2::SHADER_READ,
-            AccessFlags::TASK_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
-            AccessFlags::MESH_SHADER_READ => vk::AccessFlags2::SHADER_READ,
-            AccessFlags::MESH_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
-            AccessFlags::COMPUTE_SHADER_READ => vk::AccessFlags2::SHADER_READ,
-            AccessFlags::COMPUTE_SHADER_WRITE => vk::AccessFlags2::SHADER_WRITE,
-            AccessFlags::PRESENT => continue,
-            _ => unreachable!(),
-        };
+    let mut map_flags = |src, dst| {
+        if flags.intersects(src) {
+            access |= dst;
+            // Every invocation should contain unique flags so
+            // that by removing those flags we only remain with
+            // the flags that have not been mapped at the end.
+            // This is then used as an extra assertion to make sure
+            // we forgot no flags.
+            // This operation is optimized out in release.
+            flags &= !src;
+        }
+    };
 
-        access |= vk_flag;
-    }
+    map_flags(AccessFlags::TRANSFER_READ, vk::AccessFlags2::TRANSFER_READ);
+    map_flags(
+        AccessFlags::TRANSFER_WRITE,
+        vk::AccessFlags2::TRANSFER_WRITE,
+    );
+    map_flags(
+        AccessFlags::VERTEX_SHADER_READ
+            | AccessFlags::FRAGMENT_SHADER_READ
+            | AccessFlags::TASK_SHADER_READ
+            | AccessFlags::MESH_SHADER_READ
+            | AccessFlags::COMPUTE_SHADER_READ,
+        vk::AccessFlags2::SHADER_READ,
+    );
+    map_flags(
+        AccessFlags::VERTEX_SHADER_WRITE
+            | AccessFlags::FRAGMENT_SHADER_WRITE
+            | AccessFlags::TASK_SHADER_WRITE
+            | AccessFlags::MESH_SHADER_WRITE
+            | AccessFlags::COMPUTE_SHADER_WRITE,
+        vk::AccessFlags2::SHADER_WRITE,
+    );
+    map_flags(
+        AccessFlags::COLOR_ATTACHMENT_READ,
+        vk::AccessFlags2::COLOR_ATTACHMENT_READ,
+    );
+    map_flags(
+        AccessFlags::COLOR_ATTACHMENT_WRITE,
+        vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
+    );
+    map_flags(
+        AccessFlags::DEPTH_ATTACHMENT_READ,
+        vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_READ,
+    );
+    map_flags(
+        AccessFlags::DEPTH_ATTACHMENT_WRITE,
+        vk::AccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+    );
+    map_flags(AccessFlags::INDEX, vk::AccessFlags2::INDEX_READ);
+    map_flags(
+        AccessFlags::INDIRECT,
+        vk::AccessFlags2::INDIRECT_COMMAND_READ,
+    );
+
+    map_flags(AccessFlags::PRESENT, vk::AccessFlags2::empty());
+
+    debug_assert!(flags.is_empty(), "unhandled AccessFlags: {:?}", flags);
 
     access
 }
