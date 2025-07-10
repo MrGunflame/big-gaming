@@ -5441,88 +5441,54 @@ fn convert_access_flags(mut flags: AccessFlags) -> vk::AccessFlags2 {
 }
 
 fn access_flags_to_image_layout(flags: AccessFlags) -> vk::ImageLayout {
-    let mut transfer_read = false;
-    let mut transfer_write = false;
-    let mut color_attachment_read = false;
-    let mut color_attachment_write = false;
-    let mut depth_attachment_read = false;
-    let mut depth_attachment_write = false;
-    let mut shader_read = false;
-    let mut shader_write = false;
-    let mut present = false;
+    // If the bitset is not empty the difference between contains
+    // the bits that are set in the source bitset, but not set in
+    // the target bitset.
+    // We check if the bitset is empty beforehand, so if the difference
+    // at any point is zero we know that all source bits were a subset
+    // of the checked flags.
+    let matches_any = |src| flags.difference(src).is_empty();
 
-    for flag in flags.iter() {
-        match flag {
-            AccessFlags::TRANSFER_READ => transfer_read = true,
-            AccessFlags::TRANSFER_WRITE => transfer_write = true,
-            AccessFlags::COLOR_ATTACHMENT_READ => color_attachment_read = true,
-            AccessFlags::COLOR_ATTACHMENT_WRITE => color_attachment_write = true,
-            AccessFlags::DEPTH_ATTACHMENT_READ => depth_attachment_read = true,
-            AccessFlags::DEPTH_ATTACHMENT_WRITE => depth_attachment_write = true,
-            AccessFlags::VERTEX_SHADER_READ => shader_read = true,
-            AccessFlags::VERTEX_SHADER_WRITE => shader_write = true,
-            AccessFlags::FRAGMENT_SHADER_READ => shader_read = true,
-            AccessFlags::FRAGMENT_SHADER_WRITE => shader_write = true,
-            AccessFlags::TASK_SHADER_READ => shader_read = true,
-            AccessFlags::TASK_SHADER_WRITE => shader_write = true,
-            AccessFlags::MESH_SHADER_READ => shader_read = true,
-            AccessFlags::MESH_SHADER_WRITE => shader_write = true,
-            AccessFlags::COMPUTE_SHADER_READ => shader_read = true,
-            AccessFlags::COMPUTE_SHADER_WRITE => shader_write = true,
-            AccessFlags::PRESENT => present = true,
-            AccessFlags::INDEX => {
-                unreachable!("{:?} has no image layout", AccessFlags::INDEX)
-            }
-            AccessFlags::INDIRECT => {
-                unreachable!("{:?} has no image layout", AccessFlags::INDIRECT)
-            }
-            _ => unreachable!("unhandled access flag: {:?}", flag),
-        }
-    }
+    if flags.is_empty() {
+        vk::ImageLayout::UNDEFINED
+    } else if matches_any(AccessFlags::TRANSFER_READ) {
+        vk::ImageLayout::TRANSFER_SRC_OPTIMAL
+    } else if matches_any(AccessFlags::TRANSFER_WRITE) {
+        vk::ImageLayout::TRANSFER_DST_OPTIMAL
+    } else if matches_any(AccessFlags::DEPTH_ATTACHMENT_READ) {
+        vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
+    } else if matches_any(AccessFlags::PRESENT) {
+        debug_assert!(
+            flags == AccessFlags::PRESENT,
+            "PRESENT is mutually exclusive with all other flags"
+        );
 
-    match (
-        transfer_read,
-        transfer_write,
-        color_attachment_read,
-        color_attachment_write,
-        depth_attachment_read,
-        depth_attachment_write,
-        shader_read,
-        shader_write,
-        present,
+        vk::ImageLayout::PRESENT_SRC_KHR
+    } else if matches_any(
+        AccessFlags::VERTEX_SHADER_READ
+            | AccessFlags::FRAGMENT_SHADER_READ
+            | AccessFlags::TASK_SHADER_READ
+            | AccessFlags::MESH_SHADER_READ
+            | AccessFlags::COMPUTE_SHADER_READ,
     ) {
-        (false, false, false, false, false, false, false, false, false) => {
-            vk::ImageLayout::UNDEFINED
-        }
-        (true, false, false, false, false, false, false, false, false) => {
-            vk::ImageLayout::TRANSFER_SRC_OPTIMAL
-        }
-        (false, true, false, false, false, false, false, false, false) => {
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL
-        }
-        (false, false, true, _, false, false, false, false, false)
-        | (false, false, _, true, false, false, false, false, false) => {
-            vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
-        }
-        (false, false, false, false, true, false, false, false, false) => {
-            vk::ImageLayout::DEPTH_READ_ONLY_OPTIMAL
-        }
-        (false, false, false, _, true, true, false, false, false) => {
-            vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
-        }
-        (false, false, false, false, false, false, true, false, false) => {
-            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-        }
-        (false, false, false, false, false, false, false, false, true) => {
-            vk::ImageLayout::PRESENT_SRC_KHR
-        }
-        (_, _, _, _, _, _, _, _, true) => {
-            panic!(
-                "{:?} is mutually exclusive with all other flags",
-                AccessFlags::PRESENT
-            );
-        }
-        _ => vk::ImageLayout::GENERAL,
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+    } else if matches_any(AccessFlags::COLOR_ATTACHMENT_READ | AccessFlags::COLOR_ATTACHMENT_WRITE)
+    {
+        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+    } else if matches_any(AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE)
+    {
+        vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL
+    } else {
+        debug_assert!(
+            !flags.contains(AccessFlags::INDEX),
+            "images cannot have the INDEX flag"
+        );
+        debug_assert!(
+            !flags.contains(AccessFlags::INDIRECT),
+            "images cannot have the INDIRECT flag",
+        );
+
+        vk::ImageLayout::GENERAL
     }
 }
 
