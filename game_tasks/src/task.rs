@@ -10,8 +10,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 
-use futures::future::FusedFuture;
-use futures::task::AtomicWaker;
+use atomic_waker::AtomicWaker;
+use futures_core::FusedFuture;
 
 use crate::{noop_waker, Inner};
 
@@ -747,7 +747,7 @@ mod tests {
     use std::sync::Arc;
     use std::task::{Poll, Waker};
 
-    use futures::future::poll_fn;
+    use futures_lite::future::poll_fn;
 
     use crate::Inner;
 
