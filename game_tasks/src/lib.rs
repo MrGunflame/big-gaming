@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::task::{RawWaker, RawWakerVTable, Waker};
 use std::thread::{self, JoinHandle};
 
-use crossbeam::deque::{Injector, Steal};
+use crossbeam_queue::SegQueue;
 use park::Parker;
 use task::RawTaskPtr;
 
@@ -100,7 +100,7 @@ impl TaskPool {
     where
         F: Future<Output = T>,
     {
-        futures::executor::block_on(future)
+        futures_lite::future::block_on(future)
     }
 }
 
@@ -149,14 +149,14 @@ fn spawn_worker_thread(inner: Arc<Inner>) -> JoinHandle<()> {
 
 #[derive(Debug)]
 struct InjectorQueue {
-    inner: Injector<RawTaskPtr>,
+    inner: SegQueue<RawTaskPtr>,
     parker: Parker,
 }
 
 impl InjectorQueue {
     fn new() -> Self {
         Self {
-            inner: Injector::new(),
+            inner: SegQueue::new(),
             parker: Parker::new(),
         }
     }
@@ -169,13 +169,7 @@ impl InjectorQueue {
     }
 
     fn pop(&self) -> Option<RawTaskPtr> {
-        loop {
-            match self.inner.steal() {
-                Steal::Success(task) => return Some(task),
-                Steal::Empty => return None,
-                Steal::Retry => (),
-            }
-        }
+        self.inner.pop()
     }
 }
 
@@ -194,7 +188,7 @@ mod tests {
     use std::task::{Context, Poll};
     use std::time::Duration;
 
-    use futures::future::poll_fn;
+    use futures_lite::future::poll_fn;
 
     use crate::{noop_waker, TaskPool};
 
@@ -202,7 +196,7 @@ mod tests {
     where
         F: Future,
     {
-        futures::executor::block_on(future)
+        futures_lite::future::block_on(future)
     }
 
     #[test]
@@ -295,7 +289,7 @@ mod tests {
             .await
         });
 
-        futures::executor::block_on(task);
+        futures_lite::future::block_on(task);
     }
 
     #[test]
@@ -319,7 +313,7 @@ mod tests {
             black_box(val)
         });
 
-        assert_eq!(futures::executor::block_on(task), 2);
+        assert_eq!(futures_lite::future::block_on(task), 2);
     }
 
     #[test]

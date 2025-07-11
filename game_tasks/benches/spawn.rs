@@ -1,8 +1,8 @@
+use std::future::Future;
 use std::task::Poll;
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
-use futures::future::poll_fn;
-use futures::Future;
+use futures_lite::future::poll_fn;
 use game_tasks::TaskPool;
 
 const COUNTS: &[usize] = &[1, 10, 100];
@@ -41,7 +41,7 @@ fn spawn_basic(c: &mut Criterion) {
                     }
 
                     for task in tasks {
-                        assert_eq!(futures::executor::block_on(task), 2);
+                        assert_eq!(futures_lite::future::block_on(task), 2);
                     }
                 },
                 BatchSize::SmallInput,
@@ -64,7 +64,7 @@ fn spawn_yield_once(c: &mut Criterion) {
                     }
 
                     for task in tasks {
-                        assert_eq!(futures::executor::block_on(task), 2);
+                        assert_eq!(futures_lite::future::block_on(task), 2);
                     }
                 },
                 BatchSize::SmallInput,
