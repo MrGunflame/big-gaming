@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::ops::{Bound, Deref, Range, RangeBounds};
 use std::ptr::{null_mut, NonNull};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{fence, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -4350,14 +4350,13 @@ impl DeviceMemory {
     pub fn flush(&self) -> Result<(), Error> {
         assert!(self.is_mapped);
 
-        // Emit an SFENCE instruction.
-        // Ensure that all prior stores are made visible.
-        // This step is explicitly required by the Vulkan spec and not
-        // handled by the driver.
-        #[cfg(target_arch = "x86_64")]
-        unsafe {
-            core::arch::x86_64::_mm_sfence();
-        }
+        // We must ensure that all stores become globally visible before we call
+        // vkFlushMappedMemoryRanges, including for non-temporal stores, for which
+        // a Release fence is to weak.
+        // A SeqCst fence generates MFENCE with includes the operations of SFENCE
+        // of making all stores, including non-temporal stores visible.
+        // This step is explicitly required by the Vulkan spec.
+        fence(Ordering::SeqCst);
 
         let range = vk::MappedMemoryRange::default()
             .memory(self.memory)
