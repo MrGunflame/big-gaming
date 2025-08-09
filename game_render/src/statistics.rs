@@ -1,6 +1,6 @@
-use std::collections::HashMap;
 use std::time::Duration;
 
+use hashbrown::HashMap;
 use parking_lot::RwLock;
 use slab::Slab;
 

@@ -91,10 +91,18 @@ impl Image {
     }
 
     fn validate_size(&self) {
+        let expected = self
+            .format
+            .storage_size(UVec2::new(self.width, self.height));
         assert_eq!(
-            self.format
-                .storage_size(UVec2::new(self.width, self.height)),
-            self.bytes.len()
+            self.bytes.len(),
+            expected,
+            "expected {} bytes, got {} bytes for image with dimensions ({}, {}) and format {:?}",
+            expected,
+            self.bytes.len(),
+            self.width,
+            self.height,
+            self.format,
         );
     }
 }
