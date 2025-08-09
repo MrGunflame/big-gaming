@@ -1,3 +1,5 @@
+mod allocator;
+
 use std::hash::Hash;
 use std::num::NonZeroU32;
 use std::slice;
@@ -7,15 +9,17 @@ use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_tracing::trace_span;
 use hashbrown::HashMap;
 
-use crate::backend::allocator::{BufferAlloc, GeneralPurposeAllocator, TextureAlloc, UsageFlags};
+use crate::api::executor::allocator::Allocation;
+use crate::backend::allocator::{MemoryManager, UsageFlags};
 use crate::backend::descriptors::AllocatedDescriptorSet;
-use crate::backend::vulkan::{self, CommandEncoder, TextureView};
+use crate::backend::vulkan::{self, Buffer, CommandEncoder, Device, Texture, TextureView};
 use crate::backend::{
     AccessFlags, BufferBarrier, CopyBuffer, DrawIndexedIndirectCommand, DrawIndirectCommand,
     MemoryTypeFlags, PipelineBarriers, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, TextureBarrier, TextureViewDescriptor, TimestampPipelineStage,
     WriteDescriptorBinding, WriteDescriptorResource, WriteDescriptorResources,
 };
+use crate::statistics::Statistics;
 
 use super::commands::{Command, CommandRef, ComputeCommand, ComputePassCmd, RenderPassCmd};
 use super::queries::{ManagedQueryPool, QueryObject, QueryPoolSet};
@@ -26,18 +30,20 @@ use super::{
     SamplerId, TextureId,
 };
 
+use allocator::MemoryAllocator;
+
 #[derive(Debug)]
 pub(super) struct Executor {
-    allocator: GeneralPurposeAllocator,
+    allocator: MemoryAllocator,
     buffers: HashMap<BufferId, BufferAlloc>,
     textures: HashMap<TextureId, TextureData>,
     descriptor_sets: HashMap<DescriptorSetId, DescriptorSetInner>,
 }
 
 impl Executor {
-    pub fn new(allocator: GeneralPurposeAllocator) -> Self {
+    pub fn new(device: Device, manager: MemoryManager, statistics: Arc<Statistics>) -> Self {
         Self {
-            allocator,
+            allocator: MemoryAllocator::new(device.clone(), manager, statistics),
             buffers: HashMap::new(),
             textures: HashMap::new(),
             descriptor_sets: HashMap::new(),
@@ -105,6 +111,7 @@ impl Executor {
                 Step::Node(cmd) => match cmd.as_ref() {
                     Command::CreateBuffer(cmd) => {
                         let buffer = self.allocator.create_buffer(&cmd.descriptor);
+
                         self.buffers.insert(cmd.id, buffer);
                     }
                     Command::CreateTexture(cmd) => {
@@ -114,6 +121,7 @@ impl Executor {
                                 let texture = self
                                     .allocator
                                     .create_texture(&cmd.descriptor, UsageFlags::empty());
+
                                 TextureData::Virtual(texture)
                             }
                         };
@@ -128,12 +136,23 @@ impl Executor {
                     Command::DestoryBuffer(id) => {
                         debug_assert!(self.buffers.contains_key(id));
 
-                        self.buffers.remove(id);
+                        if let Some(buffer) = self.buffers.remove(id) {
+                            unsafe {
+                                self.allocator.dealloc(buffer.allocation);
+                            }
+                        }
                     }
                     Command::DestroyTexture(id) => {
                         debug_assert!(self.textures.contains_key(id));
 
-                        self.textures.remove(id);
+                        if let Some(texture) = self.textures.remove(id) {
+                            match texture {
+                                TextureData::Physical(_) => {}
+                                TextureData::Virtual(texture) => unsafe {
+                                    self.allocator.dealloc(texture.allocation);
+                                },
+                            }
+                        }
                     }
                     Command::DestroyDescriptorSet(id) => {
                         debug_assert!(self.descriptor_sets.contains_key(id));
@@ -146,15 +165,20 @@ impl Executor {
                         let data = &staging_memory_pool
                             [cmd.staging_memory_offset..cmd.staging_memory_offset + cmd.count];
 
-                        buffer.map()[cmd.offset as usize..cmd.offset as usize + cmd.count]
+                        buffer.allocation.as_bytes()
+                            [cmd.offset as usize..cmd.offset as usize + cmd.count]
                             .copy_from_slice(&data);
 
                         // If the memory of the buffer is not HOST_COHERENT it needs to
                         // be flushed, otherwise it may never become visible to the device.
                         // TODO: We should batch and do a single flush for all writes.
-                        if !buffer.flags().contains(MemoryTypeFlags::HOST_COHERENT) {
+                        if !buffer
+                            .allocation
+                            .flags()
+                            .contains(MemoryTypeFlags::HOST_COHERENT)
+                        {
                             unsafe {
-                                buffer.flush();
+                                buffer.allocation.flush();
                             }
                         }
 
@@ -169,9 +193,9 @@ impl Executor {
                         // `TRANSFER_READ` and the destination is `TRANSFER_WRITE`.
                         unsafe {
                             encoder.copy_buffer_to_buffer(
-                                src.buffer(),
+                                &src.buffer,
                                 cmd.src_offset,
-                                dst.buffer(),
+                                &dst.buffer,
                                 cmd.dst_offset,
                                 cmd.count.get(),
                             );
@@ -192,7 +216,7 @@ impl Executor {
                         unsafe {
                             encoder.copy_buffer_to_texture(
                                 CopyBuffer {
-                                    buffer: src.buffer(),
+                                    buffer: &src.buffer,
                                     offset: cmd.src_offset,
                                     layout: cmd.layout,
                                 },
@@ -368,7 +392,7 @@ fn run_render_pass(
             DrawCmd::SetIndexBuffer(id, format) => {
                 let buffer = executor.buffers.get(id).unwrap();
 
-                render_pass.bind_index_buffer(buffer.buffer_view(), *format);
+                render_pass.bind_index_buffer(buffer.buffer.slice(..), *format);
 
                 // Index buffer must be kept alive until the render pass
                 // completes.
@@ -391,7 +415,7 @@ fn run_render_pass(
                 let buffer = executor.buffers.get(&call.buffer).unwrap();
 
                 render_pass.draw_indirect(
-                    buffer.buffer(),
+                    &buffer.buffer,
                     call.offset,
                     call.count,
                     size_of::<DrawIndirectCommand>() as u32,
@@ -403,7 +427,7 @@ fn run_render_pass(
                 let buffer = executor.buffers.get(&call.buffer).unwrap();
 
                 render_pass.draw_indexed_indirect(
-                    buffer.buffer(),
+                    &buffer.buffer,
                     call.offset,
                     call.count,
                     size_of::<DrawIndexedIndirectCommand>() as u32,
@@ -511,14 +535,14 @@ fn build_descriptor_set(
         let resource = match resource {
             DescriptorSetResource::UniformBuffer(buffer) => {
                 let buffer = executor.buffers.get(buffer).unwrap();
-                let view = buffer.buffer_view();
+                let view = buffer.buffer.slice(..);
                 let view = buffer_views.insert(view);
 
                 WriteDescriptorResource::UniformBuffer(slice::from_ref(view))
             }
             DescriptorSetResource::StorageBuffer(buffer) => {
                 let buffer = executor.buffers.get(buffer).unwrap();
-                let view = buffer.buffer_view();
+                let view = buffer.buffer.slice(..);
                 let view = buffer_views.insert(view);
 
                 WriteDescriptorResource::StorageBuffer(slice::from_ref(view))
@@ -599,9 +623,9 @@ fn insert_barriers(
                 let buffer = executor.buffers.get(&id).unwrap();
 
                 buffer_barriers.push(BufferBarrier {
-                    buffer: buffer.buffer(),
-                    offset: buffer.buffer_view().offset(),
-                    size: buffer.buffer_view().len(),
+                    buffer: &buffer.buffer,
+                    offset: buffer.buffer.slice(..).offset(),
+                    size: buffer.buffer.slice(..).len(),
                     src_access: barrier.src_access,
                     dst_access: barrier.dst_access,
                 });
@@ -760,15 +784,27 @@ struct DescriptorSetInner {
 
 #[derive(Debug)]
 pub enum TextureData {
-    Physical(vulkan::Texture),
+    Physical(Texture),
     Virtual(TextureAlloc),
 }
 
 impl TextureData {
-    pub fn texture(&self) -> &vulkan::Texture {
+    pub fn texture(&self) -> &Texture {
         match &self {
             Self::Physical(tex) => tex,
-            Self::Virtual(tex) => tex.texture(),
+            Self::Virtual(tex) => &tex.texture,
         }
     }
+}
+
+#[derive(Debug)]
+struct BufferAlloc {
+    buffer: Buffer,
+    allocation: Allocation,
+}
+
+#[derive(Debug)]
+pub struct TextureAlloc {
+    texture: Texture,
+    allocation: Allocation,
 }

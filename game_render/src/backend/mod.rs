@@ -558,6 +558,10 @@ pub enum DedicatedAllocation {
 }
 
 impl DedicatedAllocation {
+    pub const fn is_required(self) -> bool {
+        matches!(self, Self::Required)
+    }
+
     /// Returns `true` if the `DedicatedAllocation` is either `Preferred` or `Required`.
     pub const fn is_preferred_or_required(self) -> bool {
         matches!(self, Self::Preferred | Self::Required)

@@ -37,7 +37,7 @@ use sharded_slab::Slab;
 
 use crate::api::commands::{CreateBuffer, CreateTexture};
 use crate::api::executor::Executor;
-use crate::backend::allocator::{GeneralPurposeAllocator, MemoryManager, UsageFlags};
+use crate::backend::allocator::{MemoryManager, UsageFlags};
 use crate::backend::descriptors::DescriptorSetAllocator;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
@@ -79,12 +79,6 @@ impl CommandExecutor {
             task_shader: device.extensions().mesh_shader,
         };
 
-        let allocator = GeneralPurposeAllocator::new(
-            device.clone(),
-            MemoryManager::new(device.clone(), memory_props),
-            statistics,
-        );
-
         Self {
             resources: Arc::new(Resources {
                 pipelines: Slab::new(),
@@ -99,12 +93,16 @@ impl CommandExecutor {
             }),
             cmds: Mutex::new(CommandStream::new()),
             query_pools: QueryPoolSet::new(device.clone()),
-            device,
             adapter_props,
             allocator: Exclusive::new(Bump::new()),
             features,
             scheduler: Scheduler::new(),
-            executor: Executor::new(allocator),
+            executor: Executor::new(
+                device.clone(),
+                MemoryManager::new(device.clone(), memory_props),
+                statistics,
+            ),
+            device,
         }
     }
 
@@ -543,7 +541,7 @@ impl<'a> CommandQueue<'a> {
 
         assert!(texture.mip_level < texture.texture.mip_levels);
 
-        let mip_size = texture.texture.size >> texture.mip_level;
+        let mip_size = UVec2::max(UVec2::ONE, texture.texture.size >> texture.mip_level);
         assert_eq!(layout.format.storage_size(mip_size), data.len());
 
         let staging_buffer = self.create_buffer_init(&BufferInitDescriptor {
