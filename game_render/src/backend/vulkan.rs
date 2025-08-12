@@ -12,17 +12,14 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-use ash::ext::debug_utils;
 use ash::vk::Handle;
 use ash::{vk, Entry};
 use game_common::collections::scratch_buffer::ScratchBuffer;
 use glam::UVec2;
 use hashbrown::HashMap;
-use notify::null;
 use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
-use tracing::instrument::WithSubscriber;
 
 use crate::backend::{
     mip_level_size_2d, DedicatedAllocation, DescriptorType, SurfaceFormat, TextureLayout,
@@ -324,19 +321,24 @@ impl Instance {
 
         let instance = unsafe { entry.create_instance(&info, ALLOC)? };
 
-        let messenger = if config.validation {
-            let instance_d = debug_utils::Instance::new(&entry, &instance);
-            match unsafe { instance_d.create_debug_utils_messenger(&debug_info, ALLOC) } {
-                Ok(messenger) => Some(messenger),
-                Err(err) => {
-                    // We must manually destroy the instance if an error occurs,
-                    // otherwise the vkInstance would leak.
-                    unsafe {
-                        instance.destroy_instance(ALLOC);
-                    }
+        let extensions = InstanceExtensionFns::new(&entry, &instance, &supported_extensions);
 
-                    return Err(err.into());
+        let messenger = if config.validation {
+            if let Some(instance_d) = &extensions.debug_utils {
+                match unsafe { instance_d.create_debug_utils_messenger(&debug_info, ALLOC) } {
+                    Ok(messenger) => Some(messenger),
+                    Err(err) => {
+                        // We must manually destroy the instance if an error occurs,
+                        // otherwise the vkInstance would leak.
+                        unsafe {
+                            instance.destroy_instance(ALLOC);
+                        }
+
+                        return Err(err.into());
+                    }
                 }
+            } else {
+                None
             }
         } else {
             None
@@ -344,6 +346,7 @@ impl Instance {
 
         Ok(Self {
             instance: Arc::new(InstanceShared {
+                extensions: InstanceExtensionFns::new(&entry, &instance, &supported_extensions),
                 config,
                 entry,
                 instance,
@@ -396,9 +399,9 @@ impl Instance {
         let surface = match (display, window) {
             #[cfg(all(unix, feature = "wayland"))]
             (RawDisplayHandle::Wayland(display), RawWindowHandle::Wayland(window)) => {
-                if !self.extensions.surface_wayland {
+                let Some(instance) = &self.instance.extensions.surface_wayland else {
                     return Err(Error::MissingExtension(vk::KHR_WAYLAND_SURFACE_NAME));
-                }
+                };
 
                 let info = vk::WaylandSurfaceCreateInfoKHR::default()
                     // - `display` must be a valid Wayland `wl_display`.
@@ -408,15 +411,13 @@ impl Instance {
                     // - `flags` must be `0`.
                     .flags(vk::WaylandSurfaceCreateFlagsKHR::empty());
 
-                let instance =
-                    ash::khr::wayland_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_wayland_surface(&info, ALLOC)? }
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xcb(display), RawWindowHandle::Xcb(window)) => {
-                if !self.extensions.surface_xcb {
+                let Some(instance) = &self.instance.extensions.surface_xcb else {
                     return Err(Error::MissingExtension(vk::KHR_XCB_SURFACE_NAME));
-                }
+                };
 
                 let info = vk::XcbSurfaceCreateInfoKHR::default()
                     // - `connection` must point to a valid X11 `xcb_connection_t`.
@@ -426,15 +427,13 @@ impl Instance {
                     // - `flags` must be `0`.
                     .flags(vk::XcbSurfaceCreateFlagsKHR::empty());
 
-                let instance =
-                    ash::khr::xcb_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_xcb_surface(&info, ALLOC)? }
             }
             #[cfg(all(unix, feature = "x11"))]
             (RawDisplayHandle::Xlib(display), RawWindowHandle::Xlib(window)) => {
-                if !self.extensions.surface_xlib {
+                let Some(instance) = &self.instance.extensions.surface_xlib else {
                     return Err(Error::MissingExtension(vk::KHR_XLIB_SURFACE_NAME));
-                }
+                };
 
                 let info = vk::XlibSurfaceCreateInfoKHR::default()
                     // - `dpy` must point to a valid Xlib `Display`.
@@ -444,15 +443,13 @@ impl Instance {
                     // - `flags` must be `0`.
                     .flags(vk::XlibSurfaceCreateFlagsKHR::empty());
 
-                let instance =
-                    ash::khr::xlib_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_xlib_surface(&info, ALLOC)? }
             }
-            #[cfg(target_os = "windows")]
+            #[cfg(windows)]
             (RawDisplayHandle::Windows(_), RawWindowHandle::Win32(window)) => {
-                if !self.extensions.surface_win32 {
+                let Some(instance) = &self.instance.extensions.surface_win32 else {
                     return Err(Error::MissingExtension(vk::KHR_WIN32_SURFACE_NAME));
-                }
+                };
 
                 let info = vk::Win32SurfaceCreateInfoKHR::default()
                     // - `hinstance` must be a valid Win32 `HINSTANCE`.
@@ -462,8 +459,6 @@ impl Instance {
                     // - `flags` must be `0`.
                     .flags(vk::Win32SurfaceCreateFlagsKHR::empty());
 
-                let instance =
-                    ash::khr::win32_surface::Instance::new(&self.instance.entry, &self.instance);
                 unsafe { instance.create_win32_surface(&info, ALLOC)? }
             }
             _ => return Err(Error::UnsupportedSurface),
@@ -1030,10 +1025,10 @@ impl Adapter {
         Ok(Device {
             physical_device: self.physical_device,
             device: Arc::new(DeviceShared {
+                extensions: DeviceExtensionFns::new(&self.instance, &device, &supported_extensions),
                 instance: self.instance.clone(),
                 device,
                 limits: self.device_limits(),
-                extensions: supported_extensions,
                 memory_properties: self.memory_properties(),
                 num_allocations: Arc::new(AtomicU32::new(0)),
                 queues,
@@ -1139,7 +1134,11 @@ impl Device {
 
     /// Returns the enabled device extensions.
     pub fn extensions(&self) -> DeviceExtensions {
-        self.device.extensions
+        DeviceExtensions {
+            swapchain: self.device.extensions.swapchain.is_some(),
+            swapchain_maintenance1: self.device.extensions.swapchain_maintenance1.is_some(),
+            mesh_shader: self.device.extensions.mesh_shader.is_some(),
+        }
     }
 
     pub fn limits(&self) -> DeviceLimits {
@@ -1831,7 +1830,7 @@ impl Device {
                 }
                 PipelineStage::Task(stage) => {
                     assert!(
-                        self.device.extensions.mesh_shader,
+                        self.device.extensions.mesh_shader.is_some(),
                         "Cannot use Task shader when EXT_MESH_SHADER is not enabled"
                     );
 
@@ -1854,7 +1853,7 @@ impl Device {
                 }
                 PipelineStage::Mesh(stage) => {
                     assert!(
-                        self.device.extensions.mesh_shader,
+                        self.device.extensions.mesh_shader.is_some(),
                         "Cannot use Mesh shader when EXT_MESH_SHADER is not enabled"
                     );
 
@@ -2469,17 +2468,17 @@ impl SurfaceShared {
             info = info.push_next(&mut present_modes_info);
         }
 
-        let khr_device = ash::khr::swapchain::Device::new(&self.instance.instance, &device.device);
-        let swapchain = unsafe { khr_device.create_swapchain(&info, ALLOC)? };
+        let device = device.device.extensions.swapchain.as_ref().unwrap();
+        let swapchain = unsafe { device.create_swapchain(&info, ALLOC)? };
 
-        let images = match unsafe { khr_device.get_swapchain_images(swapchain) } {
+        let images = match unsafe { device.get_swapchain_images(swapchain) } {
             Ok(images) => images,
             Err(err) => {
                 // We will not return the new swapchain object from this function
                 // on error. This means the newly created swapchain needs to be
                 // destroyed manually, otherwise it will leak.
                 unsafe {
-                    khr_device.destroy_swapchain(swapchain, ALLOC);
+                    device.destroy_swapchain(swapchain, ALLOC);
                 }
 
                 return Err(err.into());
@@ -2496,8 +2495,10 @@ impl Drop for SurfaceShared {
             return;
         }
 
-        let instance =
-            ash::khr::surface::Instance::new(&self.instance.entry, &self.instance.instance);
+        // SAFETY: The surface could only have been created if the surface extension
+        // exists.
+        debug_assert!(self.instance.extensions.surface.is_some());
+        let instance = unsafe { self.instance.extensions.surface.as_ref().unwrap_unchecked() };
 
         unsafe {
             instance.destroy_surface(self.surface, ALLOC);
@@ -2522,10 +2523,19 @@ impl Surface {
         // - `physicalDevice` and `surface` must have been created from the same `VkInstance`.
         assert!(self.shared.instance.same(&device.device.instance));
 
-        let instance = ash::khr::surface::Instance::new(
-            &self.shared.instance.entry,
-            &self.shared.instance.instance,
-        );
+        // SAFETY: The `create_surface` constructor that creates this `Surface`
+        // already checks that the surface extension exists.
+        // If the value was `Some(..)` at creation of this `Surface` it stays
+        // `Some(..)` forever.
+        debug_assert!(self.shared.instance.extensions.surface.is_some());
+        let instance = unsafe {
+            self.shared
+                .instance
+                .extensions
+                .surface
+                .as_ref()
+                .unwrap_unchecked()
+        };
 
         let is_supported = unsafe {
             instance.get_physical_device_surface_support(
@@ -2607,6 +2617,11 @@ impl Surface {
         config: SwapchainConfig,
         caps: &SwapchainCapabilities,
     ) -> Result<Swapchain, Error> {
+        // This is the first time we create a swapchain.
+        // Once we return a `Swapchain` we must ensure that the swapchain
+        // extension is enabled.
+        assert!(device.device.extensions.swapchain.is_some());
+
         // SAFETY: `old_swapchain` is null.
         let (swapchain, images) = unsafe {
             self.shared
@@ -2647,6 +2662,18 @@ impl Swapchain {
         config: SwapchainConfig,
         caps: &SwapchainCapabilities,
     ) -> Result<(), Error> {
+        // SAFETY: The `Swapchain` constructor guarantees that the swapchain extension
+        // is enabled on the device. Enabled extensions cannot be disabled.
+        debug_assert!(self.device.device.extensions.swapchain.is_some());
+        let device = unsafe {
+            self.device
+                .device
+                .extensions
+                .swapchain
+                .as_ref()
+                .unwrap_unchecked()
+        };
+
         // SAFETY: `self.swapchain` is a valid swapchain created by `self.surface`.
         // Since this function accepts a mutable reference this swapchain is not used.
         let (swapchain, images) = match unsafe {
@@ -2660,10 +2687,6 @@ impl Swapchain {
                 // already destroyed and is null.
                 if !self.swapchain.is_null() {
                     unsafe {
-                        let device = ash::khr::swapchain::Device::new(
-                            &self.surface.instance.instance,
-                            &self.device.device,
-                        );
                         device.destroy_swapchain(self.swapchain, ALLOC);
                     }
                 }
@@ -2678,10 +2701,6 @@ impl Swapchain {
         // already destroyed and is null.
         if !self.swapchain.is_null() {
             unsafe {
-                let device = ash::khr::swapchain::Device::new(
-                    &self.surface.instance.instance,
-                    &self.device.device,
-                );
                 device.destroy_swapchain(self.swapchain, ALLOC);
             }
         }
@@ -2713,8 +2732,17 @@ impl Swapchain {
             return Err(Error::InvalidatedSwapchain);
         }
 
-        let device =
-            ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
+        // SAFETY: The `Swapchain` constructor guarantees that the swapchain extension
+        // is enabled on the device. Enabled extensions cannot be disabled.
+        debug_assert!(self.device.device.extensions.swapchain.is_some());
+        let device = unsafe {
+            self.device
+                .device
+                .extensions
+                .swapchain
+                .as_ref()
+                .unwrap_unchecked()
+        };
 
         let (image_index, suboptimal) = unsafe {
             device
@@ -2760,8 +2788,18 @@ impl Drop for Swapchain {
             return;
         }
 
-        let device =
-            ash::khr::swapchain::Device::new(&self.surface.instance.instance, &self.device.device);
+        // SAFETY: The `Swapchain` constructor guarantees that the swapchain extension
+        // is enabled on the device. Enabled extensions cannot be disabled.
+        debug_assert!(self.device.device.extensions.swapchain.is_some());
+        let device = unsafe {
+            self.device
+                .device
+                .extensions
+                .swapchain
+                .as_ref()
+                .unwrap_unchecked()
+        };
+
         unsafe {
             device.destroy_swapchain(self.swapchain, ALLOC);
         }
@@ -3834,6 +3872,10 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
     ///
     /// See <https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawMeshTasksEXT.html>
     pub fn draw_mesh_tasks(&mut self, x: u32, y: u32, z: u32) {
+        let Some(device) = &self.encoder.device.extensions.mesh_shader else {
+            panic!("VK_EXT_mesh_shader extension not enabled");
+        };
+
         let pipeline = self.pipeline.as_ref().expect("Pipeline is not set");
         let total = x.checked_mul(y).unwrap().checked_mul(z).unwrap();
         match pipeline.stages[0] {
@@ -3855,8 +3897,7 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         }
 
         unsafe {
-            self.mesh_shader_device()
-                .cmd_draw_mesh_tasks(self.encoder.buffer, x, y, z);
+            device.cmd_draw_mesh_tasks(self.encoder.buffer, x, y, z);
         }
     }
 
@@ -3868,8 +3909,12 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         draw_count: u32,
         stride: u32,
     ) {
+        let Some(device) = &self.encoder.device.extensions.mesh_shader else {
+            panic!("VK_EXT_mesh_shader extension not enabled");
+        };
+
         unsafe {
-            self.mesh_shader_device().cmd_draw_mesh_tasks_indirect(
+            device.cmd_draw_mesh_tasks_indirect(
                 self.encoder.buffer,
                 buffer.buffer,
                 offset,
@@ -3889,25 +3934,21 @@ impl<'encoder, 'resources> RenderPass<'encoder, 'resources> {
         max_draw_count: u32,
         stride: u32,
     ) {
-        unsafe {
-            self.mesh_shader_device()
-                .cmd_draw_mesh_tasks_indirect_count(
-                    self.encoder.buffer,
-                    buffer.buffer,
-                    offset,
-                    count_buffer.buffer,
-                    count_buffer_offset,
-                    max_draw_count,
-                    stride,
-                );
-        }
-    }
+        let Some(device) = &self.encoder.device.extensions.mesh_shader else {
+            panic!("VK_EXT_mesh_shader extension not enabled");
+        };
 
-    fn mesh_shader_device(&self) -> ash::ext::mesh_shader::Device {
-        ash::ext::mesh_shader::Device::new(
-            &self.encoder.device.instance.instance,
-            &self.encoder.device.device,
-        )
+        unsafe {
+            device.cmd_draw_mesh_tasks_indirect_count(
+                self.encoder.buffer,
+                buffer.buffer,
+                offset,
+                count_buffer.buffer,
+                count_buffer_offset,
+                max_draw_count,
+                stride,
+            );
+        }
     }
 }
 
@@ -4085,8 +4126,17 @@ impl<'a> SwapchainTexture<'a> {
         queue: &mut Queue,
         cmd: QueuePresent<'_>,
     ) -> Result<(), Error> {
-        let device =
-            ash::khr::swapchain::Device::new(&self.device.device.instance, &self.device.device);
+        // SAFETY: The `SwapchainTexture` constructor guarantees that the swapchain
+        // extension is enabled on the device.
+        debug_assert!(self.device.device.extensions.swapchain.is_some());
+        let device = unsafe {
+            self.device
+                .device
+                .extensions
+                .swapchain
+                .as_ref()
+                .unwrap_unchecked()
+        };
 
         let signal_fences = cmd.signal.map(|fence| {
             if self.device.extensions().swapchain_maintenance1 {
@@ -4112,7 +4162,13 @@ impl<'a> SwapchainTexture<'a> {
 
         // Present fence must only be present if `VK_EXT_swapchain_maintenance1` is enabled.
         // We ignore the parameter if the extnesion is not present.
-        if self.device.device.extensions.swapchain_maintenance1 {
+        if self
+            .device
+            .device
+            .extensions
+            .swapchain_maintenance1
+            .is_some()
+        {
             if let Some(present_fence_info) = &mut present_fence_info {
                 info = info.push_next(present_fence_info);
             }
@@ -4832,6 +4888,7 @@ struct InstanceShared {
     entry: Entry,
     instance: ash::Instance,
     messenger: Option<vk::DebugUtilsMessengerEXT>,
+    extensions: InstanceExtensionFns,
 }
 
 impl InstanceShared {
@@ -4862,8 +4919,9 @@ impl Drop for InstanceShared {
         }
 
         if let Some(messenger) = self.messenger.take() {
+            let instance = self.extensions.debug_utils.as_ref().unwrap();
+
             unsafe {
-                let instance = debug_utils::Instance::new(&self.entry, &self.instance);
                 instance.destroy_debug_utils_messenger(messenger, ALLOC);
             }
         }
@@ -4874,12 +4932,64 @@ impl Drop for InstanceShared {
     }
 }
 
+/// Instance extension function pointers.
+#[derive(Clone)]
+struct InstanceExtensionFns {
+    surface: Option<ash::khr::surface::Instance>,
+    #[cfg(all(unix, feature = "wayland"))]
+    surface_wayland: Option<ash::khr::wayland_surface::Instance>,
+    #[cfg(all(unix, feature = "x11"))]
+    surface_xcb: Option<ash::khr::xcb_surface::Instance>,
+    #[cfg(all(unix, feature = "x11"))]
+    surface_xlib: Option<ash::khr::xlib_surface::Instance>,
+    #[cfg(windows)]
+    surface_win32: Option<ash::khr::win32_surface::Instance>,
+    surface_maintenance1: Option<()>,
+    get_surface_capabilities2: Option<()>,
+    debug_utils: Option<ash::ext::debug_utils::Instance>,
+}
+
+impl InstanceExtensionFns {
+    fn new(
+        entry: &Entry,
+        instance: &ash::Instance,
+        supported_extensions: &InstanceExtensions,
+    ) -> Self {
+        Self {
+            surface: supported_extensions
+                .surface
+                .then(|| ash::khr::surface::Instance::new(entry, instance)),
+            #[cfg(all(unix, feature = "wayland"))]
+            surface_wayland: supported_extensions
+                .surface_wayland
+                .then(|| ash::khr::wayland_surface::Instance::new(entry, instance)),
+            #[cfg(all(unix, feature = "x11"))]
+            surface_xcb: supported_extensions
+                .surface_xcb
+                .then(|| ash::khr::xcb_surface::Instance::new(entry, instance)),
+            #[cfg(all(unix, feature = "x11"))]
+            surface_xlib: supported_extensions
+                .surface_xlib
+                .then(|| ash::khr::xlib_surface::Instance::new(entry, instance)),
+            #[cfg(windows)]
+            surface_win32: supported_extensions
+                .surface_win32
+                .then(|| ash::khr::win32_surface::Instance::new(entry, instance)),
+            surface_maintenance1: supported_extensions.surface_maintenance1.then(|| ()),
+            get_surface_capabilities2: supported_extensions.get_surface_capabilities2.then(|| ()),
+            debug_utils: supported_extensions
+                .debug_utils
+                .then(|| ash::ext::debug_utils::Instance::new(entry, instance)),
+        }
+    }
+}
+
 #[derive(Clone)]
 struct DeviceShared {
     instance: Arc<InstanceShared>,
     device: ash::Device,
     limits: DeviceLimits,
-    extensions: DeviceExtensions,
+    extensions: DeviceExtensionFns,
     memory_properties: AdapterMemoryProperties,
     /// Number of currently active allocations.
     num_allocations: Arc<AtomicU32>,
@@ -4918,6 +5028,32 @@ impl Drop for DeviceShared {
 
         unsafe {
             self.device.destroy_device(ALLOC);
+        }
+    }
+}
+
+/// Device extension function pointers.
+#[derive(Clone)]
+struct DeviceExtensionFns {
+    swapchain: Option<ash::khr::swapchain::Device>,
+    swapchain_maintenance1: Option<()>,
+    mesh_shader: Option<ash::ext::mesh_shader::Device>,
+}
+
+impl DeviceExtensionFns {
+    fn new(
+        instance: &ash::Instance,
+        device: &ash::Device,
+        supported_extensions: &DeviceExtensions,
+    ) -> Self {
+        Self {
+            swapchain: supported_extensions
+                .swapchain
+                .then(|| ash::khr::swapchain::Device::new(instance, device)),
+            swapchain_maintenance1: supported_extensions.swapchain_maintenance1.then(|| ()),
+            mesh_shader: supported_extensions
+                .mesh_shader
+                .then(|| ash::ext::mesh_shader::Device::new(instance, device)),
         }
     }
 }
