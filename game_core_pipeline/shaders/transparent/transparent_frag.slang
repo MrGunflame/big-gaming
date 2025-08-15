@@ -40,30 +40,18 @@ struct Input {
 
 [shader("fragment")]
 func main(input: Input) {
-    var write = true;
     if (depth[vector<u32, 2>(input.clip_position.xy)] > input.clip_position.z) {
-        // discard;
-        write = false;
+        discard;
     }
-
-    let ndc = input.ndc.xyz / input.ndc.w;
-    if (abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0 || abs(ndc.z) > 1.0) {
-        // discard;
-        write = false;
-    }
-
 
     var color = shading(input);
-
-    // color = Vec4(abs(ndc), 1.0);
 
     // Fragments with alpha 0.0 can be completely ignored and discarded.
     // The logic would still be correct without discarding these fragments,
     // but they would have no effect on the blending stage, so we can discard
     // them here to save on memory.
     if (color.a == 0.0) {
-        // discard;
-        write = false;
+        discard;
     }
 
     // The value 0 indicates termination (i.e. no value following).
@@ -71,19 +59,15 @@ func main(input: Input) {
     // 1, preventing any thread to read the value 0 here.
     let index = frag_counter[0].add(1);
     if (index >= elements.getCount()) {
-        // discard;
-        write = false;
+        discard;
     }
 
-    if (write) {
-        var prev = 0;
-        InterlockedExchange(heads[vector<u32, 2>(input.clip_position.xy)], index, prev);
+    var prev = 0;
+    InterlockedExchange(heads[vector<u32, 2>(input.clip_position.xy)], index, prev);
 
-        elements[index].color = color;
-        elements[index].depth = input.clip_position.z;
-        elements[index].next = prev;
-    }
-
+    elements[index].color = color;
+    elements[index].depth = input.clip_position.z;
+    elements[index].next = prev;
 }
 
 func shading(input: Input) -> Vec4 {
