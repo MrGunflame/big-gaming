@@ -121,33 +121,61 @@ pub struct PipelineInner {
 }
 
 #[derive(Debug)]
-pub struct RefCount(AtomicUsize);
+pub struct RefCount {
+    // We maintain two separate counters.
+    // The external counter indicates the number resource handles accessible
+    // from user code.
+    // The internal counter indicates the total number of resource references.
+    // Every external reference also is a internal reference.
+    internal: AtomicUsize,
+    external: AtomicUsize,
+}
 
 impl RefCount {
     pub const fn new() -> Self {
-        RefCount(AtomicUsize::new(1))
+        Self {
+            internal: AtomicUsize::new(1),
+            external: AtomicUsize::new(1),
+        }
     }
 }
 
 impl RefCount {
-    pub fn increment(&self) {
-        self.0.fetch_add(1, Ordering::Relaxed);
+    pub fn external(&self) -> usize {
+        self.external.load(Ordering::Relaxed)
+    }
+
+    pub fn increment_internal(&self) {
+        self.internal.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn increment_external(&self) {
+        self.internal.fetch_add(1, Ordering::Relaxed);
+        self.external.fetch_add(1, Ordering::Relaxed);
     }
 
     /// Decrements the reference counter and returns whether the refcount was the last one.
     #[must_use]
-    pub fn decrement(&self) -> bool {
-        self.decrement_many(1)
+    pub fn decrement_internal(&self) -> bool {
+        self.decrement_many_internal(1)
     }
 
-    /// Decrements the reference counter by `count` at once.
     #[must_use]
-    pub fn decrement_many(&self, count: usize) -> bool {
-        if self.0.fetch_sub(count, Ordering::Release) != count {
+    pub fn decrement_many_internal(&self, count: usize) -> bool {
+        if self.internal.fetch_sub(count, Ordering::Release) != count {
             return false;
         }
 
-        self.0.load(Ordering::Acquire);
+        self.internal.load(Ordering::Acquire);
         true
+    }
+
+    /// Decrements the reference counter and returns whether the refcount was the last one.
+    #[must_use]
+    pub fn decrement_external(&self) -> bool {
+        // The following Release store will order the external
+        // update before the internal update.
+        self.external.fetch_sub(1, Ordering::Relaxed);
+        self.decrement_many_internal(1)
     }
 }
