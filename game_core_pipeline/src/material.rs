@@ -4,6 +4,7 @@ use crate::entities::ImageHandle;
 
 #[derive(Clone, Debug)]
 pub struct StandardMaterial {
+    pub alpha_mode: AlphaMode,
     /// The color of the surface before lighting is applied.
     ///
     /// Defaults to [`WHITE`].
@@ -69,6 +70,7 @@ pub struct StandardMaterial {
 impl Default for StandardMaterial {
     fn default() -> Self {
         Self {
+            alpha_mode: AlphaMode::default(),
             base_color: Color::WHITE,
             base_color_texture: None,
             normal_texture: None,
@@ -84,4 +86,11 @@ impl Default for StandardMaterial {
             unlit: false,
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub enum AlphaMode {
+    #[default]
+    Opaque,
+    Mask,
 }

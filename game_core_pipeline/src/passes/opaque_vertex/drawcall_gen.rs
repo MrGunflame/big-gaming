@@ -9,7 +9,7 @@ use game_render::api::{
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     BufferUsage, ComputeStage, DescriptorBinding, DescriptorType, DrawIndexedIndirectCommand,
-    FrontFace, PipelineStage, PrimitiveTopology, ShaderStages, TextureFormat,
+    FrontFace, PipelineStage, PrimitiveTopology, PushConstantRange, ShaderStages, TextureFormat,
 };
 use game_render::graph::{Node, RenderContext};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -81,11 +81,11 @@ impl Node for DrawcallGenPass {
             unreachable!()
         };
 
-        if mesh_state.num_instances == 0 {
+        if mesh_state.num_opauqe_instances == 0 {
             return;
         }
 
-        let instances_in = mesh_state.instances.buffer(ctx.queue);
+        let instances_in = mesh_state.opaque_instances.buffer(ctx.queue);
 
         let instances_out = ctx.queue.create_buffer(&BufferDescriptor {
             size: instances_in.size(),
@@ -94,7 +94,8 @@ impl Node for DrawcallGenPass {
         });
 
         let draws = ctx.queue.create_buffer(&BufferDescriptor {
-            size: mesh_state.num_instances as u64 * size_of::<DrawIndexedIndirectCommand>() as u64,
+            size: mesh_state.num_opauqe_instances as u64
+                * size_of::<DrawIndexedIndirectCommand>() as u64,
             usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
             flags: UsageFlags::empty(),
         });
@@ -121,9 +122,14 @@ impl Node for DrawcallGenPass {
             name: "Drawcall Generation",
         });
 
-        let workgroups = mesh_state.num_instances.div_ceil(WORKGROUP_SIZE);
+        let workgroups = mesh_state.num_opauqe_instances.div_ceil(WORKGROUP_SIZE);
 
         compute_pass.set_pipeline(&*self.pipeline.get(ctx.queue, TextureFormat::Rgba8Unorm));
+        compute_pass.set_push_constants(
+            ShaderStages::COMPUTE,
+            0,
+            bytemuck::bytes_of(&mesh_state.num_opauqe_instances),
+        );
         compute_pass.set_descriptor_set(0, &descriptor_set);
         compute_pass.dispatch(workgroups, 1, 1);
 
@@ -154,7 +160,10 @@ impl PipelineBuilder for BuildPipeline {
                 entry: "main",
             })],
             depth_stencil_state: None,
-            push_constant_ranges: &[],
+            push_constant_ranges: &[PushConstantRange {
+                range: 0..4,
+                stages: ShaderStages::COMPUTE,
+            }],
         })
     }
 }

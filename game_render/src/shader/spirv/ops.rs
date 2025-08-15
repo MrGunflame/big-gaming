@@ -77,6 +77,9 @@ pub enum Instruction {
     FunctionCall(OpFunctionCall),
     SampledImage(OpSampledImage),
     ImageSampleImplicitLod(OpImageSampleImplicitLod),
+    ImageFetch(OpImageFetch),
+    ImageRead(OpImageRead),
+    ImageWrite(OpImageWrite),
     ConvertFToU(OpConvertFToU),
     ConvertFToS(OpConvertFToS),
     ConvertSToF(OpConvertSToF),
@@ -310,6 +313,9 @@ impl Instruction {
             FunctionCall => FunctionCall,
             SampledImage => SampledImage,
             ImageSampleImplicitLod => ImageSampleImplicitLod,
+            ImageFetch => ImageFetch,
+            ImageRead => ImageRead,
+            ImageWrite => ImageWrite,
             ConvertFToU => ConvertFToU,
             ConvertFToS => ConvertFToS,
             ConvertSToF => ConvertSToF,
@@ -537,6 +543,9 @@ impl Instruction {
             FunctionCall => FunctionCall,
             SampledImage => SampledImage,
             ImageSampleImplicitLod => ImageSampleImplicitLod,
+            ImageFetch => ImageFetch,
+            ImageRead => ImageRead,
+            ImageWrite => ImageWrite,
             ConvertFToU => ConvertFToU,
             ConvertFToS => ConvertFToS,
             ConvertSToF => ConvertSToF,
@@ -1810,6 +1819,38 @@ spirv_op! {
         pub result: Id,
         pub sampled_image: Id,
         pub corrdinate: Id,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageFetch {
+        pub result_type: Id,
+        pub result: Id,
+        pub image: Id,
+        pub coordinate: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageRead {
+        pub result_type: Id,
+        pub result: Id,
+        pub image: Id,
+        pub coordinate: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageWrite {
+        pub image: Id,
+        pub coordinate: Id,
+        pub texel: Id,
+        pub operands: Vec<u32>,
     }
 }
 

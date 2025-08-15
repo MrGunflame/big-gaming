@@ -8,7 +8,6 @@ mod ops;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::env::vars;
 use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 
@@ -27,6 +26,7 @@ use spirv::{Capability, ExecutionModel, StorageClass, MAGIC_NUMBER};
 use thiserror::Error;
 
 use crate::backend::{DescriptorType, ShaderStage};
+use crate::shader::spirv::ops::OpUndef;
 use crate::shader::ShaderAccess;
 
 use super::{BindingLocation, Options, ShaderBinding};
@@ -501,6 +501,9 @@ impl SpirvModule {
                 Instruction::TypeFunction(ins) => {
                     types.insert(ins.result, OpType::Function(ins));
                 }
+                Instruction::Undef(ins) => {
+                    constants.insert(ins.result, Constant::Undef(ins));
+                }
                 Instruction::ConstantTrue(ins) => {
                     constants.insert(ins.result, Constant::ConstantTrue(ins));
                 }
@@ -661,6 +664,7 @@ impl SpirvModule {
 
             for (id, constant) in &self.constants {
                 let (ins, reqs) = match constant {
+                    Constant::Undef(v) => (Instruction::Undef(*v), vec![v.result_type]),
                     Constant::ConstantTrue(v) => {
                         (Instruction::ConstantTrue(*v), vec![v.result_type])
                     }
@@ -767,8 +771,22 @@ impl SpirvModule {
             for instruction in func.blocks.iter().map(|b| &b.instructions).flatten() {
                 match instruction {
                     Instruction::Load(ins) => {
-                        if let Some(access) = variables.get_mut(&ins.pointer) {
-                            *access |= ShaderAccess::READ;
+                        // Images are loaded through pointers, such that `OpLoad` takes
+                        // `OpVariable` of type `OpTypePointer %img_type` and returns a local
+                        // with type `%img_type`.
+                        if matches!(
+                            self.types[&ins.result_type],
+                            OpType::Image(_) | OpType::SampledImage(_)
+                        ) {
+                            let proxy_id =
+                                proxies.get(&ins.pointer).copied().unwrap_or(ins.pointer);
+                            variables.insert(ins.result, ShaderAccess::empty());
+                            proxies.insert(ins.result, proxy_id);
+                        } else {
+                            // Otherwise we have a regular load from the variable.
+                            if let Some(access) = variables.get_mut(&ins.pointer) {
+                                *access |= ShaderAccess::READ;
+                            }
                         }
                     }
                     Instruction::Store(ins) => {
@@ -875,6 +893,21 @@ impl SpirvModule {
                             *access |= ShaderAccess::WRITE;
                         }
                     }
+                    Instruction::ImageFetch(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageRead(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageWrite(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.image) {
+                            *access |= ShaderAccess::WRITE;
+                        }
+                    }
                     Instruction::AccessChain(ins) => {
                         // `OpAccessChain` creates a pointer to the element `base`
                         // with the given `indices`.
@@ -919,7 +952,7 @@ impl SpirvModule {
                 (OpType::Void, OpType::Void) => true,
                 (OpType::Bool, OpType::Bool) => true,
                 (OpType::Int(lhs), OpType::Int(rhs)) => {
-                    lhs.width == lhs.width && lhs.is_signed == rhs.is_signed
+                    lhs.width == rhs.width && lhs.is_signed == rhs.is_signed
                 }
                 (OpType::Float(lhs), OpType::Float(rhs)) => lhs.width == rhs.width,
                 (OpType::Vector(lhs), OpType::Vector(rhs)) => {
@@ -983,6 +1016,7 @@ impl SpirvModule {
     fn create_constant(&mut self, mut constant: Constant) -> Id {
         for (id, other) in &self.constants {
             let is_equivalent = match (&constant, other) {
+                (Constant::Undef(lhs), Constant::Undef(rhs)) => lhs.result_type == rhs.result_type,
                 (Constant::ConstantTrue(lhs), Constant::ConstantTrue(rhs)) => {
                     lhs.result_type == rhs.result_type
                 }
@@ -1031,6 +1065,7 @@ impl SpirvModule {
 
         let id = self.header.allocate_id();
         match &mut constant {
+            Constant::Undef(v) => v.result = id,
             Constant::ConstantTrue(v) => v.result = id,
             Constant::ConstantFalse(v) => v.result = id,
             Constant::Constant(v) => v.result = id,
@@ -1332,6 +1367,7 @@ impl Display for OpTypeKind {
 
 #[derive(Clone, Debug)]
 enum Constant {
+    Undef(OpUndef),
     ConstantTrue(OpConstantTrue),
     ConstantFalse(OpConstantFalse),
     Constant(OpConstant),
@@ -1483,6 +1519,38 @@ mod tests {
                 .into_iter()
                 .collect()
         );
+    }
+
+    #[test]
+    fn compute_global_access_storage_image_write() {
+        let text = r#"
+        OpMemoryModel Logical GLSL450
+
+        %ty_void     = OpTypeVoid
+        %ty_fn       = OpTypeFunction %ty_void
+        %ty_f32      = OpTypeFloat 32
+        %ty_img      = OpTypeImage %ty_f32 2D 2 0 0 2 R32ui
+        %ty_ptr      = OpTypePointer UniformConstant %ty_img
+        %ty_u32      = OpTypeInt 32 0
+        %ty_vec2_u32 = OpTypeVector %ty_u32 2
+
+        %const_0_u32 = OpConstant %ty_u32 0
+
+        %0 = OpVariable %ty_ptr UniformConstant
+
+        %1 = OpFunction %void None %ty_fn
+        %2 = OpLabel
+        %3 = OpLoad %ty_img %0
+        %4 = OpCompositeConstruct %ty_vec2_u32 %const_0_u32 %const_0_u32
+        OpImageWrite %3 %4 %const_0_u32
+        OpReturn
+        OpFunctionEnd
+        "#;
+
+        let bytes = assemble(text);
+        let module = SpirvModule::read(&bytes).unwrap();
+        let access = module.compute_global_accesses(Id(1));
+        assert_eq!(access, [(Id(0), ShaderAccess::WRITE)].into_iter().collect());
     }
 
     #[test]

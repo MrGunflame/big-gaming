@@ -3,6 +3,7 @@ import camera;
 import pbr;
 import lights;
 import material;
+import shared;
 
 struct PushConstants {
     Camera camera;
@@ -20,6 +21,11 @@ struct PushConstants {
 [[vk::binding(4, 1)]] Texture2D<Vec4>[] textures;
 [[vk::binding(5, 1)]] SamplerState sampler;
 
+[[vk::binding(0, 2)]] RWStructuredBuffer<Element> elements;
+[[vk::binding(1, 2)]] RWTexture2D<u32> heads;
+[[vk::binding(2, 2)]] RWStructuredBuffer<Atomic<u32>> frag_counter;
+[[vk::binding(3, 2)]] Texture2D<f32> depth;
+
 struct Input {
     Vec4 clip_position: SV_Position;
     bool front_facing: SV_IsFrontFace;
@@ -29,21 +35,65 @@ struct Input {
     [[vk::location(3)]] Vec4 world_tangent;
     [[vk::location(4)]] u32 material_index;
     [[vk::location(5)]] Vec4 vertex_color;
-}
-
-struct Output {
-    [[vk::location(0)]] Vec4 color;
+    [[vk::location(6)]] Vec4 ndc;
 }
 
 [shader("fragment")]
-func main(input: Input) -> Output {
+func main(input: Input) {
+    var write = true;
+    if (depth[vector<u32, 2>(input.clip_position.xy)] > input.clip_position.z) {
+        // discard;
+        write = false;
+    }
+
+    let ndc = input.ndc.xyz / input.ndc.w;
+    if (abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0 || abs(ndc.z) > 1.0) {
+        // discard;
+        write = false;
+    }
+
+
+    var color = shading(input);
+
+    // color = Vec4(abs(ndc), 1.0);
+
+    // Fragments with alpha 0.0 can be completely ignored and discarded.
+    // The logic would still be correct without discarding these fragments,
+    // but they would have no effect on the blending stage, so we can discard
+    // them here to save on memory.
+    if (color.a == 0.0) {
+        // discard;
+        write = false;
+    }
+
+    // The value 0 indicates termination (i.e. no value following).
+    // Note that the when initialized the host sets the atomic value to
+    // 1, preventing any thread to read the value 0 here.
+    let index = frag_counter[0].add(1);
+    if (index >= elements.getCount()) {
+        // discard;
+        write = false;
+    }
+
+    if (write) {
+        var prev = 0;
+        InterlockedExchange(heads[vector<u32, 2>(input.clip_position.xy)], index, prev);
+
+        elements[index].color = color;
+        elements[index].depth = input.clip_position.z;
+        elements[index].next = prev;
+    }
+
+}
+
+func shading(input: Input) -> Vec4 {
     let material = materials[input.material_index];
     let uv = input.uv;
 
     var base_color = load_base_color(material, uv) * input.vertex_color;
 
     if ((material.flags & MATERIAL_FLAGS_UNLIT) != 0) {
-        return Output(base_color);
+        return base_color;
     }
 
     let normal = load_normal(input);
@@ -89,7 +139,7 @@ func main(input: Input) -> Output {
         luminance += pbr::surface_shading(pbr_material, view_dir, light);
     }
 
-    return Output(Vec4(luminance, 1.0));
+    return Vec4(luminance, base_color.a);
 }
 
 func load_base_color(material: Material, uv: Vec2) -> Vec4 {
@@ -153,3 +203,4 @@ func get_roughness_from_glossiness(input: Input) -> f32 {
 func compute_metallic_from_specular_color(specular_color: Vec3) -> f32 {
     return max(max(specular_color.r, specular_color.g), specular_color.b);
 }
+

@@ -3,6 +3,7 @@ mod bump;
 mod free_list;
 
 pub use buddy::BuddyAllocator;
+use game_tracing::trace_span;
 
 use std::alloc::Layout;
 use std::num::NonZeroU64;
@@ -63,6 +64,8 @@ impl MemoryManager {
         memory_type: u32,
         dedicated_for: Option<DedicatedResource<'_>>,
     ) -> Result<MemoryAllocation, AllocError> {
+        let _span = trace_span!("MemoryManager::allocate").entered();
+
         if size > self.inner.properties.max_allocation_size {
             return Err(AllocError::AllocationTooBig);
         }
@@ -103,6 +106,8 @@ impl MemoryManager {
     }
 
     fn deallocate(&self, size: NonZeroU64, memory_type: u32) {
+        let _span = trace_span!("MemoryManager::deallocate").entered();
+
         let typ = &self.inner.properties.types[memory_type as usize];
         let heap = &self.inner.heaps[typ.heap as usize];
         heap.used.fetch_sub(size.get(), Ordering::Release);

@@ -129,7 +129,7 @@ impl MeshState {
         let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
         let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
 
-        InstanceKey(
+        InstanceKey::Opaque(
             self.instances.insert(&Instance {
                 transform: Mat4::from_scale_rotation_translation(
                     transform.scale,
@@ -151,7 +151,12 @@ impl MeshState {
     }
 
     pub fn remove_instance(&mut self, id: InstanceKey) {
-        self.instances.remove(id.0);
+        match id {
+            InstanceKey::Opaque(id) => {
+                self.instances.remove(id);
+            }
+            _ => unreachable!(),
+        }
     }
 
     pub fn get_meshlet_offset(&self, id: MeshKey) -> Option<u32> {

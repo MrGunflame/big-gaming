@@ -23,7 +23,7 @@ use parking_lot::Mutex;
 
 use crate::camera::CameraUniform;
 use crate::entities::{CameraId, SceneId};
-use crate::passes::{DEPTH_FORMAT, HDR_FORMAT, HDR_TEXTURE, MeshStateImpl, State};
+use crate::passes::{DEPTH_FORMAT, HDR_FORMAT, HDR_TEXTURE, MeshStateImpl, OPAQUE_DEPTH, State};
 
 use super::{INDIRECT_DRAW_BUFFER, INSTANCE_BUFFER};
 
@@ -187,7 +187,7 @@ impl OpaqueVertexForwardPass {
             size,
             mip_levels: 1,
             format: DEPTH_FORMAT,
-            usage: TextureUsage::RENDER_ATTACHMENT,
+            usage: TextureUsage::RENDER_ATTACHMENT | TextureUsage::TEXTURE_BINDING,
         });
 
         let scene = state.scenes.get_mut(&scene).unwrap();
@@ -276,7 +276,9 @@ impl OpaqueVertexForwardPass {
             size,
             mip_levels: 1,
             format: HDR_FORMAT,
-            usage: TextureUsage::TEXTURE_BINDING | TextureUsage::RENDER_ATTACHMENT,
+            usage: TextureUsage::TEXTURE_BINDING
+                | TextureUsage::RENDER_ATTACHMENT
+                | TextureUsage::STORAGE,
         });
 
         let mut render_pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
@@ -317,6 +319,7 @@ impl OpaqueVertexForwardPass {
 
         drop(render_pass);
         ctx.write(HDR_TEXTURE, render_target).unwrap();
+        ctx.write(OPAQUE_DEPTH, detpth_texture).unwrap();
     }
 
     fn clear_pass(&self, ctx: &mut RenderContext<'_, '_>) {
@@ -324,6 +327,15 @@ impl OpaqueVertexForwardPass {
             size: UVec2::ONE,
             mip_levels: 1,
             format: HDR_FORMAT,
+            usage: TextureUsage::TEXTURE_BINDING
+                | TextureUsage::RENDER_ATTACHMENT
+                | TextureUsage::STORAGE,
+        });
+
+        let depth_texture = ctx.queue.create_texture(&TextureDescriptor {
+            size: UVec2::ONE,
+            mip_levels: 1,
+            format: DEPTH_FORMAT,
             usage: TextureUsage::TEXTURE_BINDING | TextureUsage::RENDER_ATTACHMENT,
         });
 
@@ -334,10 +346,15 @@ impl OpaqueVertexForwardPass {
                 load_op: LoadOp::Clear(Color::BLACK),
                 store_op: StoreOp::Store,
             }],
-            depth_stencil_attachment: None,
+            depth_stencil_attachment: Some(&DepthStencilAttachment {
+                texture: &depth_texture,
+                load_op: LoadOp::Clear(0.0),
+                store_op: StoreOp::Store,
+            }),
         });
 
         ctx.write(HDR_TEXTURE, texture).unwrap();
+        ctx.write(OPAQUE_DEPTH, depth_texture).unwrap();
     }
 }
 

@@ -11,6 +11,7 @@ use std::num::NonZeroU64;
 use std::ops::{Bound, Range, RangeBounds};
 use std::sync::Arc;
 
+use ash::khr::bind_memory2;
 use bumpalo::Bump;
 use commands::{
     Command, CommandStream, ComputeCommand, ComputePassCmd, CopyBufferToBuffer,
@@ -190,16 +191,8 @@ impl CommandExecutor {
                                         .push(DeletionEvent::Buffer(id));
                                 }
                             }
-                            DescriptorSetResource::Texture(view) => {
-                                let texture = self.resources.textures.get(view.texture).unwrap();
-
-                                if texture.ref_count.decrement() {
-                                    self.resources
-                                        .deletion_queue
-                                        .push(DeletionEvent::Texture(view.texture));
-                                }
-                            }
-                            DescriptorSetResource::TextureArray(views) => {
+                            DescriptorSetResource::SampledTexture(views)
+                            | DescriptorSetResource::StorageTexture(views) => {
                                 for view in views {
                                     let texture =
                                         self.resources.textures.get(view.texture).unwrap();
@@ -269,7 +262,10 @@ impl<'a> CommandQueue<'a> {
     }
 
     /// Creates a new [`Buffer`].
+    #[track_caller]
     pub fn create_buffer(&self, descriptor: &BufferDescriptor) -> Buffer {
+        assert_ne!(descriptor.size, 0, "cannot create empty buffers");
+
         let id = self
             .executor
             .resources
@@ -704,8 +700,8 @@ impl<'a> CommandQueue<'a> {
         let mut bindings = VecMap::new();
         let mut num_buffers = 0;
         let mut num_samplers = 0;
-        let mut num_textures = 0;
-        let mut num_texture_arrays = 0;
+        let mut num_sampled_texture_arrays = 0;
+        let mut num_storage_texture_arrays = 0;
 
         let layout = self
             .executor
@@ -728,6 +724,8 @@ impl<'a> CommandQueue<'a> {
                 (BindingResource::Buffer(_), Some(DescriptorType::Storage)) => (),
                 (BindingResource::Texture(_), Some(DescriptorType::Texture)) => (),
                 (BindingResource::TextureArray(_), Some(DescriptorType::Texture)) => (),
+                (BindingResource::Texture(_), Some(DescriptorType::StorageTexture)) => (),
+                (BindingResource::TextureArray(_), Some(DescriptorType::StorageTexture)) => (),
                 (BindingResource::Sampler(_), Some(DescriptorType::Sampler)) => (),
                 _ => {
                     let found_type = match entry.resource {
@@ -742,6 +740,7 @@ impl<'a> CommandQueue<'a> {
                         Some(DescriptorType::Storage) => "storage buffer",
                         Some(DescriptorType::Texture) => "texture",
                         Some(DescriptorType::Sampler) => "sampler",
+                        Some(DescriptorType::StorageTexture) => "storage texture",
                         None => "none",
                     };
 
@@ -784,22 +783,22 @@ impl<'a> CommandQueue<'a> {
 
                     DescriptorSetResource::Sampler(sampler.id)
                 }
-                BindingResource::Texture(view) => {
+                BindingResource::Texture(view) if layout_ty == DescriptorType::Texture => {
                     assert!(
                         view.texture.usage.contains(TextureUsage::TEXTURE_BINDING),
                         "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
                     );
 
                     view.texture.increment_ref_count();
-                    num_textures += 1;
+                    num_sampled_texture_arrays += 1;
 
-                    DescriptorSetResource::Texture(RawTextureView {
+                    DescriptorSetResource::SampledTexture(vec![RawTextureView {
                         texture: view.texture.id,
                         base_mip_level: view.base_mip_level,
                         mip_levels: view.mip_levels,
-                    })
+                    }])
                 }
-                BindingResource::TextureArray(views) => {
+                BindingResource::TextureArray(views) if layout_ty == DescriptorType::Texture => {
                     for view in views {
                         assert!(
                             view.texture.usage.contains(TextureUsage::TEXTURE_BINDING),
@@ -811,9 +810,9 @@ impl<'a> CommandQueue<'a> {
                         view.texture.increment_ref_count();
                     }
 
-                    num_texture_arrays += 1;
+                    num_sampled_texture_arrays += 1;
 
-                    DescriptorSetResource::TextureArray(
+                    DescriptorSetResource::SampledTexture(
                         views
                             .into_iter()
                             .map(|view| RawTextureView {
@@ -824,6 +823,50 @@ impl<'a> CommandQueue<'a> {
                             .collect(),
                     )
                 }
+                BindingResource::Texture(view) if layout_ty == DescriptorType::StorageTexture => {
+                    assert!(
+                        view.texture.usage.contains(TextureUsage::STORAGE),
+                        "Texture cannot be bound to descriptor set: STORAGE not set",
+                    );
+
+                    view.texture.increment_ref_count();
+                    num_storage_texture_arrays += 1;
+
+                    DescriptorSetResource::StorageTexture(vec![RawTextureView {
+                        texture: view.texture.id,
+                        base_mip_level: view.base_mip_level,
+                        mip_levels: view.mip_levels,
+                    }])
+                }
+                BindingResource::TextureArray(views)
+                    if layout_ty == DescriptorType::StorageTexture =>
+                {
+                    for view in views {
+                        assert!(
+                            view.texture.usage.contains(TextureUsage::STORAGE),
+                            "Texture cannot be bound to descriptor set: STORAGE not set",
+                        );
+                    }
+
+                    for view in views {
+                        view.texture.increment_ref_count();
+                    }
+
+                    num_storage_texture_arrays += 1;
+
+                    DescriptorSetResource::StorageTexture(
+                        views
+                            .into_iter()
+                            .map(|view| RawTextureView {
+                                texture: view.texture.id,
+                                base_mip_level: view.base_mip_level,
+                                mip_levels: view.mip_levels,
+                            })
+                            .collect(),
+                    )
+                }
+                BindingResource::Texture(_) => unreachable!(),
+                BindingResource::TextureArray(_) => unreachable!(),
             };
 
             bindings.insert(entry.binding, resource);
@@ -855,8 +898,8 @@ impl<'a> CommandQueue<'a> {
                 bindings,
                 num_buffers,
                 num_samplers,
-                num_textures,
-                num_texture_arrays,
+                num_sampled_texture_arrays,
+                num_storage_texture_arrays,
                 layout: descriptor.layout.id,
                 ref_count: RefCount::new(),
             })
@@ -931,9 +974,17 @@ impl<'a> CommandQueue<'a> {
                 Some(binding.visibility)
             };
 
+            let is_comptaible = |pipeline: DescriptorType, shader: DescriptorType| {
+                if pipeline == DescriptorType::StorageTexture && shader == DescriptorType::Texture {
+                    return true;
+                }
+
+                pipeline == shader
+            };
+
             assert!(
                 get_descriptor_kind(binding.group, binding.binding)
-                    .is_some_and(|kind| kind == binding.kind),
+                    .is_some_and(|kind| is_comptaible(kind, binding.kind)),
                 "shader expects {:?} in location {:?}, but {:?} was provided",
                 binding.kind,
                 binding.location(),

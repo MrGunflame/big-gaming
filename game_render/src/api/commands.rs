@@ -267,20 +267,8 @@ impl Command {
                                                 .or_default() |= access;
                                         }
                                     }
-                                    DescriptorSetResource::Texture(view) => {
-                                        if let Some(access) = pipeline.bindings.get(*group, binding)
-                                        {
-                                            for mip in view.mips() {
-                                                *access_flags
-                                                    .entry(ResourceId::Texture(TextureMip {
-                                                        id: view.texture,
-                                                        mip_level: mip,
-                                                    }))
-                                                    .or_default() |= access;
-                                            }
-                                        }
-                                    }
-                                    DescriptorSetResource::TextureArray(views) => {
+                                    DescriptorSetResource::SampledTexture(views)
+                                    | DescriptorSetResource::StorageTexture(views) => {
                                         if let Some(access) = pipeline.bindings.get(*group, binding)
                                         {
                                             for view in views {
@@ -384,20 +372,8 @@ impl Command {
                                                 .or_default() |= access;
                                         }
                                     }
-                                    DescriptorSetResource::Texture(view) => {
-                                        if let Some(access) = pipeline.bindings.get(*group, binding)
-                                        {
-                                            for mip in view.mips() {
-                                                *access_flags
-                                                    .entry(ResourceId::Texture(TextureMip {
-                                                        id: view.texture,
-                                                        mip_level: mip,
-                                                    }))
-                                                    .or_default() |= access;
-                                            }
-                                        }
-                                    }
-                                    DescriptorSetResource::TextureArray(views) => {
+                                    DescriptorSetResource::SampledTexture(views)
+                                    | DescriptorSetResource::StorageTexture(views) => {
                                         if let Some(access) = pipeline.bindings.get(*group, binding)
                                         {
                                             for view in views {

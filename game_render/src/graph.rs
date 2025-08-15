@@ -177,6 +177,7 @@ impl RenderGraph {
     /// # Panics
     ///
     /// Panics if the nodes `node` or `depends_on` don't exist.
+    #[track_caller]
     pub fn add_node_dependency(&mut self, node: NodeLabel, depends_on: NodeLabel) {
         if !self.nodes.contains_key(&depends_on) {
             panic!("cannot add dependency: {:?} does not exist", depends_on);
@@ -208,6 +209,7 @@ impl RenderGraph {
     ///
     /// [`WRITE`]: SlotFlags::WRITE
     /// [`READ`]: SlotFlags::READ
+    #[track_caller]
     pub fn add_slot_dependency(
         &mut self,
         node: NodeLabel,
