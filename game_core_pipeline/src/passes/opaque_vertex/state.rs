@@ -10,7 +10,7 @@ use game_render::mesh::Mesh;
 use game_tracing::trace_span;
 use glam::{Mat3, Mat4, Vec4};
 
-use crate::passes::{InstanceKey, MeshKey};
+use crate::passes::{InstanceKey, MaterialState, MeshKey};
 
 #[derive(Debug)]
 pub struct VertexMeshState {
@@ -20,10 +20,15 @@ pub struct VertexMeshState {
     pub tangents: SubAllocatedGrowableBuffer<f32>,
     pub colors: SubAllocatedGrowableBuffer<f32>,
     pub index_buffer: SubAllocatedGrowableBuffer<u32>,
-    pub instances: CompactSlabBuffer<Instance>,
+    /// Instances that should be rendered with the opaque pipeline.
+    pub opaque_instances: CompactSlabBuffer<Instance>,
+    /// Instances that should be rendered with the transparent pipeline.
+    pub transparent_instances: CompactSlabBuffer<Instance>,
+
     pub mesh_offsets: SlabBuffer<MeshOffsets>,
     meshes: Arena<MeshData>,
-    pub num_instances: u32,
+    pub num_opauqe_instances: u32,
+    pub num_transparent_instances: u32,
 }
 
 impl VertexMeshState {
@@ -35,10 +40,12 @@ impl VertexMeshState {
             tangents: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             colors: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             index_buffer: SubAllocatedGrowableBuffer::new(queue, BufferUsage::INDEX),
-            instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
+            opaque_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
+            transparent_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
             mesh_offsets: SlabBuffer::new(BufferUsage::STORAGE),
             meshes: Arena::new(),
-            num_instances: 0,
+            num_opauqe_instances: 0,
+            num_transparent_instances: 0,
         }
     }
 
@@ -112,7 +119,7 @@ impl VertexMeshState {
         &mut self,
         transform: Transform,
         mesh: MeshKey,
-        material_index: SlabIndex,
+        material: &MaterialState,
     ) -> InstanceKey {
         let mesh = self.meshes.get(mesh.0).unwrap();
 
@@ -121,31 +128,62 @@ impl VertexMeshState {
         let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
         let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
 
-        self.num_instances += 1;
-        InstanceKey(
-            self.instances.insert(&Instance {
-                transform: Mat4::from_scale_rotation_translation(
-                    transform.scale,
-                    transform.rotation,
-                    transform.translation,
-                )
-                .to_cols_array_2d(),
-                normal: [
-                    normal_x.to_array(),
-                    normal_y.to_array(),
-                    normal_z.to_array(),
-                ],
-                material_index,
-                offsets: mesh.offsets,
-                index_offset: mesh.indices_offset as u32,
-                index_count: mesh.indices_count as u32,
-            }),
-        )
+        if material.is_opaque {
+            self.num_opauqe_instances += 1;
+            InstanceKey::Opaque(
+                self.opaque_instances.insert(&Instance {
+                    transform: Mat4::from_scale_rotation_translation(
+                        transform.scale,
+                        transform.rotation,
+                        transform.translation,
+                    )
+                    .to_cols_array_2d(),
+                    normal: [
+                        normal_x.to_array(),
+                        normal_y.to_array(),
+                        normal_z.to_array(),
+                    ],
+                    material_index: material.index,
+                    offsets: mesh.offsets,
+                    index_offset: mesh.indices_offset as u32,
+                    index_count: mesh.indices_count as u32,
+                }),
+            )
+        } else {
+            self.num_transparent_instances += 1;
+            InstanceKey::Transparent(
+                self.transparent_instances.insert(&Instance {
+                    transform: Mat4::from_scale_rotation_translation(
+                        transform.scale,
+                        transform.rotation,
+                        transform.translation,
+                    )
+                    .to_cols_array_2d(),
+                    normal: [
+                        normal_x.to_array(),
+                        normal_y.to_array(),
+                        normal_z.to_array(),
+                    ],
+                    material_index: material.index,
+                    offsets: mesh.offsets,
+                    index_offset: mesh.indices_offset as u32,
+                    index_count: mesh.indices_count as u32,
+                }),
+            )
+        }
     }
 
     pub fn remove_instance(&mut self, key: InstanceKey) {
-        self.instances.remove(key.0);
-        self.num_instances -= 1;
+        match key {
+            InstanceKey::Opaque(key) => {
+                self.opaque_instances.remove(key);
+                self.num_opauqe_instances -= 1;
+            }
+            InstanceKey::Transparent(key) => {
+                self.transparent_instances.remove(key);
+                self.num_transparent_instances -= 1;
+            }
+        }
     }
 }
 

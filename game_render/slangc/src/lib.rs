@@ -59,6 +59,7 @@ where
     let path = RemoveOnDrop(path);
 
     let mut args = Vec::new();
+
     // SPIR-V 1.6
     args.extend(["-target", "spirv"]);
     args.extend(["-profile", "spirv_1_6"]);

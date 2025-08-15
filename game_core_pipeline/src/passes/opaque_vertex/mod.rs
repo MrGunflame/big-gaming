@@ -8,6 +8,8 @@ use game_render::api::CommandQueue;
 use game_render::graph::{NodeLabel, RenderGraph, SlotFlags, SlotKind, SlotLabel};
 use parking_lot::Mutex;
 
+use crate::passes::OPAQUE_DEPTH;
+
 use super::{HDR_TEXTURE, State, UPDATE_PASS};
 
 pub mod state;
@@ -66,5 +68,12 @@ pub fn init(graph: &mut RenderGraph, queue: &CommandQueue<'_>, state: Arc<Mutex<
         SlotLabel::SURFACE,
         SlotKind::Texture,
         SlotFlags::READ,
+    );
+
+    graph.add_slot_dependency(
+        FORWARD_PASS,
+        OPAQUE_DEPTH,
+        SlotKind::Texture,
+        SlotFlags::WRITE,
     );
 }

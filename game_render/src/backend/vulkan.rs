@@ -563,6 +563,9 @@ impl Adapter {
             if features.contains(vk::FormatFeatureFlags::SAMPLED_IMAGE) {
                 usages |= TextureUsage::TEXTURE_BINDING;
             }
+            if features.contains(vk::FormatFeatureFlags::STORAGE_IMAGE) {
+                usages |= TextureUsage::STORAGE;
+            }
             if features.contains(vk::FormatFeatureFlags::COLOR_ATTACHMENT)
                 || features.contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
             {
@@ -929,7 +932,10 @@ impl Adapter {
         let features = vk::PhysicalDeviceFeatures::default()
             // Allows passing a draw count greater than 1 to indirect
             // draw calls.
-            .multi_draw_indirect(true);
+            .multi_draw_indirect(true)
+            .shader_int16(true)
+            .shader_int64(true)
+            .fragment_stores_and_atomics(true);
 
         let mut features11 = vk::PhysicalDeviceVulkan11Features::default()
             // Enables `SPV_KHR_shader_draw_parameters`, which in turns provides
@@ -971,7 +977,8 @@ impl Adapter {
 
         let mut features13 = vk::PhysicalDeviceVulkan13Features::default()
             .dynamic_rendering(true)
-            .synchronization2(true);
+            .synchronization2(true)
+            .shader_demote_to_helper_invocation(true);
 
         let mut swapchain_maintenance1 =
             vk::PhysicalDeviceSwapchainMaintenance1FeaturesEXT::default()
@@ -1075,6 +1082,10 @@ impl Adapter {
                 .properties
                 .limits
                 .max_descriptor_set_sampled_images,
+            max_descriptor_set_storage_images: props
+                .properties
+                .limits
+                .max_descriptor_set_storage_images,
             max_descriptor_set_samplers: props.properties.limits.max_descriptor_set_samplers,
             max_descriptor_set_storage_buffers: props
                 .properties
@@ -1677,7 +1688,9 @@ impl Device {
         let mut samplers = 0;
         let mut uniform_buffers = 0;
         let mut storage_buffers = 0;
-        let mut textures = 0;
+        let mut sampled_images = 0;
+        let mut storage_images = 0;
+
         for layout in descriptor.descriptors {
             for binding in &layout.bindings {
                 let count = binding.count.get();
@@ -1689,7 +1702,8 @@ impl Device {
                     // Equivalent to STORAGE_BUFFER
                     DescriptorType::Storage => storage_buffers += count,
                     // Equivalent to SAMPLED_IMAGE
-                    DescriptorType::Texture => textures += count,
+                    DescriptorType::Texture => sampled_images += count,
+                    DescriptorType::StorageTexture => storage_images += count,
                 }
             }
         }
@@ -1698,7 +1712,8 @@ impl Device {
         assert!(samplers <= self.device.limits.max_descriptor_set_samplers);
         assert!(uniform_buffers <= self.device.limits.max_descriptor_set_uniform_buffers);
         assert!(storage_buffers <= self.device.limits.max_descriptor_set_storage_buffers);
-        assert!(textures <= self.device.limits.max_descriptor_set_sampled_images);
+        assert!(sampled_images <= self.device.limits.max_descriptor_set_sampled_images);
+        assert!(storage_images <= self.device.limits.max_descriptor_set_storage_images);
 
         // These must only be true for each pipeline stage individually.
         // FIXME: Right now count all descriptors in all pipeline stages,
@@ -1706,9 +1721,9 @@ impl Device {
         assert!(samplers <= self.device.limits.max_per_stage_descriptor_samplers);
         assert!(uniform_buffers <= self.device.limits.max_per_stage_descriptor_uniform_buffers);
         assert!(storage_buffers <= self.device.limits.max_per_stage_descriptor_storage_buffers);
-        assert!(textures <= self.device.limits.max_per_stage_descriptor_sampled_images);
+        assert!(sampled_images <= self.device.limits.max_per_stage_descriptor_sampled_images);
         assert!(
-            samplers + uniform_buffers + storage_buffers + textures
+            samplers + uniform_buffers + storage_buffers + sampled_images
                 <= self.device.limits.max_per_stage_resources
         );
 
@@ -2171,6 +2186,10 @@ impl Device {
             (
                 vk::DescriptorType::SAMPLED_IMAGE,
                 descriptor.max_sampled_images,
+            ),
+            (
+                vk::DescriptorType::STORAGE_IMAGE,
+                descriptor.max_storage_images,
             ),
         ] {
             if count == 0 {
@@ -2866,6 +2885,9 @@ vk_enum! {
     TextureFormat::Bc7RgbaUnorm => vk::Format::BC7_UNORM_BLOCK,
     TextureFormat::Bc7RgbaUnormSrgb => vk::Format::BC7_SRGB_BLOCK,
     TextureFormat::Rgb9E5Ufloat => vk::Format::E5B9G9R9_UFLOAT_PACK32,
+    TextureFormat::R32Uint => vk::Format::R32_UINT,
+    TextureFormat::R32Sint => vk::Format::R32_SINT,
+    TextureFormat::R32SFloat => vk::Format::R32_SFLOAT,
 }
 
 vk_enum! {
@@ -2894,6 +2916,7 @@ vk_enum! {
     DescriptorType::Storage => vk::DescriptorType::STORAGE_BUFFER,
     DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
     DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
+    DescriptorType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
 }
 
 vk_enum! {
@@ -3002,6 +3025,9 @@ impl From<TextureUsage> for vk::ImageUsageFlags {
         }
         if value.contains(TextureUsage::TEXTURE_BINDING) {
             flags |= vk::ImageUsageFlags::SAMPLED;
+        }
+        if value.contains(TextureUsage::STORAGE) {
+            flags |= vk::ImageUsageFlags::STORAGE;
         }
         flags
     }
@@ -4576,6 +4602,9 @@ impl<'a> DescriptorSet<'a> {
                 WriteDescriptorResource::Texture(textures) => {
                     (DescriptorType::Texture, textures.len())
                 }
+                WriteDescriptorResource::StorageTexture(textures) => {
+                    (DescriptorType::StorageTexture, textures.len())
+                }
                 WriteDescriptorResource::Sampler(samplers) => {
                     (DescriptorType::Sampler, samplers.len())
                 }
@@ -4620,6 +4649,18 @@ impl<'a> DescriptorSet<'a> {
                         infos.push(Info { image: info });
                     }
                 }
+                WriteDescriptorResource::StorageTexture(textures) => {
+                    for texture in textures {
+                        let info = vk::DescriptorImageInfo::default()
+                            .image_view(texture.view)
+                            // TODO: Use a more suitable format than GENERAL
+                            // depending on usage.
+                            .image_layout(vk::ImageLayout::GENERAL)
+                            .sampler(vk::Sampler::null());
+
+                        infos.push(Info { image: info });
+                    }
+                }
                 WriteDescriptorResource::Sampler(samplers) => {
                     for sampler in samplers {
                         let info = vk::DescriptorImageInfo::default()
@@ -4645,6 +4686,7 @@ impl<'a> DescriptorSet<'a> {
                 DescriptorType::Storage => vk::DescriptorType::STORAGE_BUFFER,
                 DescriptorType::Texture => vk::DescriptorType::SAMPLED_IMAGE,
                 DescriptorType::Sampler => vk::DescriptorType::SAMPLER,
+                DescriptorType::StorageTexture => vk::DescriptorType::STORAGE_IMAGE,
             };
 
             let mut write = vk::WriteDescriptorSet::default()
@@ -5082,6 +5124,7 @@ pub struct DeviceLimits {
     max_descriptor_set_uniform_buffers: u32,
     max_descriptor_set_storage_buffers: u32,
     max_descriptor_set_sampled_images: u32,
+    max_descriptor_set_storage_images: u32,
     max_color_attachments: u32,
     // VkPhysicalDeviceMaintenance3Properties
     max_per_set_descriptors: u32,
@@ -5753,7 +5796,11 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
         Some(GraphicsPrimitiveStage::TaskShader) => vk::PipelineStageFlags2::TASK_SHADER_EXT,
         Some(GraphicsPrimitiveStage::MeshShader) => vk::PipelineStageFlags2::MESH_SHADER_EXT,
         Some(GraphicsPrimitiveStage::EarlyFragmentTests) => {
+            // FIXME: We need to LATE_FRAGMENT_TESTS when flushing
+            // but EARLY_FRAGMENT_TESTS when loading.
+            // Both is valid, but wasteful.
             vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
+                | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS
         }
         Some(GraphicsPrimitiveStage::FragmentShader) => vk::PipelineStageFlags2::FRAGMENT_SHADER,
         //Some(GraphicsStage::LateFragmentTests) => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
@@ -5787,11 +5834,18 @@ fn validate_shader_bindings(shader: &Shader, descriptors: &[&DescriptorSetLayout
             );
         };
 
+        let is_compatible = if shader_binding.kind == DescriptorType::Texture
+            && binding.kind == DescriptorType::StorageTexture
+        {
+            true
+        } else {
+            shader_binding.kind == binding.kind
+        };
+
         assert!(
-            shader_binding.kind == binding.kind,
+            is_compatible,
             "cannot bind {:?} to shader slot {:?}",
-            binding,
-            shader_binding,
+            binding, shader_binding,
         );
     }
 }

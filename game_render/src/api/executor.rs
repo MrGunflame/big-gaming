@@ -528,8 +528,10 @@ fn build_descriptor_set(
     let mut bindings = Vec::new();
 
     let buffer_views = ScratchBuffer::new(descriptor_set.num_buffers as usize);
-    let texture_views = ScratchBuffer::new(descriptor_set.num_textures as usize);
-    let texture_array_views = ScratchBuffer::new(descriptor_set.num_texture_arrays as usize);
+    let texture_array_views = ScratchBuffer::new(
+        descriptor_set.num_sampled_texture_arrays as usize
+            + descriptor_set.num_storage_texture_arrays as usize,
+    );
 
     for (binding, resource) in descriptor_set.bindings.iter() {
         let resource = match resource {
@@ -547,21 +549,7 @@ fn build_descriptor_set(
 
                 WriteDescriptorResource::StorageBuffer(slice::from_ref(view))
             }
-            DescriptorSetResource::Texture(view) => {
-                let texture = executor.textures.get(&view.texture).unwrap();
-                let view = texture_views.insert(unsafe {
-                    texture
-                        .texture()
-                        .create_view(&TextureViewDescriptor {
-                            base_mip_level: view.base_mip_level,
-                            mip_levels: view.mip_levels,
-                        })
-                        .make_static()
-                });
-
-                WriteDescriptorResource::Texture(slice::from_ref(view))
-            }
-            DescriptorSetResource::TextureArray(views) => {
+            DescriptorSetResource::SampledTexture(views) => {
                 let texture_views = texture_array_views.insert(ScratchBuffer::new(views.len()));
 
                 for view in views {
@@ -579,6 +567,25 @@ fn build_descriptor_set(
                 }
 
                 WriteDescriptorResource::Texture(texture_views.as_slice())
+            }
+            DescriptorSetResource::StorageTexture(views) => {
+                let texture_views = texture_array_views.insert(ScratchBuffer::new(views.len()));
+
+                for view in views {
+                    let texture = executor.textures.get(&view.texture).unwrap();
+
+                    texture_views.insert(unsafe {
+                        texture
+                            .texture()
+                            .create_view(&TextureViewDescriptor {
+                                base_mip_level: view.base_mip_level,
+                                mip_levels: view.mip_levels,
+                            })
+                            .make_static()
+                    });
+                }
+
+                WriteDescriptorResource::StorageTexture(texture_views.as_slice())
             }
             DescriptorSetResource::Sampler(sampler) => {
                 let sampler = resources.samplers.get(*sampler).unwrap();
@@ -599,7 +606,6 @@ fn build_descriptor_set(
     }
 
     let mut textures = Vec::new();
-    textures.extend(texture_views);
     for views in texture_array_views {
         textures.extend(views);
     }

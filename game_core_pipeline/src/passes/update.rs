@@ -24,6 +24,8 @@ use parking_lot::Mutex;
 use crate::StandardMaterial;
 use crate::entities::{Event, ImageId};
 use crate::lights::{DirectionalLightUniform, Light, PointLightUniform, SpotLightUniform};
+use crate::material::AlphaMode;
+use crate::passes::MaterialState;
 
 use super::{
     DefaultTextures, MaterialFlags, ObjectState, RawMaterialData, RawObjectData, SceneData, State,
@@ -92,11 +94,12 @@ impl Node for UpdatePass {
                         &state.images,
                         material,
                     );
+
                     state.materials.insert(id, material);
                 }
                 Event::DestroyMaterial(id) => {
-                    if let Some(index) = state.materials.remove(&id) {
-                        state.material_slab.remove(index);
+                    if let Some(material) = state.materials.remove(&id) {
+                        state.material_slab.remove(material.index);
                     }
                 }
                 Event::CreateObject(id, object) => {
@@ -111,7 +114,9 @@ impl Node for UpdatePass {
                     };
 
                     if let Some(scene) = state.scenes.get_mut(&object.scene.id()) {
-                        let key = state.mesh.create_instance(object.transform, mesh, material);
+                        let key = state
+                            .mesh
+                            .create_instance(object.transform, mesh, &material);
                         scene.objects.insert(id, ObjectState { id: key });
                     }
                 }
@@ -249,7 +254,7 @@ fn create_material(
     default_textures: &DefaultTextures,
     images: &HashMap<ImageId, TextureSlabIndex>,
     material: StandardMaterial,
-) -> SlabIndex {
+) -> MaterialState {
     let _span = trace_span!("create_material").entered();
 
     let mut flags = MaterialFlags::empty();
@@ -316,7 +321,7 @@ fn create_material(
         None => default_textures.specular_glossiness,
     };
 
-    materials.insert(&RawMaterialData {
+    let index = materials.insert(&RawMaterialData {
         flags,
         _pad0: [0; 3],
         base_color: material.base_color.as_rgba(),
@@ -329,7 +334,12 @@ fn create_material(
         normal_texture_index: normal,
         metallic_roughness_texture_index: metallic_roughness,
         specular_glossiness_texture_index: specular_glossiness,
-    })
+    });
+
+    MaterialState {
+        index,
+        is_opaque: matches!(material.alpha_mode, AlphaMode::Opaque),
+    }
 }
 
 fn create_object(

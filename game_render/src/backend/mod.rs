@@ -144,6 +144,10 @@ pub enum TextureFormat {
     /// Three component RGB encoded as three unsigned floats with 9 bits mantissa and 5 bits shared
     /// exponent. Packed as 32-bits.
     Rgb9E5Ufloat,
+
+    R32Uint,
+    R32Sint,
+    R32SFloat,
 }
 
 impl TextureFormat {
@@ -203,6 +207,7 @@ impl TextureFormat {
                 (u32::max(1, dim.x / 4) * u32::max(1, dim.y / 4) * block_size) as usize
             }
             Self::Rgb9E5Ufloat => dim.x as usize * dim.y as usize * 4,
+            Self::R32Uint | Self::R32Sint | Self::R32SFloat => dim.x as usize * dim.y as usize * 4,
         }
     }
 
@@ -229,6 +234,9 @@ impl TextureFormat {
             Self::Bc7RgbaUnorm,
             Self::Bc7RgbaUnormSrgb,
             Self::Rgb9E5Ufloat,
+            Self::R32Uint,
+            Self::R32Sint,
+            Self::R32SFloat,
         ]
     }
 }
@@ -497,6 +505,7 @@ pub enum DescriptorType {
     Storage,
     Sampler,
     Texture,
+    StorageTexture,
 }
 
 bitflags! {
@@ -523,6 +532,8 @@ bitflags! {
         const RENDER_ATTACHMENT = 1 << 2;
         /// The texture can be bound in a shader.
         const TEXTURE_BINDING = 1 << 3;
+        /// The texture can be bound as a readable/writable storage texture.
+        const STORAGE = 1 << 4;
     }
 }
 
@@ -585,6 +596,7 @@ pub struct DescriptorPoolDescriptor {
     pub max_storage_buffers: u32,
     pub max_samplers: u32,
     pub max_sampled_images: u32,
+    pub max_storage_images: u32,
 }
 
 pub struct WriteDescriptorResources<'a> {
@@ -602,6 +614,7 @@ pub enum WriteDescriptorResource<'a> {
     StorageBuffer(&'a [BufferView<'a>]),
     Texture(&'a [TextureView<'a>]),
     Sampler(&'a [Sampler]),
+    StorageTexture(&'a [TextureView<'a>]),
 }
 
 #[derive(Clone, Debug)]

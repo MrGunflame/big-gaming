@@ -234,6 +234,9 @@ impl MemoryAllocator {
                 next_page_size: MIN_PAGE_SIZE,
             });
 
+            let host_visible = props.types[memory_type as usize]
+                .flags
+                .contains(MemoryTypeFlags::HOST_VISIBLE);
             let device_local = props.types[memory_type as usize]
                 .flags
                 .contains(MemoryTypeFlags::DEVICE_LOCAL);

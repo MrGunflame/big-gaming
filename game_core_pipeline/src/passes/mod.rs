@@ -2,17 +2,16 @@ mod forward;
 mod opaque_vertex;
 mod post_process;
 mod state;
+mod transparent_vertex;
 mod update;
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
-use std::sync::atomic::fence;
 
 use bitflags::bitflags;
 use bytemuck::{NoUninit, Pod, Zeroable};
 use crossbeam::channel::Receiver;
-use forward::ForwardPass;
 use game_common::collections::arena::Key;
 use game_common::components::Transform;
 use game_render::api::{
@@ -36,15 +35,18 @@ use update::{TransformUniform, UpdatePass};
 use crate::camera::Camera;
 use crate::entities::{CameraId, Event, ImageId, LightId, MaterialId, MeshId, ObjectId, SceneId};
 use crate::lights::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::passes::transparent_vertex::TransparentVertexPass;
 
 const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
 const HDR_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
 
+const TRANSPARENT_VERTEX_PASS: NodeLabel = NodeLabel::new("TRANSPARENT_VERTEX_PASS");
 const UPDATE_PASS: NodeLabel = NodeLabel::new("UPDATE_PASS");
 const FORWARD_PASS: NodeLabel = NodeLabel::new("FORWARD_PASS");
 const POST_PROCESS_PASS: NodeLabel = NodeLabel::new("POST_PROCESS_PASS");
 pub const FINAL_RENDER_PASS: NodeLabel = NodeLabel::new("FINAL_RENDER_PASS");
 
+const OPAQUE_DEPTH: SlotLabel = SlotLabel::new("OPAQUE_DEPTH");
 const HDR_TEXTURE: SlotLabel = SlotLabel::new("HDR_TEXTURE");
 
 pub(crate) fn init(graph: &mut RenderGraph, queue: &CommandQueue<'_>, events: Receiver<Event>) {
@@ -71,11 +73,29 @@ pub(crate) fn init(graph: &mut RenderGraph, queue: &CommandQueue<'_>, events: Re
     //         SlotFlags::WRITE,
     //     );
     // } else {
-    opaque_vertex::init(graph, queue, state);
+    opaque_vertex::init(graph, queue, state.clone());
     // }
+
+    graph.add_node(
+        TRANSPARENT_VERTEX_PASS,
+        TransparentVertexPass::new(state.clone(), queue),
+    );
+    graph.add_slot_dependency(
+        TRANSPARENT_VERTEX_PASS,
+        OPAQUE_DEPTH,
+        SlotKind::Texture,
+        SlotFlags::READ,
+    );
+    graph.add_slot_dependency(
+        TRANSPARENT_VERTEX_PASS,
+        HDR_TEXTURE,
+        SlotKind::Texture,
+        SlotFlags::READ | SlotFlags::WRITE,
+    );
 
     let post_process_pass = PostProcessPass::new(queue, HDR_TEXTURE, SlotLabel::SURFACE);
     graph.add_node(POST_PROCESS_PASS, post_process_pass);
+    graph.add_node_dependency(POST_PROCESS_PASS, TRANSPARENT_VERTEX_PASS);
     graph.add_slot_dependency(
         POST_PROCESS_PASS,
         HDR_TEXTURE,
@@ -100,7 +120,7 @@ struct State {
 
     meshes: HashMap<MeshId, MeshKey>,
     images: HashMap<ImageId, TextureSlabIndex>,
-    materials: HashMap<MaterialId, SlabIndex>,
+    materials: HashMap<MaterialId, MaterialState>,
 
     scenes: HashMap<SceneId, SceneData>,
 
@@ -419,10 +439,10 @@ impl MeshStateImpl {
         &mut self,
         transform: Transform,
         mesh: MeshKey,
-        material: SlabIndex,
+        material: &MaterialState,
     ) -> InstanceKey {
         match self {
-            Self::Mesh(state) => state.create_instance(transform, mesh, material),
+            Self::Mesh(state) => state.create_instance(transform, mesh, material.index),
             Self::Vertex(state) => state.create_instance(transform, mesh, material),
         }
     }
@@ -439,4 +459,13 @@ impl MeshStateImpl {
 pub struct MeshKey(pub Key);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct InstanceKey(SlabIndex);
+pub enum InstanceKey {
+    Opaque(SlabIndex),
+    Transparent(SlabIndex),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct MaterialState {
+    pub index: SlabIndex,
+    pub is_opaque: bool,
+}
