@@ -3599,8 +3599,10 @@ impl<'a> CommandEncoder<'a> {
 
             let src_access_flags = convert_access_flags(barrier.src_access);
             let dst_access_flags = convert_access_flags(barrier.dst_access);
-            let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
-            let dst_stage_mask = access_flags_to_stage_mask(barrier.dst_access);
+            let src_stage_mask =
+                access_flags_to_stage_mask(barrier.src_access, BarrierAccessScope::Source);
+            let dst_stage_mask =
+                access_flags_to_stage_mask(barrier.dst_access, BarrierAccessScope::Destination);
 
             // - `offset` must be less than the size of `buffer`.
             // - `size` must not be 0.
@@ -3637,8 +3639,10 @@ impl<'a> CommandEncoder<'a> {
 
             let src_access_flags = convert_access_flags(barrier.src_access);
             let dst_access_flags = convert_access_flags(barrier.dst_access);
-            let src_stage_mask = access_flags_to_stage_mask(barrier.src_access);
-            let dst_stage_mask = access_flags_to_stage_mask(barrier.dst_access);
+            let src_stage_mask =
+                access_flags_to_stage_mask(barrier.src_access, BarrierAccessScope::Source);
+            let dst_stage_mask =
+                access_flags_to_stage_mask(barrier.dst_access, BarrierAccessScope::Destination);
             let old_layout = access_flags_to_image_layout(barrier.src_access);
             let new_layout = access_flags_to_image_layout(barrier.dst_access);
 
@@ -5670,7 +5674,16 @@ fn access_flags_to_image_layout(flags: AccessFlags) -> vk::ImageLayout {
     }
 }
 
-fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
+#[derive(Copy, Clone, Debug)]
+enum BarrierAccessScope {
+    Source,
+    Destination,
+}
+
+fn access_flags_to_stage_mask(
+    flags: AccessFlags,
+    scope: BarrierAccessScope,
+) -> vk::PipelineStageFlags2 {
     // See https://registry.khronos.org/vulkan/specs/latest/html/vkspec.html#synchronization-pipeline-stages-order
     // for ordered list of pipeline stages.
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -5686,61 +5699,47 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
         MeshShader,
         EarlyFragmentTests,
         FragmentShader,
-        //LateFragmentTests,
+        LateFragmentTests,
         ColorAttachmentOutput,
+        None,
     }
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
     enum ComputeStage {
         Compute,
+        None,
     }
 
     #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
     enum TransferStage {
         Transfer,
+        None,
     }
 
-    let mut transfer = None;
-    if flags.contains(AccessFlags::TRANSFER_READ) | flags.contains(AccessFlags::TRANSFER_WRITE) {
-        transfer = Some(TransferStage::Transfer);
+    let mut transfer = TransferStage::None;
+    if flags.intersects(AccessFlags::TRANSFER_READ | AccessFlags::TRANSFER_WRITE) {
+        transfer = TransferStage::Transfer;
     }
 
-    let mut compute = None;
-    if flags.contains(AccessFlags::COMPUTE_SHADER_READ)
-        | flags.contains(AccessFlags::COMPUTE_SHADER_WRITE)
-    {
-        compute = Some(ComputeStage::Compute);
+    let mut compute = ComputeStage::None;
+    if flags.intersects(AccessFlags::COMPUTE_SHADER_READ | AccessFlags::COMPUTE_SHADER_WRITE) {
+        compute = ComputeStage::Compute;
     }
 
     // See https://registry.khronos.org/vulkan/specs/latest/man/html/VkAccessFlagBits2.html
     // for which accesses map to which pipeline stages.
-    let mut graphics = None;
+    let mut graphics = GraphicsPrimitiveStage::None;
+
     for (flag, stage) in [
         (AccessFlags::INDIRECT, GraphicsPrimitiveStage::DrawIndirect),
         (AccessFlags::INDEX, GraphicsPrimitiveStage::VertexInput),
         (
-            AccessFlags::VERTEX_SHADER_READ,
+            AccessFlags::VERTEX_SHADER_READ | AccessFlags::VERTEX_SHADER_WRITE,
             GraphicsPrimitiveStage::VertexShader,
         ),
         (
-            AccessFlags::VERTEX_SHADER_WRITE,
-            GraphicsPrimitiveStage::VertexShader,
-        ),
-        (
-            AccessFlags::FRAGMENT_SHADER_READ,
+            AccessFlags::FRAGMENT_SHADER_READ | AccessFlags::FRAGMENT_SHADER_WRITE,
             GraphicsPrimitiveStage::FragmentShader,
-        ),
-        (
-            AccessFlags::FRAGMENT_SHADER_WRITE,
-            GraphicsPrimitiveStage::FragmentShader,
-        ),
-        (
-            AccessFlags::DEPTH_ATTACHMENT_READ,
-            GraphicsPrimitiveStage::EarlyFragmentTests,
-        ),
-        (
-            AccessFlags::DEPTH_ATTACHMENT_WRITE,
-            GraphicsPrimitiveStage::EarlyFragmentTests,
         ),
         (
             AccessFlags::COLOR_ATTACHMENT_READ,
@@ -5751,63 +5750,56 @@ fn access_flags_to_stage_mask(flags: AccessFlags) -> vk::PipelineStageFlags2 {
             GraphicsPrimitiveStage::ColorAttachmentOutput,
         ),
         (
-            AccessFlags::TASK_SHADER_READ,
+            AccessFlags::TASK_SHADER_READ | AccessFlags::TASK_SHADER_WRITE,
             GraphicsPrimitiveStage::TaskShader,
         ),
         (
-            AccessFlags::TASK_SHADER_WRITE,
-            GraphicsPrimitiveStage::TaskShader,
-        ),
-        (
-            AccessFlags::MESH_SHADER_READ,
-            GraphicsPrimitiveStage::MeshShader,
-        ),
-        (
-            AccessFlags::MESH_SHADER_WRITE,
+            AccessFlags::MESH_SHADER_READ | AccessFlags::MESH_SHADER_WRITE,
             GraphicsPrimitiveStage::MeshShader,
         ),
     ] {
-        if !flags.contains(flag) {
-            continue;
-        }
-
-        match &mut graphics {
-            Some(earliest_stage) => {
-                *earliest_stage = core::cmp::min(*earliest_stage, stage);
-            }
-            None => graphics = Some(stage),
+        if flags.intersects(flag) {
+            graphics = core::cmp::min(graphics, stage);
         }
     }
 
+    if flags.intersects(AccessFlags::DEPTH_ATTACHMENT_READ | AccessFlags::DEPTH_ATTACHMENT_WRITE) {
+        // Accessing depth buffers may happen in both the EARLY_FRAGMENT_TESTS and
+        // LATE_FRAGMENT_TESTS stage.
+        // This means flushing must happen in the LATE_FRAGMENT_TESTS stage and
+        // invalidation must happen in the EARLY_FRAGMENT_TESTS stage so that no
+        // accesses overlap.
+        let stage = match scope {
+            BarrierAccessScope::Source => GraphicsPrimitiveStage::LateFragmentTests,
+            BarrierAccessScope::Destination => GraphicsPrimitiveStage::EarlyFragmentTests,
+        };
+
+        graphics = core::cmp::min(graphics, stage);
+    }
+
     let transfer = match transfer {
-        Some(TransferStage::Transfer) => vk::PipelineStageFlags2::TRANSFER,
-        None => vk::PipelineStageFlags2::empty(),
+        TransferStage::Transfer => vk::PipelineStageFlags2::TRANSFER,
+        TransferStage::None => vk::PipelineStageFlags2::empty(),
     };
 
     let compute = match compute {
-        Some(ComputeStage::Compute) => vk::PipelineStageFlags2::COMPUTE_SHADER,
-        None => vk::PipelineStageFlags2::empty(),
+        ComputeStage::Compute => vk::PipelineStageFlags2::COMPUTE_SHADER,
+        ComputeStage::None => vk::PipelineStageFlags2::empty(),
     };
 
     let graphics = match graphics {
-        Some(GraphicsPrimitiveStage::DrawIndirect) => vk::PipelineStageFlags2::DRAW_INDIRECT,
-        Some(GraphicsPrimitiveStage::VertexInput) => vk::PipelineStageFlags2::VERTEX_INPUT,
-        Some(GraphicsPrimitiveStage::VertexShader) => vk::PipelineStageFlags2::VERTEX_SHADER,
-        Some(GraphicsPrimitiveStage::TaskShader) => vk::PipelineStageFlags2::TASK_SHADER_EXT,
-        Some(GraphicsPrimitiveStage::MeshShader) => vk::PipelineStageFlags2::MESH_SHADER_EXT,
-        Some(GraphicsPrimitiveStage::EarlyFragmentTests) => {
-            // FIXME: We need to LATE_FRAGMENT_TESTS when flushing
-            // but EARLY_FRAGMENT_TESTS when loading.
-            // Both is valid, but wasteful.
-            vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS
-                | vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS
-        }
-        Some(GraphicsPrimitiveStage::FragmentShader) => vk::PipelineStageFlags2::FRAGMENT_SHADER,
-        //Some(GraphicsStage::LateFragmentTests) => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
-        Some(GraphicsPrimitiveStage::ColorAttachmentOutput) => {
+        GraphicsPrimitiveStage::DrawIndirect => vk::PipelineStageFlags2::DRAW_INDIRECT,
+        GraphicsPrimitiveStage::VertexInput => vk::PipelineStageFlags2::VERTEX_INPUT,
+        GraphicsPrimitiveStage::VertexShader => vk::PipelineStageFlags2::VERTEX_SHADER,
+        GraphicsPrimitiveStage::TaskShader => vk::PipelineStageFlags2::TASK_SHADER_EXT,
+        GraphicsPrimitiveStage::MeshShader => vk::PipelineStageFlags2::MESH_SHADER_EXT,
+        GraphicsPrimitiveStage::EarlyFragmentTests => vk::PipelineStageFlags2::EARLY_FRAGMENT_TESTS,
+        GraphicsPrimitiveStage::FragmentShader => vk::PipelineStageFlags2::FRAGMENT_SHADER,
+        GraphicsPrimitiveStage::LateFragmentTests => vk::PipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        GraphicsPrimitiveStage::ColorAttachmentOutput => {
             vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT
         }
-        None => vk::PipelineStageFlags2::empty(),
+        GraphicsPrimitiveStage::None => vk::PipelineStageFlags2::empty(),
     };
 
     transfer | compute | graphics
