@@ -25,7 +25,6 @@ struct Output {
     [[vk::location(3)]] Vec4 world_tangent;
     [[vk::location(4)]] u32 material_index;
     [[vk::location(5)]] Vec4 vertex_color;
-    [[vk::location(6)]] Vec4 ndc;
 }
 
 [shader("vertex")]
@@ -47,7 +46,6 @@ Output main(Input input) {
     output.uv = uv;
     output.material_index = instance.material_index;
     output.vertex_color = color;
-    output.ndc = output.clip_position;
     return output;
 }
 
