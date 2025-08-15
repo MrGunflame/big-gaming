@@ -693,7 +693,7 @@ impl TemporaryResources {
         for (id, count) in self.buffers.drain() {
             let buffer = resources.buffers.get(id).unwrap();
 
-            if buffer.ref_count.decrement_many(count) {
+            if buffer.ref_count.decrement_many_internal(count) {
                 resources.deletion_queue.push(DeletionEvent::Buffer(id));
             }
         }
@@ -701,7 +701,7 @@ impl TemporaryResources {
         for (id, count) in self.textures.drain() {
             let texture = resources.textures.get(id).unwrap();
 
-            if texture.ref_count.decrement_many(count) {
+            if texture.ref_count.decrement_many_internal(count) {
                 resources.deletion_queue.push(DeletionEvent::Texture(id));
             }
         }
@@ -709,7 +709,7 @@ impl TemporaryResources {
         for (id, count) in self.descriptor_sets.drain() {
             let set = resources.descriptor_sets.get(id).unwrap();
 
-            if set.ref_count.decrement_many(count) {
+            if set.ref_count.decrement_many_internal(count) {
                 resources
                     .deletion_queue
                     .push(DeletionEvent::DescriptorSet(id));
@@ -719,7 +719,7 @@ impl TemporaryResources {
         for (id, count) in self.samplers.drain() {
             let sampler = resources.samplers.get(id).unwrap();
 
-            if sampler.ref_count.decrement_many(count) {
+            if sampler.ref_count.decrement_many_internal(count) {
                 resources.deletion_queue.push(DeletionEvent::Sampler(id));
             }
         }
@@ -727,7 +727,7 @@ impl TemporaryResources {
         for (id, count) in self.pipelines.drain() {
             let pipeline = resources.pipelines.get(id).unwrap();
 
-            if pipeline.ref_count.decrement_many(count) {
+            if pipeline.ref_count.decrement_many_internal(count) {
                 resources.deletion_queue.push(DeletionEvent::Pipeline(id));
             }
         }

@@ -11,7 +11,6 @@ use std::num::NonZeroU64;
 use std::ops::{Bound, Range, RangeBounds};
 use std::sync::Arc;
 
-use ash::khr::bind_memory2;
 use bumpalo::Bump;
 use commands::{
     Command, CommandStream, ComputeCommand, ComputePassCmd, CopyBufferToBuffer,
@@ -185,7 +184,7 @@ impl CommandExecutor {
                             | DescriptorSetResource::StorageBuffer(id) => {
                                 let buffer = self.resources.buffers.get(id).unwrap();
 
-                                if buffer.ref_count.decrement() {
+                                if buffer.ref_count.decrement_internal() {
                                     self.resources
                                         .deletion_queue
                                         .push(DeletionEvent::Buffer(id));
@@ -197,7 +196,7 @@ impl CommandExecutor {
                                     let texture =
                                         self.resources.textures.get(view.texture).unwrap();
 
-                                    if texture.ref_count.decrement() {
+                                    if texture.ref_count.decrement_internal() {
                                         self.resources
                                             .deletion_queue
                                             .push(DeletionEvent::Texture(view.texture));
@@ -207,7 +206,7 @@ impl CommandExecutor {
                             DescriptorSetResource::Sampler(id) => {
                                 let sampler = self.resources.samplers.get(id).unwrap();
 
-                                if sampler.ref_count.decrement() {
+                                if sampler.ref_count.decrement_internal() {
                                     self.resources
                                         .deletion_queue
                                         .push(DeletionEvent::Sampler(id));
@@ -221,7 +220,7 @@ impl CommandExecutor {
                         .descriptor_set_layouts
                         .get(set.layout)
                         .unwrap();
-                    if layout.ref_count.decrement() {
+                    if layout.ref_count.decrement_internal() {
                         self.resources
                             .deletion_queue
                             .push(DeletionEvent::DescriptorSetLayout(id));
@@ -345,7 +344,13 @@ impl<'a> CommandQueue<'a> {
         if buffer.buffer.flags.contains(UsageFlags::HOST_VISIBLE) {
             // The destination buffer must be kept alive until
             // the memcpy is complete.
-            buffer.buffer.increment_ref_count();
+            self.executor
+                .resources
+                .buffers
+                .get(buffer.buffer.id)
+                .unwrap()
+                .ref_count
+                .increment_internal();
 
             self.executor.cmds.lock().push(
                 &self.executor.resources,
@@ -369,7 +374,13 @@ impl<'a> CommandQueue<'a> {
 
             // The staging buffer must be kept alive until
             // the memcpy is complete.
-            staging_buffer.increment_ref_count();
+            self.executor
+                .resources
+                .buffers
+                .get(staging_buffer.id)
+                .unwrap()
+                .ref_count
+                .increment_internal();
 
             // Write the data into the staging buffer.
             self.executor.cmds.lock().push(
@@ -511,7 +522,7 @@ impl<'a> CommandQueue<'a> {
         debug_assert!(texture.manually_managed);
 
         let texture = self.executor.resources.textures.take(texture.id).unwrap();
-        if !texture.ref_count.decrement() {
+        if !texture.ref_count.decrement_external() {
             panic!("Texture is still in use");
         }
     }
@@ -615,8 +626,20 @@ impl<'a> CommandQueue<'a> {
 
         // The source and destination buffer must be kept alive
         // for this command.
-        src.buffer.increment_ref_count();
-        dst.buffer.increment_ref_count();
+        self.executor
+            .resources
+            .buffers
+            .get(src.buffer.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
+        self.executor
+            .resources
+            .buffers
+            .get(dst.buffer.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
 
         self.executor.cmds.lock().push(
             &self.executor.resources,
@@ -653,8 +676,20 @@ impl<'a> CommandQueue<'a> {
 
         // The source buffer and destination buffer must be kept alive
         // for this command.
-        src.increment_ref_count();
-        dst.texture.increment_ref_count();
+        self.executor
+            .resources
+            .buffers
+            .get(src.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
+        self.executor
+            .resources
+            .textures
+            .get(dst.texture.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
 
         self.executor.cmds.lock().push(
             &self.executor.resources,
@@ -681,8 +716,20 @@ impl<'a> CommandQueue<'a> {
         assert!(dst.mip_level < dst.texture.mip_levels);
 
         // The source and destination textures must be kept alive.
-        src.texture.increment_ref_count();
-        dst.texture.increment_ref_count();
+        self.executor
+            .resources
+            .textures
+            .get(src.texture.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
+        self.executor
+            .resources
+            .textures
+            .get(dst.texture.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
 
         self.executor.cmds.lock().push(
             &self.executor.resources,
@@ -760,7 +807,13 @@ impl<'a> CommandQueue<'a> {
                         "Binding uniform buffer requires UNIFORM bit",
                     );
 
-                    buffer.increment_ref_count();
+                    self.executor
+                        .resources
+                        .buffers
+                        .get(buffer.id)
+                        .unwrap()
+                        .ref_count
+                        .increment_internal();
                     num_buffers += 1;
 
                     DescriptorSetResource::UniformBuffer(buffer.id)
@@ -771,14 +824,26 @@ impl<'a> CommandQueue<'a> {
                         "Binding storage buffer requires STORAGE bit",
                     );
 
-                    buffer.increment_ref_count();
+                    self.executor
+                        .resources
+                        .buffers
+                        .get(buffer.id)
+                        .unwrap()
+                        .ref_count
+                        .increment_internal();
                     num_buffers += 1;
 
                     DescriptorSetResource::StorageBuffer(buffer.id)
                 }
                 BindingResource::Buffer(_) => unreachable!(),
                 BindingResource::Sampler(sampler) => {
-                    sampler.increment_ref_count();
+                    self.executor
+                        .resources
+                        .samplers
+                        .get(sampler.id)
+                        .unwrap()
+                        .ref_count
+                        .increment_internal();
                     num_samplers += 1;
 
                     DescriptorSetResource::Sampler(sampler.id)
@@ -789,7 +854,13 @@ impl<'a> CommandQueue<'a> {
                         "Texture cannot be bound to descriptor set: TEXTURE_BINDING not set",
                     );
 
-                    view.texture.increment_ref_count();
+                    self.executor
+                        .resources
+                        .textures
+                        .get(view.texture.id)
+                        .unwrap()
+                        .ref_count
+                        .increment_internal();
                     num_sampled_texture_arrays += 1;
 
                     DescriptorSetResource::SampledTexture(vec![RawTextureView {
@@ -807,7 +878,13 @@ impl<'a> CommandQueue<'a> {
                     }
 
                     for view in views {
-                        view.texture.increment_ref_count();
+                        self.executor
+                            .resources
+                            .textures
+                            .get(view.texture.id)
+                            .unwrap()
+                            .ref_count
+                            .increment_internal();
                     }
 
                     num_sampled_texture_arrays += 1;
@@ -829,7 +906,13 @@ impl<'a> CommandQueue<'a> {
                         "Texture cannot be bound to descriptor set: STORAGE not set",
                     );
 
-                    view.texture.increment_ref_count();
+                    self.executor
+                        .resources
+                        .textures
+                        .get(view.texture.id)
+                        .unwrap()
+                        .ref_count
+                        .increment_internal();
                     num_storage_texture_arrays += 1;
 
                     DescriptorSetResource::StorageTexture(vec![RawTextureView {
@@ -849,7 +932,13 @@ impl<'a> CommandQueue<'a> {
                     }
 
                     for view in views {
-                        view.texture.increment_ref_count();
+                        self.executor
+                            .resources
+                            .textures
+                            .get(view.texture.id)
+                            .unwrap()
+                            .ref_count
+                            .increment_internal();
                     }
 
                     num_storage_texture_arrays += 1;
@@ -888,7 +977,7 @@ impl<'a> CommandQueue<'a> {
             .get(descriptor.layout.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         let id = self
             .executor
@@ -1209,7 +1298,7 @@ impl<'a> CommandQueue<'a> {
                     .get(a.target.texture.id)
                     .unwrap()
                     .ref_count
-                    .increment();
+                    .increment_internal();
 
                 ColorAttachmentOwned {
                     target: RawTextureView {
@@ -1230,7 +1319,7 @@ impl<'a> CommandQueue<'a> {
                 .get(attachment.texture.id)
                 .unwrap()
                 .ref_count
-                .increment();
+                .increment_internal();
 
             DepthStencilAttachmentOwned {
                 texture: attachment.texture.id,
@@ -1267,7 +1356,7 @@ impl<'a> CommandQueue<'a> {
             .get(texture.texture.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         self.executor.cmds.lock().push(
             &self.executor.resources,
@@ -1297,7 +1386,7 @@ pub struct DescriptorSet {
 impl Clone for DescriptorSet {
     fn clone(&self) -> Self {
         let set = self.resources.descriptor_sets.get(self.id).unwrap();
-        set.ref_count.increment();
+        set.ref_count.increment_external();
 
         Self {
             id: self.id,
@@ -1309,7 +1398,7 @@ impl Clone for DescriptorSet {
 impl Drop for DescriptorSet {
     fn drop(&mut self) {
         let set = self.resources.descriptor_sets.get(self.id).unwrap();
-        if set.ref_count.decrement() {
+        if set.ref_count.decrement_external() {
             self.resources
                 .deletion_queue
                 .push(DeletionEvent::DescriptorSet(self.id));
@@ -1323,17 +1412,10 @@ pub struct Sampler {
     resources: Arc<Resources>,
 }
 
-impl Sampler {
-    fn increment_ref_count(&self) {
-        let sampler = self.resources.samplers.get(self.id).unwrap();
-        sampler.ref_count.increment();
-    }
-}
-
 impl Clone for Sampler {
     fn clone(&self) -> Self {
         let sampler = self.resources.samplers.get(self.id).unwrap();
-        sampler.ref_count.increment();
+        sampler.ref_count.increment_external();
 
         Self {
             id: self.id,
@@ -1345,7 +1427,7 @@ impl Clone for Sampler {
 impl Drop for Sampler {
     fn drop(&mut self) {
         let sampler = self.resources.samplers.get(self.id).unwrap();
-        if sampler.ref_count.decrement() {
+        if sampler.ref_count.decrement_external() {
             self.resources
                 .deletion_queue
                 .push(DeletionEvent::Sampler(self.id));
@@ -1373,7 +1455,7 @@ pub struct DescriptorSetLayout {
 impl Clone for DescriptorSetLayout {
     fn clone(&self) -> Self {
         let layout = self.resources.descriptor_set_layouts.get(self.id).unwrap();
-        layout.ref_count.increment();
+        layout.ref_count.increment_external();
 
         Self {
             id: self.id,
@@ -1385,7 +1467,7 @@ impl Clone for DescriptorSetLayout {
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
         let layout = self.resources.descriptor_set_layouts.get(self.id).unwrap();
-        if layout.ref_count.decrement() {
+        if layout.ref_count.decrement_external() {
             self.resources
                 .deletion_queue
                 .push(DeletionEvent::DescriptorSetLayout(self.id));
@@ -1402,7 +1484,7 @@ pub struct Pipeline {
 impl Clone for Pipeline {
     fn clone(&self) -> Self {
         let pipeline = self.resources.pipelines.get(self.id).unwrap();
-        pipeline.ref_count.increment();
+        pipeline.ref_count.increment_external();
 
         Self {
             id: self.id,
@@ -1414,7 +1496,7 @@ impl Clone for Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         let pipeline = self.resources.pipelines.get(self.id).unwrap();
-        if pipeline.ref_count.decrement() {
+        if pipeline.ref_count.decrement_external() {
             self.resources
                 .deletion_queue
                 .push(DeletionEvent::Pipeline(self.id));
@@ -1491,11 +1573,6 @@ impl Buffer {
             end,
         }
     }
-
-    fn increment_ref_count(&self) {
-        let buffer = self.resources.buffers.get(self.id).unwrap();
-        buffer.ref_count.increment();
-    }
 }
 
 impl IntoBufferSlice for Buffer {
@@ -1513,7 +1590,7 @@ impl<'a> IntoBufferSlice for &'a Buffer {
 impl Clone for Buffer {
     fn clone(&self) -> Self {
         let buffer = self.resources.buffers.get(self.id).unwrap();
-        buffer.ref_count.increment();
+        buffer.ref_count.increment_external();
 
         Self {
             id: self.id,
@@ -1528,7 +1605,7 @@ impl Clone for Buffer {
 impl Drop for Buffer {
     fn drop(&mut self) {
         let buffer = self.resources.buffers.get(self.id).unwrap();
-        if buffer.ref_count.decrement() {
+        if buffer.ref_count.decrement_external() {
             self.resources
                 .deletion_queue
                 .push(DeletionEvent::Buffer(self.id));
@@ -1652,18 +1729,13 @@ impl Texture {
             mip_levels,
         }
     }
-
-    fn increment_ref_count(&self) {
-        let texture = self.resources.textures.get(self.id).unwrap();
-        texture.ref_count.increment();
-    }
 }
 
 impl Clone for Texture {
     fn clone(&self) -> Self {
         if !self.manually_managed {
             let texture = self.resources.textures.get(self.id).unwrap();
-            texture.ref_count.increment();
+            texture.ref_count.increment_external();
         }
 
         Self {
@@ -1682,7 +1754,7 @@ impl Drop for Texture {
     fn drop(&mut self) {
         if !self.manually_managed {
             let texture = self.resources.textures.get(self.id).unwrap();
-            if texture.ref_count.decrement() {
+            if texture.ref_count.decrement_external() {
                 self.resources
                     .deletion_queue
                     .push(DeletionEvent::Texture(self.id));
@@ -1725,7 +1797,7 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .get(pipeline.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         self.cmds.push(DrawCmd::SetPipeline(pipeline.id));
         self.last_pipeline = Some(pipeline.id);
@@ -1741,7 +1813,7 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .get(descriptor_set.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         self.cmds
             .push(DrawCmd::SetDescriptorSet(index, descriptor_set.id));
@@ -1766,7 +1838,7 @@ impl<'a, 'b> RenderPass<'a, 'b> {
             .get(buffer.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         self.cmds.push(DrawCmd::SetIndexBuffer(buffer.id, format));
         self.last_index_buffer = Some((buffer.id, format));
@@ -1841,7 +1913,14 @@ impl<'a, 'b> RenderPass<'a, 'b> {
         assert_eq!(len % size_of::<DrawIndirectCommand>() as u64, 0);
         let count = len / size_of::<DrawIndirectCommand>() as u64;
 
-        indirect_buffer.buffer.increment_ref_count();
+        self.ctx
+            .executor
+            .resources
+            .buffers
+            .get(indirect_buffer.buffer.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
 
         self.cmds
             .push(DrawCmd::Draw(DrawCall::DrawIndirect(DrawIndirect {
@@ -1876,7 +1955,14 @@ impl<'a, 'b> RenderPass<'a, 'b> {
         assert_eq!(len % size_of::<DrawIndexedIndirectCommand>() as u64, 0);
         let count = len / size_of::<DrawIndexedIndirectCommand>() as u64;
 
-        indirect_buffer.buffer.increment_ref_count();
+        self.ctx
+            .executor
+            .resources
+            .buffers
+            .get(indirect_buffer.buffer.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
 
         self.cmds.push(DrawCmd::Draw(DrawCall::DrawIndexedIndirect(
             DrawIndexedIndirect {
@@ -1931,7 +2017,7 @@ impl<'a> ComputePass<'a> {
             .get(pipeline.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         self.cmds.push(ComputeCommand::SetPipeline(pipeline.id));
         self.last_pipeline = Some(pipeline.id);
@@ -1955,7 +2041,7 @@ impl<'a> ComputePass<'a> {
             .get(descriptor_set.id)
             .unwrap()
             .ref_count
-            .increment();
+            .increment_internal();
 
         self.cmds
             .push(ComputeCommand::SetDescriptorSet(index, descriptor_set.id));
