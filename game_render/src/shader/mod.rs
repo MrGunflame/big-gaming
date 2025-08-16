@@ -31,12 +31,10 @@ impl Shader {
     }
 
     pub fn instantiate(&self, options: &Options<'_>) -> ShaderInstance<'_> {
-        let s = match self {
+        match self {
             Self::Wgsl(s) => ShaderInstance::Wgsl(s.instantiate(options)),
             Self::Spirv(s) => ShaderInstance::Spirv(s.instantiate(options).unwrap()),
-        };
-        std::fs::write("/tmp/x", bytemuck::cast_slice(&s.to_spirv()));
-        s
+        }
     }
 
     pub fn bindings(&self) -> Vec<ShaderBinding> {
