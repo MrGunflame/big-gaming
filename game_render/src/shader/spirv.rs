@@ -2,7 +2,8 @@
 //!
 //! # References
 //!
-//! - <https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html>
+//! - [SPIR-V Specification](https://registry.khronos.org/SPIR-V/specs/unified1/SPIRV.html)
+//! - [SPIR-V NonSemantic Shader DebugInfo Instructions](https://github.khronos.org/SPIRV-Registry/nonsemantic/NonSemantic.Shader.DebugInfo.100.html)
 
 mod ops;
 
@@ -26,7 +27,7 @@ use spirv::{Capability, ExecutionModel, StorageClass, MAGIC_NUMBER};
 use thiserror::Error;
 
 use crate::backend::{DescriptorType, ShaderStage};
-use crate::shader::spirv::ops::OpUndef;
+use crate::shader::spirv::ops::{OpExtInst, OpUndef};
 use crate::shader::ShaderAccess;
 
 use super::{BindingLocation, Options, ShaderBinding};
@@ -353,6 +354,7 @@ struct SpirvModule {
     constants: HashMap<Id, Constant>,
     globals: BTreeMap<Id, OpVariable>,
     functions: BTreeMap<Id, Function>,
+    nonsemantic_globals: Vec<OpExtInst>,
 }
 
 impl SpirvModule {
@@ -400,6 +402,7 @@ impl SpirvModule {
         let mut constants = HashMap::new();
         let mut globals = BTreeMap::new();
         let mut functions = BTreeMap::new();
+        let mut nonsemantic_globals = Vec::new();
 
         while reader.len() != 0 {
             let instruction = Instruction::read(&mut reader)?;
@@ -412,6 +415,9 @@ impl SpirvModule {
                 }
                 Instruction::ExtInstImport(ins) => {
                     extensions.push(Instruction::ExtInstImport(ins));
+                }
+                Instruction::ExtInst(ins) => {
+                    nonsemantic_globals.push(ins);
                 }
                 Instruction::MemoryModel(ins) => {
                     assert!(memory_model.is_none());
@@ -562,6 +568,7 @@ impl SpirvModule {
             constants,
             globals,
             functions,
+            nonsemantic_globals,
         })
     }
 
@@ -747,6 +754,10 @@ impl SpirvModule {
 
         for variable in self.globals.values() {
             Instruction::Variable(*variable).write(writer);
+        }
+
+        for ins in &self.nonsemantic_globals {
+            Instruction::ExtInst(ins.clone()).write(writer);
         }
 
         for function in self.functions.values() {
