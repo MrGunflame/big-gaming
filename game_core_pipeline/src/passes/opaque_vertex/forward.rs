@@ -179,7 +179,7 @@ impl OpaqueVertexForwardPass {
             ctx.read::<Buffer>(INSTANCE_BUFFER),
             ctx.read::<Buffer>(INDIRECT_DRAW_BUFFER),
         ) else {
-            self.clear_pass(ctx);
+            self.clear_pass(ctx, size);
             return;
         };
 
@@ -322,9 +322,9 @@ impl OpaqueVertexForwardPass {
         ctx.write(OPAQUE_DEPTH, detpth_texture).unwrap();
     }
 
-    fn clear_pass(&self, ctx: &mut RenderContext<'_, '_>) {
+    fn clear_pass(&self, ctx: &mut RenderContext<'_, '_>, size: UVec2) {
         let texture = ctx.queue.create_texture(&TextureDescriptor {
-            size: UVec2::ONE,
+            size,
             mip_levels: 1,
             format: HDR_FORMAT,
             usage: TextureUsage::TEXTURE_BINDING
@@ -333,7 +333,7 @@ impl OpaqueVertexForwardPass {
         });
 
         let depth_texture = ctx.queue.create_texture(&TextureDescriptor {
-            size: UVec2::ONE,
+            size,
             mip_levels: 1,
             format: DEPTH_FORMAT,
             usage: TextureUsage::TEXTURE_BINDING | TextureUsage::RENDER_ATTACHMENT,
@@ -378,7 +378,7 @@ impl Node for OpaqueVertexForwardPass {
 
         // If we don't have any camera to render we just
         // emit a black texture.
-        self.clear_pass(ctx);
+        self.clear_pass(ctx, size);
     }
 }
 
