@@ -35,7 +35,7 @@ use resources::{
 use scheduler::{Node, Resource, ResourceMap, Scheduler};
 use sharded_slab::Slab;
 
-use crate::api::commands::{CreateBuffer, CreateTexture};
+use crate::api::commands::{ClearTexture, CreateBuffer, CreateTexture};
 use crate::api::executor::Executor;
 use crate::backend::allocator::{MemoryManager, UsageFlags};
 use crate::backend::descriptors::DescriptorSetAllocator;
@@ -558,6 +558,42 @@ impl<'a> CommandQueue<'a> {
         });
 
         self.copy_buffer_to_texture(&staging_buffer, texture, layout);
+    }
+
+    /// Clears all pixels of a [`Texture`] to the given `value`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the following preconditions are violated:
+    /// - The texture does not have [`TRANSFER_DST`] set.
+    /// - The selected mip level is out of bounds.ö
+    ///
+    /// [`TRANSFER_DST`]: TextureUsage::TRANSFER_DST
+    #[track_caller]
+    pub fn clear_texture(&self, texture: TextureRegion<'_>, value: [u32; 4]) {
+        assert!(
+            texture.texture.usage.contains(TextureUsage::TRANSFER_DST),
+            "Texture cannot be cleared: TRANSFER_DST usage not set"
+        );
+
+        assert!(texture.mip_level < texture.texture.mip_levels);
+
+        self.executor
+            .resources
+            .textures
+            .get(texture.texture.id)
+            .unwrap()
+            .ref_count
+            .increment_internal();
+
+        self.executor.cmds.lock().push(
+            &self.executor.resources,
+            Command::ClearTexture(ClearTexture {
+                id: texture.texture.id,
+                mip_level: texture.mip_level,
+                value,
+            }),
+        );
     }
 
     /// Copies bytes from a source to a destination buffer.

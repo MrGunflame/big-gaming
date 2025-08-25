@@ -141,6 +141,7 @@ pub enum Command {
     DestoryBuffer(BufferId),
     DestroyTexture(TextureId),
     DestroyDescriptorSet(DescriptorSetId),
+    ClearTexture(ClearTexture),
 }
 
 impl Command {
@@ -223,6 +224,15 @@ impl Command {
                 accesses.push(Resource {
                     id: ResourceId::Texture(cmd.texture),
                     access: cmd.access,
+                });
+            }
+            Self::ClearTexture(cmd) => {
+                accesses.push(Resource {
+                    id: ResourceId::Texture(TextureMip {
+                        id: cmd.id,
+                        mip_level: cmd.mip_level,
+                    }),
+                    access: AccessFlags::TRANSFER_WRITE,
                 });
             }
             Self::RenderPass(cmd) => {
@@ -493,4 +503,11 @@ pub struct CreateTexture {
     pub descriptor: TextureDescriptor,
     // TODO: Remove this mutex
     pub resource: Mutex<Option<vulkan::Texture>>,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct ClearTexture {
+    pub id: TextureId,
+    pub mip_level: u32,
+    pub value: [u32; 4],
 }
