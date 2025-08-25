@@ -3431,6 +3431,39 @@ impl<'a> CommandEncoder<'a> {
         }
     }
 
+    /// Clears all pixels in a texture to a value.
+    ///
+    /// # Safety
+    ///
+    /// - The passed [`Texture`] must have only the [`TRANSFER_WRITE`]  flag set at the time of
+    ///   operation.
+    ///
+    /// [`TRANSFER_WRITE`]: AccessFlags::TRANSFER_WRITE
+    pub unsafe fn clear_texture(&self, texture: &Texture, mip_level: u32, value: [u32; 4]) {
+        assert!(self.queue_caps.contains(QueueCapabilities::TRANSFER));
+
+        assert!(mip_level < texture.mip_levels);
+
+        let value = vk::ClearColorValue { uint32: value };
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: mip_level,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+
+        unsafe {
+            self.device.cmd_clear_color_image(
+                self.buffer,
+                texture.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &value,
+                &[subresource_range],
+            );
+        }
+    }
+
     /// Begins the recording of a [`RenderPass`].
     ///
     /// # Safety

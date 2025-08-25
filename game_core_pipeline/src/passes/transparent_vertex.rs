@@ -13,9 +13,8 @@ use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     AddressMode, BufferUsage, CompareOp, ComputeStage, DepthStencilState, DescriptorBinding,
     DescriptorType, DrawIndexedIndirectCommand, Face, FilterMode, FragmentStage, FrontFace,
-    ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
-    SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage,
-    VertexStage,
+    IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor,
+    ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
 };
 use game_render::graph::{Node, RenderContext};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -299,7 +298,7 @@ impl TransparentVertexPass {
         let color_target = ctx.read::<Texture>(HDR_TEXTURE).unwrap();
         let size = color_target.size();
 
-        // Size for at least two layers if every pixel is covered.
+        // Size for at least four layers if every pixel is covered.
         // The size of one element is 24 bytes.
         let abuffer_size = size.x as u64 * size.y as u64 * 4 * 24;
 
@@ -457,16 +456,12 @@ impl TransparentVertexPass {
             });
 
             // Zero out all values of `heads`.
-            let heads_buffer = vec![0_u32; size.x as usize * size.y as usize];
-            ctx.queue.write_texture(
+            ctx.queue.clear_texture(
                 TextureRegion {
                     texture: &heads,
                     mip_level: 0,
                 },
-                bytemuck::cast_slice(&heads_buffer),
-                ImageDataLayout {
-                    format: TextureFormat::R32Uint,
-                },
+                [0; 4],
             );
 
             let counter = ctx.queue.create_buffer_init(&BufferInitDescriptor {

@@ -251,6 +251,19 @@ impl Executor {
                         tmp.textures.insert(cmd.src);
                         tmp.textures.insert(cmd.dst);
                     }
+                    Command::ClearTexture(cmd) => {
+                        let texture = self.textures.get(&cmd.id).unwrap();
+
+                        // SAFETY:
+                        // - We have inserted barriers such that only TRANSFER_WRITE is set
+                        //   when the operation is recorded.
+                        // - We will insert another barrier before reading or writing the texture.
+                        unsafe {
+                            encoder.clear_texture(texture.texture(), cmd.mip_level, cmd.value);
+                        }
+
+                        tmp.textures.insert(cmd.id);
+                    }
                     Command::TextureTransition(cmd) => {
                         // The texture is not explicitly used anywhere else, but
                         // it still must be kept alive for this frame since it
