@@ -146,14 +146,16 @@ func load_normal(input: Input) -> Vec3 {
     let material = materials[input.material_index];
     var normal = textures[material.normal_texture].Sample(sampler, input.uv).rgb;
 
+    // DirectX normal maps have the Y component flipped.
     if ((material.flags & MATERIAL_FLAGS_FLIP_NORMAL_Y) != 0) {
         normal.g = 1.0 - normal.g;
     }
 
+    // Transform from [0..1] to [-1..1].
     normal = normal * 2.0 - 1.0;
 
     if ((material.flags & MATERIAL_FLAGS_NORMAL_ENCODING_TWO_COMPONENT) != 0) {
-        normal.z = sqrt(1.0 - dot(normal.xy, normal.xy));
+        normal.z = sqrt(clamp(1.0 - dot(normal.xy, normal.xy), 0.0, 1.0));
     }
 
     normal = normalize(normal);
