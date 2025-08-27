@@ -6,7 +6,9 @@ use hashbrown::{HashMap, HashSet};
 use parking_lot::Mutex;
 
 use crate::api::BufferDescriptor;
-use crate::backend::{vulkan, AccessFlags, ImageDataLayout, ShaderStages, TextureDescriptor};
+use crate::backend::{
+    vulkan, AccessFlags, ImageDataLayout, LoadOp, ShaderStages, StoreOp, TextureDescriptor,
+};
 
 use super::resources::{DescriptorSetId, DescriptorSetResource, PipelineId};
 use super::{
@@ -315,13 +317,23 @@ impl Command {
                 }
 
                 for attachment in &cmd.color_attachments {
+                    let mut attachment_flags = AccessFlags::empty();
+
+                    if matches!(attachment.load_op, LoadOp::Load) {
+                        attachment_flags |= AccessFlags::COLOR_ATTACHMENT_READ;
+                    }
+
+                    if matches!(attachment.store_op, StoreOp::Store) {
+                        attachment_flags |= AccessFlags::COLOR_ATTACHMENT_WRITE;
+                    }
+
                     for mip in attachment.target.mips() {
                         *access_flags
                             .entry(ResourceId::Texture(TextureMip {
                                 id: attachment.target.texture,
                                 mip_level: mip,
                             }))
-                            .or_default() |= AccessFlags::COLOR_ATTACHMENT_WRITE;
+                            .or_default() |= attachment_flags;
                     }
                 }
 
