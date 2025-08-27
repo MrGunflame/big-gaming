@@ -148,6 +148,12 @@ pub enum TextureFormat {
     R32Uint,
     R32Sint,
     R32SFloat,
+    /// 32 bit unsigned integer red and green channels.
+    Rg32Uint,
+    /// 32 bit signed integer red and green channels.
+    Rg32Sint,
+    /// 32 bit signed float red and green channels.
+    Rg32SFloat,
 }
 
 impl TextureFormat {
@@ -208,6 +214,9 @@ impl TextureFormat {
             }
             Self::Rgb9E5Ufloat => dim.x as usize * dim.y as usize * 4,
             Self::R32Uint | Self::R32Sint | Self::R32SFloat => dim.x as usize * dim.y as usize * 4,
+            Self::Rg32Uint | Self::Rg32Sint | Self::Rg32SFloat => {
+                dim.x as usize * dim.y as usize * 8
+            }
         }
     }
 
@@ -237,6 +246,9 @@ impl TextureFormat {
             Self::R32Uint,
             Self::R32Sint,
             Self::R32SFloat,
+            Self::Rg32Uint,
+            Self::Rg32Sint,
+            Self::Rg32SFloat,
         ]
     }
 }
