@@ -634,6 +634,7 @@ impl Adapter {
 
         DeviceFeatures {
             mutli_draw_indirect: cast(features.multi_draw_indirect),
+            storage_buffer_16bit_access: cast(features11.storage_buffer16_bit_access),
             shader_draw_parameters: cast(features11.shader_draw_parameters),
             shader_input_attachment_array_dynamic_indexing: cast(
                 features12.shader_input_attachment_array_dynamic_indexing,
@@ -891,6 +892,7 @@ impl Adapter {
         extensions.extend(supported_extensions.names().iter().map(|v| v.as_ptr()));
 
         let required_features = DeviceFeatures {
+            storage_buffer_16bit_access: true,
             mutli_draw_indirect: true,
             shader_draw_parameters: true,
             shader_input_attachment_array_dynamic_indexing: true,
@@ -941,7 +943,8 @@ impl Adapter {
             // Enables `SPV_KHR_shader_draw_parameters`, which in turns provides
             // `BaseInstance`, `BaseVertex` and `DrawIndex` needed for indirect
             // draws.
-            .shader_draw_parameters(true);
+            .shader_draw_parameters(true)
+            .storage_buffer16_bit_access(true);
 
         let mut features12 = vk::PhysicalDeviceVulkan12Features::default()
             // Runtime Descriptor indexing
@@ -5242,6 +5245,8 @@ impl<'a> FromIterator<&'a CStr> for DeviceExtensions {
 pub struct DeviceFeatures {
     /// Vulkan 1.0
     mutli_draw_indirect: bool,
+    /// Vulkan 1.1 or `VK_KHR_16bit_storage`
+    storage_buffer_16bit_access: bool,
     /// Vulkan 1.1 or `VK_KHR_shader_draw_parameters`
     shader_draw_parameters: bool,
     /// Vulkan 1.2 or `VK_EXT_descriptor_indexing`
@@ -5315,6 +5320,7 @@ impl DeviceFeatures {
 
         let Self {
             mutli_draw_indirect,
+            storage_buffer_16bit_access,
             shader_draw_parameters,
             shader_input_attachment_array_dynamic_indexing,
             shader_uniform_texel_buffer_array_dynamic_indexing,
@@ -5359,6 +5365,7 @@ impl DeviceFeatures {
 
         set_missing_feature_flags! {
             mutli_draw_indirect,
+            storage_buffer_16bit_access,
             shader_draw_parameters,
             shader_input_attachment_array_dynamic_indexing,
             shader_uniform_texel_buffer_array_dynamic_indexing,
@@ -5403,6 +5410,7 @@ impl DeviceFeatures {
     fn is_empty(&self) -> bool {
         let Self {
             mutli_draw_indirect,
+            storage_buffer_16bit_access,
             shader_draw_parameters,
             shader_input_attachment_array_dynamic_indexing,
             shader_uniform_texel_buffer_array_dynamic_indexing,
@@ -5438,6 +5446,7 @@ impl DeviceFeatures {
         } = *self;
 
         let is_not_empty = mutli_draw_indirect
+            || storage_buffer_16bit_access
             || shader_draw_parameters
             || shader_input_attachment_array_dynamic_indexing
             || shader_uniform_texel_buffer_array_dynamic_indexing
@@ -5478,6 +5487,7 @@ impl DeviceFeatures {
 impl Display for DeviceFeatures {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let Self {
+            storage_buffer_16bit_access,
             mutli_draw_indirect,
             shader_draw_parameters,
             shader_input_attachment_array_dynamic_indexing,
@@ -5528,6 +5538,7 @@ impl Display for DeviceFeatures {
         }
 
         let strings = create_strings! {
+            storage_buffer_16bit_access,
             mutli_draw_indirect,
             shader_draw_parameters,
             shader_input_attachment_array_dynamic_indexing,

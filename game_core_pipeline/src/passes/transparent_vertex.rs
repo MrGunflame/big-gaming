@@ -299,8 +299,8 @@ impl TransparentVertexPass {
         let size = color_target.size();
 
         // Size for at least four layers if every pixel is covered.
-        // The size of one element is 24 bytes.
-        let abuffer_size = size.x as u64 * size.y as u64 * 4 * 24;
+        // The size of one element is 16 bytes.
+        let abuffer_size = size.x as u64 * size.y as u64 * 4 * 16;
 
         if mesh_state.num_transparent_instances == 0 || size.x == 0 || size.y == 0 {
             return;

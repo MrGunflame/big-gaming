@@ -64,7 +64,7 @@ func main(input: Input) {
     var prev = 0;
     InterlockedExchange(heads[vector<u32, 2>(input.clip_position.xy)], index, prev);
 
-    elements[index].color = color;
+    elements[index].color = vector<f16, 4>(color);
     elements[index].depth = input.clip_position.z;
     elements[index].next = prev;
 }
