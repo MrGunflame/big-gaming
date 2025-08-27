@@ -506,7 +506,8 @@ impl TransparentVertexPass {
             )));
             push_constants[80..84]
                 .copy_from_slice(&(scene.directional_lights.len() as u32).to_ne_bytes());
-            push_constants[84..88].copy_from_slice(&(scene.spot_lights.len() as u32).to_ne_bytes());
+            push_constants[84..88]
+                .copy_from_slice(&(scene.point_lights.len() as u32).to_ne_bytes());
             push_constants[88..92].copy_from_slice(&(scene.spot_lights.len() as u32).to_ne_bytes());
 
             let mut pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
