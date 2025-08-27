@@ -77,6 +77,13 @@ pub enum Instruction {
     FunctionCall(OpFunctionCall),
     SampledImage(OpSampledImage),
     ImageSampleImplicitLod(OpImageSampleImplicitLod),
+    ImageSampleExplicitLod(OpImageSampleExplicitLod),
+    ImageSampleDrefImplicitLod(OpImageSampleDrefImplicitLod),
+    ImageSampleDrefExplicitLod(OpImageSampleDrefExplicitLod),
+    ImageSampleProjImplicitLod(OpImageSampleProjImplicitLod),
+    ImageSampleProjExplicitLod(OpImageSampleProjExplicitLod),
+    ImageSampleProjDrefImplicitLod(OpImageSampleProjDrefImplicitLod),
+    ImageSampleProjDrefExplicitLod(OpImageSampleProjDrefExplicitLod),
     ImageFetch(OpImageFetch),
     ImageRead(OpImageRead),
     ImageWrite(OpImageWrite),
@@ -313,6 +320,13 @@ impl Instruction {
             FunctionCall => FunctionCall,
             SampledImage => SampledImage,
             ImageSampleImplicitLod => ImageSampleImplicitLod,
+            ImageSampleExplicitLod => ImageSampleExplicitLod,
+            ImageSampleDrefImplicitLod => ImageSampleDrefImplicitLod,
+            ImageSampleDrefExplicitLod => ImageSampleDrefExplicitLod,
+            ImageSampleProjImplicitLod => ImageSampleProjImplicitLod,
+            ImageSampleProjExplicitLod => ImageSampleProjExplicitLod,
+            ImageSampleProjDrefImplicitLod => ImageSampleProjDrefImplicitLod,
+            ImageSampleProjDrefExplicitLod => ImageSampleProjDrefExplicitLod,
             ImageFetch => ImageFetch,
             ImageRead => ImageRead,
             ImageWrite => ImageWrite,
@@ -543,6 +557,13 @@ impl Instruction {
             FunctionCall => FunctionCall,
             SampledImage => SampledImage,
             ImageSampleImplicitLod => ImageSampleImplicitLod,
+            ImageSampleExplicitLod => ImageSampleExplicitLod,
+            ImageSampleDrefImplicitLod => ImageSampleDrefImplicitLod,
+            ImageSampleDrefExplicitLod => ImageSampleDrefExplicitLod,
+            ImageSampleProjImplicitLod => ImageSampleProjImplicitLod,
+            ImageSampleProjExplicitLod => ImageSampleProjExplicitLod,
+            ImageSampleProjDrefImplicitLod => ImageSampleProjDrefImplicitLod,
+            ImageSampleProjDrefExplicitLod => ImageSampleProjDrefExplicitLod,
             ImageFetch => ImageFetch,
             ImageRead => ImageRead,
             ImageWrite => ImageWrite,
@@ -1818,7 +1839,88 @@ spirv_op! {
         pub result_type: Id,
         pub result: Id,
         pub sampled_image: Id,
-        pub corrdinate: Id,
+        pub coordinate: Id,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleExplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleDrefImplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub dref: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleDrefExplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub dref: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleProjImplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleProjExplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleProjDrefImplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub dref: Id,
+        pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageSampleProjDrefExplicitLod {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+        pub coordinate: Id,
+        pub dref: Id,
+        pub operands: Vec<u32>,
     }
 }
 
