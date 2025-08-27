@@ -57,31 +57,11 @@ void main(
     var color = output[coords];
 
     for (int i = 0; i < layer_count; i++) {
-
-        // if (color.a > 0.5) {
-            let premult = Vec4(layers[i].color.rgb * layers[i].color.a, layers[i].color.a);
-            color.rgb = (1.0 - premult.a) * color.rgb + premult.rgb;
-            color.a = color.a + premult.a - color.a * premult.a;
-
-            // color.rgb = color.rgb + premult.rgb;
-            // color.rgb = color.rgb - premult.rgb;
-            // color.rgb = color.rgb;
-
-            let nan = 0.0 / 0.0;
-
-    // if (color.r == nan || color.g == nan || color.b == nan) {
-    //     color = Vec4(1.0, 1.0, 1.0, 1.0);
-    // }
-
-            // color = premult;
-        // }
+        let top = Vec4(layers[i].color);
+        let premult = Vec4(top.rgb * top.a, top.a);
+        color.rgb = (1.0 - premult.a) * color.rgb + premult.rgb;
+        color.a = color.a + premult.a - color.a * premult.a;
     }
-
-    // let nan = 0.0 / 0.0;
-
-    // if (color.r == nan || color.g == nan || color.b == nan) {
-    //     color = Vec4(1.0, 1.0, 1.0, 1.0);
-    // }
 
     output[coords] = color;
 }

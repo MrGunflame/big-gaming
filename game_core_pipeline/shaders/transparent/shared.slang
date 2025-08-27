@@ -32,7 +32,7 @@ public struct MeshOffsets {
 }
 
 public struct Element {
-    public Vec4 color;
+    public vector<f16, 4> color;
     public f32 depth;
     public u32 next;
 }
