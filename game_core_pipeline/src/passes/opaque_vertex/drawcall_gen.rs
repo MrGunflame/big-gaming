@@ -8,8 +8,8 @@ use game_render::api::{
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    BufferUsage, ComputeStage, DescriptorBinding, DescriptorType, DrawIndexedIndirectCommand,
-    FrontFace, PipelineStage, PrimitiveTopology, PushConstantRange, ShaderStages, TextureFormat,
+    BufferUsage, ComputeStage, DescriptorBinding, DescriptorType, DrawIndirectCommand, FrontFace,
+    PipelineStage, PrimitiveTopology, PushConstantRange, ShaderStages, TextureFormat,
 };
 use game_render::graph::{Node, RenderContext};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -94,8 +94,7 @@ impl Node for DrawcallGenPass {
         });
 
         let draws = ctx.queue.create_buffer(&BufferDescriptor {
-            size: mesh_state.num_opauqe_instances as u64
-                * size_of::<DrawIndexedIndirectCommand>() as u64,
+            size: mesh_state.num_opauqe_instances as u64 * size_of::<DrawIndirectCommand>() as u64,
             usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
             flags: UsageFlags::empty(),
         });

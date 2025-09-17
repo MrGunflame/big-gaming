@@ -7,7 +7,7 @@ static const u32 NUM_THREADS = 64;
 
 [[vk::binding(0, 0)]] StructuredBuffer<InstanceIn> instances_in;
 [[vk::binding(1, 0)]] RWStructuredBuffer<InstanceOut> instances_out;
-[[vk::binding(2, 0)]] RWStructuredBuffer<DrawIndexedIndirectCommand> draws;
+[[vk::binding(2, 0)]] RWStructuredBuffer<DrawIndirectCommand> draws;
 
 [shader("compute")]
 [numthreads(NUM_THREADS, 1, 1)]
@@ -27,13 +27,13 @@ void main(
     out_instance.normal = instance.normal;
     out_instance.material_index = instance.material_index;
     out_instance.offsets_index = instance.offsets_index;
+    out_instance.index_offset = instance.index_offset;
 
-    DrawIndexedIndirectCommand draw;
+    DrawIndirectCommand draw;
     draw.first_instance = 0;
     draw.instance_count = 1;
-    draw.vertex_offset = 0;
-    draw.first_index = instance.index_offset;
-    draw.index_count = instance.index_count;
+    draw.first_vertex = instance.index_offset;
+    draw.vertex_count = instance.index_count;
 
     instances_out[index] = out_instance;
     draws[index] = draw;

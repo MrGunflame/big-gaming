@@ -1146,6 +1146,7 @@ pub enum Decoration {
     NoContraction,
     InputAttachmentIndex(u32),
     Alignment(u32),
+    NonUniform,
 }
 
 impl Parse for Decoration {
@@ -1220,6 +1221,7 @@ impl Parse for Decoration {
                 let align = u32::parse(reader)?;
                 Ok(Self::Alignment(align))
             }
+            spirv::Decoration::NonUniform => Ok(Self::NonUniform),
             _ => Err(Error(ErrorImpl::UnknownDecoration(dec))),
         }
     }
@@ -1326,6 +1328,9 @@ impl Parse for Decoration {
             Self::Alignment(align) => {
                 spirv::Decoration::Alignment.write(writer);
                 align.write(writer);
+            }
+            Self::NonUniform => {
+                spirv::Decoration::NonUniform.write(writer);
             }
         }
     }

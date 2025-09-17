@@ -22,6 +22,14 @@ public typealias Mat2 = matrix<f32, 2, 2>;
 public typealias Mat3 = matrix<f32, 3, 3>;
 public typealias Mat4 = matrix<f32, 4, 4>;
 
+// https://registry.khronos.org/vulkan/specs/latest/man/html/VkDrawIndirectCommand.html
+public struct DrawIndirectCommand {
+    public u32 vertex_count;
+    public u32 instance_count;
+    public u32 first_vertex;
+    public u32 first_instance;
+}
+
 // An element that can be submitted as part of a `VkCmdDrawIndexedIndirect` command.
 // https://registry.khronos.org/vulkan/specs/latest/man/html/vkCmdDrawIndexedIndirect.html
 public struct DrawIndexedIndirectCommand {

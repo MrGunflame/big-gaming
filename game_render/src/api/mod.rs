@@ -2084,6 +2084,10 @@ impl<'a> ComputePass<'a> {
     }
 
     pub fn set_push_constants(&mut self, stages: ShaderStages, offset: u32, data: &[u8]) {
+        // FIXME: If this must always be given, maybe we should just remove
+        // this parameter.
+        assert_eq!(stages, ShaderStages::COMPUTE);
+
         self.cmds.push(ComputeCommand::SetPushConstants(
             data.to_vec(),
             stages,
