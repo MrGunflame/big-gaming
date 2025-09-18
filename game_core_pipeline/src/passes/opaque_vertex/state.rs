@@ -39,7 +39,10 @@ impl VertexMeshState {
             uvs: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             tangents: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
             colors: SubAllocatedGrowableBuffer::new(queue, BufferUsage::STORAGE),
-            index_buffer: SubAllocatedGrowableBuffer::new(queue, BufferUsage::INDEX),
+            index_buffer: SubAllocatedGrowableBuffer::new(
+                queue,
+                BufferUsage::INDEX | BufferUsage::STORAGE,
+            ),
             opaque_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
             transparent_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
             mesh_offsets: SlabBuffer::new(BufferUsage::STORAGE),

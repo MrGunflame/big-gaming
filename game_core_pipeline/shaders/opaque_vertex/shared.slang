@@ -16,8 +16,8 @@ public struct InstanceOut {
     public Mat3 normal;
     public u32 material_index;
     public u32 offsets_index;
-    public u32 pad1;
     public u32 pad2;
+    public u32 index_offset;
 }
 
 public struct MeshOffsets {
