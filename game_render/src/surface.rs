@@ -1,24 +1,23 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use game_window::windows::{WindowId, WindowState};
 use glam::UVec2;
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use spirv::Op;
 
 use crate::api::executor::TemporaryResources;
 use crate::api::Texture;
 use crate::backend::vulkan::{
-    CommandPool, Device, Fence, Instance, QueryPool, Queue, Semaphore, Surface, Swapchain,
+    CommandPool, Device, Fence, Instance, Queue, Semaphore, Surface, Swapchain,
 };
 use crate::backend::{
-    AccessFlags, ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
+    ColorSpace, PresentMode, SurfaceFormat, SwapchainCapabilities, SwapchainConfig,
 };
 use crate::fps_limiter::FpsLimiter;
 use crate::FpsLimit;
 
 // TODO: Make this configurable.
 // Note that this value still bounded by the maxImageCount of the swapchain.
-const MAX_FRAMES_IN_FLIGHT: u32 = 3;
+pub const MAX_FRAMES_IN_FLIGHT: u32 = 2;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SurfaceConfig {
@@ -98,6 +97,8 @@ pub(crate) struct SurfaceData {
     pub next_frame: usize,
     pub frames: Vec<SurfaceFrameData>,
     pub limiter: FpsLimiter,
+    /// Number of frames that have been submitted without having completed yet.
+    pub frames_in_flight: VecDeque<usize>,
     /// A handle to the window underlying the `surface`.
     ///
     /// NOTE: The surface MUST be dropped before the handle to the window is dropped.
@@ -115,7 +116,7 @@ pub struct SurfaceFrameData {
     pub present_done: Fence,
     pub present_done_used: bool,
     pub command_pool: CommandPool,
-    pub resources: TemporaryResources,
+    pub resources: Option<TemporaryResources>,
     pub swapchain_texture: Option<Texture>,
 }
 
@@ -149,7 +150,7 @@ fn create_surface(
             present_done: device.create_fence().unwrap(),
             present_done_used: false,
             command_pool: device.create_command_pool(queue.family().id).unwrap(),
-            resources: TemporaryResources::default(),
+            resources: None,
             swapchain_texture: None,
         })
         .collect();
@@ -162,6 +163,7 @@ fn create_surface(
         next_frame: 0,
         frames,
         limiter: FpsLimiter::new(FpsLimit::UNLIMITED),
+        frames_in_flight: VecDeque::with_capacity(MAX_FRAMES_IN_FLIGHT as usize),
     })
 }
 
@@ -191,7 +193,7 @@ fn resize_surface(surface: &mut SurfaceData, device: &Device, queue: &Queue, siz
                 present_done: device.create_fence().unwrap(),
                 present_done_used: false,
                 command_pool: device.create_command_pool(queue.family().id).unwrap(),
-                resources: TemporaryResources::default(),
+                resources: None,
                 swapchain_texture: None,
             });
     }
