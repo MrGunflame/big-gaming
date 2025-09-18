@@ -17,7 +17,7 @@ use crate::fps_limiter::{FpsLimit, FpsLimiter};
 use crate::graph::scheduler::RenderGraphScheduler;
 use crate::graph::{NodeLabel, RenderContext, RenderGraph, SlotLabel, SlotValueInner};
 use crate::statistics::{Pass, Statistics};
-use crate::surface::{RenderSurfaces, SurfaceConfig};
+use crate::surface::{RenderSurfaces, SurfaceConfig, MAX_FRAMES_IN_FLIGHT};
 
 #[derive(Clone, Debug)]
 pub enum Command {
@@ -162,9 +162,9 @@ impl RenderThread {
 
         // Wait until all queue submissions have completed.
         for frame in &mut surface.frames {
-            if frame.present_done_used {
-                frame.present_done.wait(None).unwrap();
-                frame.present_done_used = false;
+            if frame.submit_done_used {
+                frame.submit_done.wait(None).unwrap();
+                frame.submit_done_used = false;
             }
         }
 
@@ -188,6 +188,8 @@ impl RenderThread {
                 self.shared.device.wait_idle();
             }
         }
+
+        surface.frames_in_flight.clear();
     }
 
     unsafe fn render(&mut self) {
@@ -207,6 +209,33 @@ impl RenderThread {
         for (window, surface) in self.surfaces.iter_mut() {
             surface.limiter.block_until_ready();
 
+            if surface.frames_in_flight.len() == MAX_FRAMES_IN_FLIGHT as usize {
+                let index = surface.frames_in_flight.pop_front().unwrap();
+                let frame = &mut surface.frames[index];
+
+                debug_assert!(frame.submit_done_used);
+                frame.submit_done.wait(None).unwrap();
+                frame.submit_done_used = false;
+
+                if let Some(resources) = frame.resources.take() {
+                    if let Some(query_pool) = &resources.query_pool {
+                        unsafe {
+                            record_query_statistics(
+                                &self.shared.device,
+                                &self.queue,
+                                query_pool,
+                                &self.shared.statistics,
+                            );
+                        }
+                    }
+
+                    scheduler.destroy(resources);
+                    if let Some(texture) = frame.swapchain_texture.take() {
+                        scheduler.queue().remove_imported_texture(texture);
+                    }
+                }
+            }
+
             // Acquire the next swapchain image.
             // Note that there are no guarantees about the index of the acquired image.
             let mut output = surface
@@ -216,25 +245,33 @@ impl RenderThread {
 
             let frame = &mut surface.frames[output.index() as usize];
 
+            // FIXME: It is theoretically possible for the frame to be assigned to a
+            // frame that finished rendering but was not the oldest. In this case the
+            // previous in flight check did not relase the resources yet and we must do
+            // it here.
+            // Optimally we would completely decouple the concept of a frame and a swapchain
+            // image submission so we don't have to do this double checking.
             if frame.submit_done_used {
                 frame.submit_done.wait(None).unwrap();
             }
 
-            if let Some(query_pool) = &frame.resources.query_pool {
-                unsafe {
-                    record_query_statistics(
-                        &self.shared.device,
-                        &self.queue,
-                        query_pool,
-                        &self.shared.statistics,
-                    );
+            if let Some(resources) = frame.resources.take() {
+                if let Some(query_pool) = &resources.query_pool {
+                    unsafe {
+                        record_query_statistics(
+                            &self.shared.device,
+                            &self.queue,
+                            query_pool,
+                            &self.shared.statistics,
+                        );
+                    }
                 }
-            }
 
-            // Destroy all resources that were required for the commands.
-            scheduler.destroy(core::mem::take(&mut frame.resources));
-            if let Some(texture) = frame.swapchain_texture.take() {
-                scheduler.queue().remove_imported_texture(texture);
+                // Destroy all resources that were required for the commands.
+                scheduler.destroy(resources);
+                if let Some(texture) = frame.swapchain_texture.take() {
+                    scheduler.queue().remove_imported_texture(texture);
+                }
             }
 
             unsafe {
@@ -282,7 +319,7 @@ impl RenderThread {
             );
 
             let mut encoder = frame.command_pool.create_encoder().unwrap();
-            frame.resources = scheduler.execute(&mut encoder);
+            frame.resources = Some(scheduler.execute(&mut encoder));
             frame.swapchain_texture = Some(swapchain_texture);
             frame.submit_done_used = true;
 
@@ -323,6 +360,8 @@ impl RenderThread {
                     )
                     .unwrap();
             }
+
+            surface.frames_in_flight.push_back(output.index() as usize);
 
             drop(output);
         }
