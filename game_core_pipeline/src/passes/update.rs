@@ -177,8 +177,8 @@ impl Node for UpdatePass {
                         scene.directional_lights_buffer.remove(index);
                     }
 
-                    if let Some(index) = scene.spot_lights.remove(&id) {
-                        scene.spot_lights_buffer.remove(index);
+                    if let Some(index) = scene.point_lights.remove(&id) {
+                        scene.point_lights_buffer.remove(index);
                     }
 
                     if let Some(index) = scene.spot_lights.remove(&id) {
