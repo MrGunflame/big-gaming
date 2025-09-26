@@ -302,7 +302,7 @@ impl TransparentVertexPass {
         // The size of one element is 16 bytes.
         let abuffer_size = size.x as u64 * size.y as u64 * 4 * 16;
 
-        if mesh_state.num_transparent_instances == 0 || size.x == 0 || size.y == 0 {
+        if mesh_state.num_transparent_blend_instances == 0 || size.x == 0 || size.y == 0 {
             return;
         }
 
@@ -311,14 +311,14 @@ impl TransparentVertexPass {
 
         // Drawcall Generation Pass
         {
-            let instances_in = mesh_state.transparent_instances.buffer(ctx.queue);
+            let instances_in = mesh_state.transparent_blend_instances.buffer(ctx.queue);
             let instances_out = ctx.queue.create_buffer(&BufferDescriptor {
                 size: instances_in.size(),
                 usage: BufferUsage::STORAGE,
                 flags: UsageFlags::empty(),
             });
             let draws = ctx.queue.create_buffer(&BufferDescriptor {
-                size: mesh_state.num_transparent_instances as u64
+                size: mesh_state.num_transparent_blend_instances as u64
                     * size_of::<DrawIndexedIndirectCommand>() as u64,
                 usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
                 flags: UsageFlags::empty(),
@@ -347,14 +347,14 @@ impl TransparentVertexPass {
             });
 
             let num_dispatches = mesh_state
-                .num_transparent_instances
+                .num_transparent_blend_instances
                 .div_ceil(WORKGROUP_SIZE);
 
             pass.set_pipeline(&self.drawcall_gen_pipeline.get(ctx.queue, HDR_FORMAT));
             pass.set_push_constants(
                 ShaderStages::COMPUTE,
                 0,
-                bytemuck::bytes_of(&mesh_state.num_transparent_instances),
+                bytemuck::bytes_of(&mesh_state.num_transparent_blend_instances),
             );
             pass.set_descriptor_set(0, &descriptor);
             pass.dispatch(num_dispatches, 1, 1);

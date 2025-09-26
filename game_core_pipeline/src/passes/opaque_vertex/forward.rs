@@ -3,16 +3,17 @@ use std::sync::Arc;
 
 use game_common::components::Color;
 use game_render::api::{
-    BindingResource, Buffer, CommandQueue, ComputePassDescriptor, DepthStencilAttachment,
-    DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
+    BindingResource, Buffer, BufferDescriptor, CommandQueue, ComputePassDescriptor,
+    DepthStencilAttachment, DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
     DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
     RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
 };
+use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    AddressMode, ColorTargetState, CompareOp, ComputeStage, DepthStencilState, DescriptorBinding,
-    DescriptorType, Face, FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp,
-    TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
+    AddressMode, BufferUsage, ColorTargetState, CompareOp, ComputeStage, DepthStencilState,
+    DescriptorBinding, DescriptorType, DrawIndirectCommand, Face, FilterMode, FragmentStage,
+    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor,
+    ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
 };
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -23,6 +24,7 @@ use parking_lot::Mutex;
 
 use crate::camera::CameraUniform;
 use crate::entities::{CameraId, SceneId};
+use crate::passes::opaque_vertex::state::Instance;
 use crate::passes::{DEPTH_FORMAT, HDR_FORMAT, HDR_TEXTURE, MeshStateImpl, OPAQUE_DEPTH, State};
 
 use super::{INDIRECT_DRAW_BUFFER, INSTANCE_BUFFER};
@@ -39,11 +41,28 @@ const SHADING_SHADER: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/shaders/opaque_vertex/visbuffer_shading.slang"
 );
+const ALPHA_MASK_VS_SHADER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/shaders/opaque_vertex/transparent_mask_vert.slang"
+);
+const ALPHA_MASK_FS_SHADER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/shaders/opaque_vertex/transparent_mask_frag.slang"
+);
+
+const DRAWCALL_GEN_SHADER: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/shaders/opaque_vertex/drawcall_gen.slang"
+);
+
+const WORKGROUP_SIZE: u32 = 64;
 
 #[derive(Debug)]
 pub struct OpaqueVertexForwardPass {
     state: Arc<Mutex<State>>,
+    drawcall_gen_pipeline: PipelineCache<BuildDrawcallGenPipeline>,
     forward_pipeline: PipelineCache<ForwardPipelineBuilder>,
+    alpha_mask_pipeline: PipelineCache<AlphaMaskPipelineBuilder>,
     shading_pipeline: PipelineCache<ShadingPipelineBuilder>,
     linear_sampler: Sampler,
 }
@@ -58,6 +77,37 @@ impl OpaqueVertexForwardPass {
             min_filter: FilterMode::Linear,
             mipmap_filter: FilterMode::Linear,
         });
+
+        let drawcall_gen_pipeline = PipelineCache::new(
+            BuildDrawcallGenPipeline {
+                descriptor: queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
+                    bindings: &[
+                        DescriptorBinding {
+                            binding: 0,
+                            visibility: ShaderStages::COMPUTE,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 1,
+                            visibility: ShaderStages::COMPUTE,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 2,
+                            visibility: ShaderStages::COMPUTE,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                    ],
+                }),
+            },
+            vec![ShaderConfig {
+                language: ShaderLanguage::Slang,
+                source: ShaderSource::File(DRAWCALL_GEN_SHADER.into()),
+            }],
+        );
 
         let forward_pipeline = PipelineCache::new(
             ForwardPipelineBuilder {
@@ -100,6 +150,80 @@ impl OpaqueVertexForwardPass {
                 ShaderConfig {
                     source: ShaderSource::File(FORWARD_FS_SHADER.into()),
                     language: ShaderLanguage::Slang,
+                },
+            ],
+        );
+
+        let alpha_mask_pipeline = PipelineCache::new(
+            AlphaMaskPipelineBuilder {
+                descriptor: queue.create_descriptor_set_layout(&DescriptorSetLayoutDescriptor {
+                    bindings: &[
+                        DescriptorBinding {
+                            binding: 0,
+                            visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 1,
+                            visibility: ShaderStages::VERTEX,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 2,
+                            visibility: ShaderStages::VERTEX,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 3,
+                            visibility: ShaderStages::VERTEX,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 4,
+                            visibility: ShaderStages::VERTEX,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 5,
+                            visibility: ShaderStages::VERTEX,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 6,
+                            visibility: ShaderStages::FRAGMENT,
+                            kind: DescriptorType::Storage,
+                            count: NonZeroU32::MIN,
+                        },
+                        DescriptorBinding {
+                            binding: 7,
+                            visibility: ShaderStages::FRAGMENT,
+                            kind: DescriptorType::Texture,
+                            // FIXME: Unhardcode this
+                            count: NonZeroU32::new(8192).unwrap(),
+                        },
+                        DescriptorBinding {
+                            binding: 8,
+                            visibility: ShaderStages::FRAGMENT,
+                            kind: DescriptorType::Sampler,
+                            count: NonZeroU32::MIN,
+                        },
+                    ],
+                }),
+            },
+            vec![
+                ShaderConfig {
+                    language: ShaderLanguage::Slang,
+                    source: ShaderSource::File(ALPHA_MASK_VS_SHADER.into()),
+                },
+                ShaderConfig {
+                    language: ShaderLanguage::Slang,
+                    source: ShaderSource::File(ALPHA_MASK_FS_SHADER.into()),
                 },
             ],
         );
@@ -173,6 +297,12 @@ impl OpaqueVertexForwardPass {
                                 kind: DescriptorType::Storage,
                                 count: NonZeroU32::MIN,
                             },
+                            DescriptorBinding {
+                                binding: 8,
+                                visibility: ShaderStages::COMPUTE,
+                                kind: DescriptorType::Storage,
+                                count: NonZeroU32::MIN,
+                            },
                         ],
                     },
                 ),
@@ -231,6 +361,8 @@ impl OpaqueVertexForwardPass {
             linear_sampler,
             forward_pipeline,
             shading_pipeline,
+            alpha_mask_pipeline,
+            drawcall_gen_pipeline,
         }
     }
 
@@ -353,6 +485,138 @@ impl OpaqueVertexForwardPass {
             pass.draw_indirect(indirect_buffer);
         }
 
+        let alpha_mask_instances = ctx.queue.create_buffer(&BufferDescriptor {
+            size: mesh_state
+                .transparent_mask_instances
+                .buffer(ctx.queue)
+                .size()
+                .max(size_of::<Instance>() as u64),
+            flags: UsageFlags::empty(),
+            usage: BufferUsage::STORAGE,
+        });
+
+        // Alpha Mask forward
+        if mesh_state.num_transparent_mask_instances != 0 {
+            let instance_in = mesh_state.transparent_mask_instances.buffer(ctx.queue);
+
+            let draws = ctx.queue.create_buffer(&BufferDescriptor {
+                size: mesh_state.num_transparent_mask_instances as u64
+                    * size_of::<DrawIndirectCommand>() as u64,
+                usage: BufferUsage::STORAGE | BufferUsage::INDIRECT,
+                flags: UsageFlags::empty(),
+            });
+
+            {
+                let pipeline = self.drawcall_gen_pipeline.get(ctx.queue, HDR_FORMAT);
+
+                let descriptor = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
+                    layout: &self.drawcall_gen_pipeline.builder.descriptor,
+                    entries: &[
+                        DescriptorSetEntry {
+                            binding: 0,
+                            resource: BindingResource::Buffer(instance_in),
+                        },
+                        DescriptorSetEntry {
+                            binding: 1,
+                            resource: BindingResource::Buffer(&alpha_mask_instances),
+                        },
+                        DescriptorSetEntry {
+                            binding: 2,
+                            resource: BindingResource::Buffer(&draws),
+                        },
+                    ],
+                });
+
+                let mut compute_pass = ctx.queue.run_compute_pass(&ComputePassDescriptor {
+                    name: "Drawcall Gen (Transparent Mask)",
+                });
+
+                let workgroups = mesh_state
+                    .num_transparent_mask_instances
+                    .div_ceil(WORKGROUP_SIZE);
+
+                compute_pass.set_pipeline(&pipeline);
+                compute_pass.set_push_constants(
+                    ShaderStages::COMPUTE,
+                    0,
+                    bytemuck::bytes_of(&mesh_state.num_transparent_mask_instances),
+                );
+                compute_pass.set_descriptor_set(0, &descriptor);
+                compute_pass.dispatch(workgroups, 1, 1);
+            }
+
+            let descriptor = ctx.queue.create_descriptor_set(&DescriptorSetDescriptor {
+                layout: &self.alpha_mask_pipeline.builder.descriptor,
+                entries: &[
+                    DescriptorSetEntry {
+                        binding: 0,
+                        resource: BindingResource::Buffer(&alpha_mask_instances),
+                    },
+                    DescriptorSetEntry {
+                        binding: 1,
+                        resource: BindingResource::Buffer(&offsets),
+                    },
+                    DescriptorSetEntry {
+                        binding: 2,
+                        resource: BindingResource::Buffer(index_buffer),
+                    },
+                    DescriptorSetEntry {
+                        binding: 3,
+                        resource: BindingResource::Buffer(positions),
+                    },
+                    DescriptorSetEntry {
+                        binding: 4,
+                        resource: BindingResource::Buffer(uvs),
+                    },
+                    DescriptorSetEntry {
+                        binding: 5,
+                        resource: BindingResource::Buffer(colors),
+                    },
+                    DescriptorSetEntry {
+                        binding: 6,
+                        resource: BindingResource::Buffer(materials),
+                    },
+                    DescriptorSetEntry {
+                        binding: 7,
+                        resource: BindingResource::TextureArray(&textures),
+                    },
+                    DescriptorSetEntry {
+                        binding: 8,
+                        resource: BindingResource::Sampler(&self.linear_sampler),
+                    },
+                ],
+            });
+
+            let pipeline = self.alpha_mask_pipeline.get(ctx.queue, HDR_FORMAT);
+
+            let mut pass = ctx.queue.run_render_pass(&RenderPassDescriptor {
+                name: "Alpha Mask Forward",
+                color_attachments: &[RenderPassColorAttachment {
+                    load_op: LoadOp::Load,
+                    store_op: StoreOp::Store,
+                    target: &visbuffer.create_view(&TextureViewDescriptor::default()),
+                }],
+                depth_stencil_attachment: Some(&DepthStencilAttachment {
+                    texture: &depth_texture,
+                    load_op: LoadOp::Load,
+                    store_op: StoreOp::Store,
+                }),
+            });
+
+            pass.set_pipeline(&pipeline);
+            pass.set_descriptor_set(0, &descriptor);
+
+            let mut push_constants = [0; 128];
+            push_constants[0..80].copy_from_slice(bytemuck::bytes_of(&CameraUniform::new(
+                camera.transform,
+                camera.projection,
+            )));
+
+            pass.set_push_constants(ShaderStages::VERTEX, 0, &push_constants);
+
+            pass.draw_indirect(&draws);
+        }
+
         let output_texture = ctx.queue.create_texture(&TextureDescriptor {
             size,
             mip_levels: 1,
@@ -415,6 +679,10 @@ impl OpaqueVertexForwardPass {
                     DescriptorSetEntry {
                         binding: 7,
                         resource: BindingResource::Buffer(index_buffer),
+                    },
+                    DescriptorSetEntry {
+                        binding: 8,
+                        resource: BindingResource::Buffer(&alpha_mask_instances),
                     },
                 ],
             });
@@ -618,6 +886,80 @@ impl PipelineBuilder for ShadingPipelineBuilder {
                 stages: ShaderStages::COMPUTE,
             }],
             depth_stencil_state: None,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct AlphaMaskPipelineBuilder {
+    descriptor: DescriptorSetLayout,
+}
+
+impl PipelineBuilder for AlphaMaskPipelineBuilder {
+    fn build(
+        &self,
+        queue: &CommandQueue<'_>,
+        shaders: &[Shader],
+        _format: TextureFormat,
+    ) -> Pipeline {
+        queue.create_pipeline(&PipelineDescriptor {
+            topology: PrimitiveTopology::TriangleList,
+            front_face: FrontFace::Ccw,
+            cull_mode: Some(Face::Back),
+            stages: &[
+                PipelineStage::Vertex(VertexStage {
+                    shader: &shaders[0],
+                    entry: "main",
+                }),
+                PipelineStage::Fragment(FragmentStage {
+                    shader: &shaders[1],
+                    entry: "main",
+                    targets: &[ColorTargetState {
+                        format: TextureFormat::Rg32Uint,
+                        blend: None,
+                    }],
+                }),
+            ],
+            descriptors: &[&self.descriptor],
+            push_constant_ranges: &[PushConstantRange {
+                range: 0..128,
+                stages: ShaderStages::VERTEX,
+            }],
+            depth_stencil_state: Some(DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare_op: CompareOp::Greater,
+            }),
+        })
+    }
+}
+
+#[derive(Debug)]
+struct BuildDrawcallGenPipeline {
+    descriptor: DescriptorSetLayout,
+}
+
+impl PipelineBuilder for BuildDrawcallGenPipeline {
+    fn build(
+        &self,
+        queue: &CommandQueue<'_>,
+        shaders: &[Shader],
+        _format: TextureFormat,
+    ) -> Pipeline {
+        queue.create_pipeline(&PipelineDescriptor {
+            topology: PrimitiveTopology::TriangleList,
+            cull_mode: None,
+            front_face: FrontFace::Ccw,
+            descriptors: &[&self.descriptor],
+            stages: &[PipelineStage::Compute(ComputeStage {
+                shader: &shaders[0],
+                entry: "main",
+            })],
+            depth_stencil_state: None,
+            push_constant_ranges: &[PushConstantRange {
+                range: 0..4,
+                stages: ShaderStages::COMPUTE,
+            }],
         })
     }
 }

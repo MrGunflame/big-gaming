@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use game_common::components::Color;
 
 use crate::entities::ImageHandle;
@@ -90,7 +92,27 @@ impl Default for StandardMaterial {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum AlphaMode {
+    /// The alpha channel is ignored and the object is rendered fully opaque (1.0).
     #[default]
     Opaque,
-    Mask,
+    /// The alpha channel marks whether a fragment is fully transparent or fully opaque.
+    ///
+    /// If the sampled alpha value is less than the provided mask threshold the value is fully
+    /// transparent. Otherwise it is fully opaque.
+    Mask(f32),
+    Blend,
+}
+
+impl Eq for AlphaMode {}
+
+impl Hash for AlphaMode {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+
+        match self {
+            Self::Opaque => {}
+            Self::Mask(value) => value.to_bits().hash(state),
+            Self::Blend => {}
+        }
+    }
 }

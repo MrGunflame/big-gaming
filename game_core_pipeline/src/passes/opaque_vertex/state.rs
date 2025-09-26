@@ -10,6 +10,7 @@ use game_render::mesh::Mesh;
 use game_tracing::trace_span;
 use glam::{Mat3, Mat4, Vec4};
 
+use crate::material::AlphaMode;
 use crate::passes::{InstanceKey, MaterialState, MeshKey};
 
 #[derive(Debug)]
@@ -22,13 +23,15 @@ pub struct VertexMeshState {
     pub index_buffer: SubAllocatedGrowableBuffer<u32>,
     /// Instances that should be rendered with the opaque pipeline.
     pub opaque_instances: CompactSlabBuffer<Instance>,
+    pub transparent_mask_instances: CompactSlabBuffer<Instance>,
     /// Instances that should be rendered with the transparent pipeline.
-    pub transparent_instances: CompactSlabBuffer<Instance>,
+    pub transparent_blend_instances: CompactSlabBuffer<Instance>,
 
     pub mesh_offsets: SlabBuffer<MeshOffsets>,
     meshes: Arena<MeshData>,
     pub num_opauqe_instances: u32,
-    pub num_transparent_instances: u32,
+    pub num_transparent_mask_instances: u32,
+    pub num_transparent_blend_instances: u32,
 }
 
 impl VertexMeshState {
@@ -44,11 +47,13 @@ impl VertexMeshState {
                 BufferUsage::INDEX | BufferUsage::STORAGE,
             ),
             opaque_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
-            transparent_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
+            transparent_mask_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
+            transparent_blend_instances: CompactSlabBuffer::new(BufferUsage::STORAGE),
             mesh_offsets: SlabBuffer::new(BufferUsage::STORAGE),
             meshes: Arena::new(),
             num_opauqe_instances: 0,
-            num_transparent_instances: 0,
+            num_transparent_mask_instances: 0,
+            num_transparent_blend_instances: 0,
         }
     }
 
@@ -131,48 +136,73 @@ impl VertexMeshState {
         let normal_y = Vec4::new(normal.y_axis.x, normal.y_axis.y, normal.y_axis.z, 0.0);
         let normal_z = Vec4::new(normal.z_axis.x, normal.z_axis.y, normal.z_axis.z, 0.0);
 
-        if material.is_opaque {
-            self.num_opauqe_instances += 1;
-            InstanceKey::Opaque(
-                self.opaque_instances.insert(&Instance {
-                    transform: Mat4::from_scale_rotation_translation(
-                        transform.scale,
-                        transform.rotation,
-                        transform.translation,
-                    )
-                    .to_cols_array_2d(),
-                    normal: [
-                        normal_x.to_array(),
-                        normal_y.to_array(),
-                        normal_z.to_array(),
-                    ],
-                    material_index: material.index,
-                    offsets: mesh.offsets,
-                    index_offset: mesh.indices_offset as u32,
-                    index_count: mesh.indices_count as u32,
-                }),
-            )
-        } else {
-            self.num_transparent_instances += 1;
-            InstanceKey::Transparent(
-                self.transparent_instances.insert(&Instance {
-                    transform: Mat4::from_scale_rotation_translation(
-                        transform.scale,
-                        transform.rotation,
-                        transform.translation,
-                    )
-                    .to_cols_array_2d(),
-                    normal: [
-                        normal_x.to_array(),
-                        normal_y.to_array(),
-                        normal_z.to_array(),
-                    ],
-                    material_index: material.index,
-                    offsets: mesh.offsets,
-                    index_offset: mesh.indices_offset as u32,
-                    index_count: mesh.indices_count as u32,
-                }),
-            )
+        match material.alpha_mode {
+            AlphaMode::Opaque => {
+                self.num_opauqe_instances += 1;
+                InstanceKey::Opaque(
+                    self.opaque_instances.insert(&Instance {
+                        transform: Mat4::from_scale_rotation_translation(
+                            transform.scale,
+                            transform.rotation,
+                            transform.translation,
+                        )
+                        .to_cols_array_2d(),
+                        normal: [
+                            normal_x.to_array(),
+                            normal_y.to_array(),
+                            normal_z.to_array(),
+                        ],
+                        material_index: material.index,
+                        offsets: mesh.offsets,
+                        index_offset: mesh.indices_offset as u32,
+                        index_count: mesh.indices_count as u32,
+                    }),
+                )
+            }
+            AlphaMode::Mask(_) => {
+                self.num_transparent_mask_instances += 1;
+                InstanceKey::TransparentMask(
+                    self.transparent_mask_instances.insert(&Instance {
+                        transform: Mat4::from_scale_rotation_translation(
+                            transform.scale,
+                            transform.rotation,
+                            transform.translation,
+                        )
+                        .to_cols_array_2d(),
+                        normal: [
+                            normal_x.to_array(),
+                            normal_y.to_array(),
+                            normal_z.to_array(),
+                        ],
+                        material_index: material.index,
+                        offsets: mesh.offsets,
+                        index_offset: mesh.indices_offset as u32,
+                        index_count: mesh.indices_count as u32,
+                    }),
+                )
+            }
+            AlphaMode::Blend => {
+                self.num_transparent_blend_instances += 1;
+                InstanceKey::TransparentBlend(
+                    self.transparent_blend_instances.insert(&Instance {
+                        transform: Mat4::from_scale_rotation_translation(
+                            transform.scale,
+                            transform.rotation,
+                            transform.translation,
+                        )
+                        .to_cols_array_2d(),
+                        normal: [
+                            normal_x.to_array(),
+                            normal_y.to_array(),
+                            normal_z.to_array(),
+                        ],
+                        material_index: material.index,
+                        offsets: mesh.offsets,
+                        index_offset: mesh.indices_offset as u32,
+                        index_count: mesh.indices_count as u32,
+                    }),
+                )
+            }
         }
     }
 
@@ -182,9 +212,13 @@ impl VertexMeshState {
                 self.opaque_instances.remove(key);
                 self.num_opauqe_instances -= 1;
             }
-            InstanceKey::Transparent(key) => {
-                self.transparent_instances.remove(key);
-                self.num_transparent_instances -= 1;
+            InstanceKey::TransparentMask(key) => {
+                self.transparent_mask_instances.remove(key);
+                self.num_transparent_mask_instances -= 1;
+            }
+            InstanceKey::TransparentBlend(key) => {
+                self.transparent_blend_instances.remove(key);
+                self.num_transparent_blend_instances -= 1;
             }
         }
     }

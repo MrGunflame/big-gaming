@@ -35,6 +35,7 @@ use update::{TransformUniform, UpdatePass};
 use crate::camera::Camera;
 use crate::entities::{CameraId, Event, ImageId, LightId, MaterialId, MeshId, ObjectId, SceneId};
 use crate::lights::{DirectionalLightUniform, PointLightUniform, SpotLightUniform};
+use crate::material::AlphaMode;
 use crate::passes::transparent_vertex::TransparentVertexPass;
 
 const DEPTH_FORMAT: TextureFormat = TextureFormat::Depth32Float;
@@ -365,7 +366,8 @@ impl TextureSlab {
 #[repr(C)]
 struct RawMaterialData {
     flags: MaterialFlags,
-    _pad0: [u32; 3],
+    alpha_mask: f32,
+    _pad0: [u32; 2],
     base_color: [f32; 4],
     roughness: f32,
     metallic: f32,
@@ -461,11 +463,12 @@ pub struct MeshKey(pub Key);
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum InstanceKey {
     Opaque(SlabIndex),
-    Transparent(SlabIndex),
+    TransparentMask(SlabIndex),
+    TransparentBlend(SlabIndex),
 }
 
 #[derive(Copy, Clone, Debug)]
 pub struct MaterialState {
     pub index: SlabIndex,
-    pub is_opaque: bool,
+    pub alpha_mode: AlphaMode,
 }
