@@ -11,23 +11,18 @@ static const u32 OIT_LAYERS = 8;
 [[vk::binding(1, 0)]] Texture2D<u32> heads;
 [[vk::binding(2, 0)]] RWTexture2D<Vec4> output;
 
-[shader("compute")]
-[numthreads(NUM_THREADS, 1, 1)]
-void main(
-    u32 tid: SV_GroupThreadID,
-    u32 gid: SV_GroupID,
-) {
-    // TODO: Group into tiles instead of going row by row
-    // for better cache locality.
-    let id = gid * NUM_THREADS + tid;
-    let x = id % output_size.x;
-    let y = id / output_size.x;
+static const u32 TILE_SIZE = 16;
 
-    if (x >= output_size.x || y >= output_size.y) {
+[shader("compute")]
+[numthreads(TILE_SIZE, TILE_SIZE, 1)]
+void main(
+    vector<u32, 2> tid: SV_GroupThreadID,
+    vector<u32, 2> gid: SV_GroupID,
+) {
+    let coords = gid * TILE_SIZE + tid;
+    if (coords.x >= output_size.x || coords.y >= output_size.y) {
         return;
     }
-
-    let coords = vector<u32, 2>(x, y);
     
     Element layers[OIT_LAYERS];
     var layer_count = 0;

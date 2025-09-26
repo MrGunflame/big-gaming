@@ -568,12 +568,13 @@ impl TransparentVertexPass {
                 ],
             });
 
-            let num_dispatches = (size.x * size.y).div_ceil(WORKGROUP_SIZE);
-
             pass.set_pipeline(&self.blend_pipeline.get(ctx.queue, HDR_FORMAT));
             pass.set_push_constants(ShaderStages::COMPUTE, 0, bytemuck::bytes_of(&size));
             pass.set_descriptor_set(0, &descriptor);
-            pass.dispatch(num_dispatches, 1, 1);
+
+            let x = size.x.div_ceil(16);
+            let y = size.y.div_ceil(16);
+            pass.dispatch(x, y, 1);
         }
     }
 }
