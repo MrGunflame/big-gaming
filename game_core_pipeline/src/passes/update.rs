@@ -321,9 +321,15 @@ fn create_material(
         None => default_textures.specular_glossiness,
     };
 
+    let alpha_mask = match material.alpha_mode {
+        AlphaMode::Mask(mask) => mask,
+        _ => 0.0,
+    };
+
     let index = materials.insert(&RawMaterialData {
         flags,
-        _pad0: [0; 3],
+        alpha_mask,
+        _pad0: [0; 2],
         base_color: material.base_color.as_rgba(),
         roughness: material.roughness,
         metallic: material.metallic,
@@ -338,7 +344,7 @@ fn create_material(
 
     MaterialState {
         index,
-        is_opaque: matches!(material.alpha_mode, AlphaMode::Opaque),
+        alpha_mode: material.alpha_mode,
     }
 }
 
