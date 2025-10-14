@@ -202,9 +202,6 @@ impl PipelineBuilder for ForwardPipelineBuilder {
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            cull_mode: None,
-            front_face: FrontFace::Ccw,
             descriptors: &[
                 &self.vs_bind_group_layout,
                 &self.mesh_bind_group_layout,
@@ -215,6 +212,7 @@ impl PipelineBuilder for ForwardPipelineBuilder {
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "vs_main",
+                    topology: PrimitiveTopology::TriangleList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
@@ -223,13 +221,15 @@ impl PipelineBuilder for ForwardPipelineBuilder {
                         format,
                         blend: None,
                     }],
+                    cull_mode: None,
+                    front_face: FrontFace::Ccw,
+                    depth_stencil_state: Some(DepthStencilState {
+                        format: TextureFormat::Depth32Float,
+                        depth_write_enabled: true,
+                        depth_compare_op: CompareOp::Less,
+                    }),
                 }),
             ],
-            depth_stencil_state: Some(DepthStencilState {
-                format: TextureFormat::Depth32Float,
-                depth_write_enabled: true,
-                depth_compare_op: CompareOp::Less,
-            }),
             push_constant_ranges: &[PushConstantRange {
                 range: 0..128,
                 stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,

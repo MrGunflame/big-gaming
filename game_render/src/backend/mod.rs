@@ -262,13 +262,9 @@ pub struct SwapchainConfig {
 }
 
 pub struct PipelineDescriptor<'a> {
-    pub topology: PrimitiveTopology,
-    pub front_face: FrontFace,
-    pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
     pub descriptors: &'a [&'a DescriptorSetLayout],
     pub push_constant_ranges: &'a [PushConstantRange],
-    pub depth_stencil_state: Option<DepthStencilState>,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -327,17 +323,24 @@ impl PipelineStage<'_> {
     }
 }
 
+/// Descriptor for the primitive assembly and vertex shader stages of a pipeline.
 #[derive(Debug)]
 pub struct VertexStage<'a> {
     pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
+    pub topology: PrimitiveTopology,
 }
 
+/// Descriptor for the rasterization and fragment shader stages of a pipeline.
 #[derive(Debug)]
 pub struct FragmentStage<'a> {
     pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
     pub targets: &'a [ColorTargetState],
+    pub front_face: FrontFace,
+    /// Which faces should be culled.
+    pub cull_mode: Option<Face>,
+    pub depth_stencil_state: Option<DepthStencilState>,
 }
 
 #[derive(Debug)]

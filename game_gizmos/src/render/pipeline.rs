@@ -79,14 +79,12 @@ impl PipelineBuilder for GizmoPipelineBuilder {
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::LineList,
-            front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
             descriptors: &[&self.descriptor_set_layout],
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "vs_main",
+                    topology: PrimitiveTopology::LineList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
@@ -95,9 +93,11 @@ impl PipelineBuilder for GizmoPipelineBuilder {
                         format,
                         blend: None,
                     }],
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    depth_stencil_state: None,
                 }),
             ],
-            depth_stencil_state: None,
             push_constant_ranges: &[],
         })
     }

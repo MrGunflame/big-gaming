@@ -113,13 +113,11 @@ impl PipelineBuilder for UiPipelineBuilder {
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "vs_main",
+                    topology: PrimitiveTopology::TriangleList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
@@ -128,9 +126,11 @@ impl PipelineBuilder for UiPipelineBuilder {
                         format,
                         blend: None,
                     }],
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    depth_stencil_state: None,
                 }),
             ],
-            depth_stencil_state: None,
             descriptors: &[&self.descriptor_set_layout],
             push_constant_ranges: &[],
         })

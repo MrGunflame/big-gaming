@@ -131,14 +131,12 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
         let _span = trace_span!("PostProcessPipelineBuilder::build").entered();
 
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: None,
             descriptors: &[&self.descriptor_set_layout],
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "vs_main",
+                    topology: PrimitiveTopology::TriangleList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[0],
@@ -147,9 +145,11 @@ impl PipelineBuilder for PostProcessPipelineBuilder {
                         format,
                         blend: None,
                     }],
+                    front_face: FrontFace::Ccw,
+                    cull_mode: None,
+                    depth_stencil_state: None,
                 }),
             ],
-            depth_stencil_state: None,
             push_constant_ranges: &[],
         })
     }

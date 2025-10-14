@@ -611,9 +611,6 @@ impl PipelineBuilder for DrawcallGenPipeline {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: None,
             stages: &[PipelineStage::Compute(ComputeStage {
                 shader: &shaders[0],
                 entry: "main",
@@ -623,7 +620,6 @@ impl PipelineBuilder for DrawcallGenPipeline {
                 range: 0..4,
                 stages: ShaderStages::COMPUTE,
             }],
-            depth_stencil_state: None,
         })
     }
 }
@@ -643,18 +639,23 @@ impl PipelineBuilder for BuildColorPipeline {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "main",
+                    topology: PrimitiveTopology::TriangleList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
                     entry: "main",
                     targets: &[],
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    depth_stencil_state: Some(DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: false,
+                        depth_compare_op: CompareOp::Greater,
+                    }),
                 }),
             ],
             descriptors: &[
@@ -666,11 +667,6 @@ impl PipelineBuilder for BuildColorPipeline {
                 range: 0..128,
                 stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             }],
-            depth_stencil_state: Some(DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare_op: CompareOp::Greater,
-            }),
         })
     }
 }
@@ -688,9 +684,6 @@ impl PipelineBuilder for BuildBlendPipeline {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: None,
             stages: &[PipelineStage::Compute(ComputeStage {
                 shader: &shaders[0],
                 entry: "main",
@@ -700,7 +693,6 @@ impl PipelineBuilder for BuildBlendPipeline {
                 range: 0..8,
                 stages: ShaderStages::COMPUTE,
             }],
-            depth_stencil_state: None,
         })
     }
 }

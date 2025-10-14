@@ -8,8 +8,8 @@ use game_render::api::{
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    BufferUsage, DescriptorBinding, DescriptorType, DrawIndirectCommand, FrontFace,
-    PrimitiveTopology, PushConstantRange, ShaderStages, TextureFormat,
+    BufferUsage, DescriptorBinding, DescriptorType, DrawIndirectCommand, PushConstantRange,
+    ShaderStages, TextureFormat,
 };
 use game_render::graph::{Node, RenderContext};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
@@ -150,15 +150,11 @@ impl PipelineBuilder for BuildPipeline {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            cull_mode: None,
-            front_face: FrontFace::Ccw,
             descriptors: &[&self.descriptor],
             stages: &[PipelineStage::Compute(ComputeStage {
                 shader: &shaders[0],
                 entry: "main",
             })],
-            depth_stencil_state: None,
             push_constant_ranges: &[PushConstantRange {
                 range: 0..4,
                 stages: ShaderStages::COMPUTE,
