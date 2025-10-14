@@ -2,14 +2,14 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use game_render::api::{
-    BindingResource, BufferDescriptor, CommandQueue, ComputePassDescriptor,
+    BindingResource, BufferDescriptor, CommandQueue, ComputePassDescriptor, ComputeStage,
     DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
-    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor,
+    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, PipelineStage,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    BufferUsage, ComputeStage, DescriptorBinding, DescriptorType, DrawIndirectCommand, FrontFace,
-    PipelineStage, PrimitiveTopology, PushConstantRange, ShaderStages, TextureFormat,
+    BufferUsage, DescriptorBinding, DescriptorType, DrawIndirectCommand, FrontFace,
+    PrimitiveTopology, PushConstantRange, ShaderStages, TextureFormat,
 };
 use game_render::graph::{Node, RenderContext};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};

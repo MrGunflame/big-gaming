@@ -11,6 +11,7 @@ use naga::{AddressSpace, ArraySize, Module, TypeInner};
 use thiserror::Error;
 
 use crate::backend::{DescriptorType, ShaderStage};
+use crate::shader::{BindingId, ShaderInstanceBinding};
 
 use super::{
     BindingInfo, BindingLocation, Options, ShaderAccess, ShaderBinding, ShaderSource, ShaderSources,
@@ -48,7 +49,17 @@ impl Shader {
     }
 
     pub fn instantiate(&self, options: &Options<'_>) -> ShaderInstance<'_> {
-        let bindings = self.shader_bindings(Some(options.entry_point));
+        let bindings = self
+            .shader_bindings(Some(options.entry_point))
+            .iter()
+            .map(|v| ShaderInstanceBinding {
+                id: v.id,
+                location: v.location.unwrap(),
+                kind: v.kind,
+                access: v.access,
+                count: v.count.unwrap(),
+            })
+            .collect();
 
         ShaderInstance {
             shader: self,
@@ -77,11 +88,7 @@ impl Shader {
                 .collect(),
         };
 
-        for (handle, var) in self.module.global_variables.iter() {
-            let Some(binding) = &var.binding else {
-                continue;
-            };
-
+        for (index, (handle, var)) in self.module.global_variables.iter().enumerate() {
             let (kind, count) = match &self.module.types[var.ty].inner {
                 TypeInner::BindingArray { base, size } => {
                     let kind = match self.module.types[*base].inner {
@@ -147,13 +154,19 @@ impl Shader {
                 })
                 .collect();
 
+            let binding = var.binding.as_ref().map(|binding| BindingLocation {
+                group: binding.group,
+                binding: binding.binding,
+            });
+
             if access.is_empty() {
                 continue;
             }
 
             bindings.push(ShaderBinding {
-                group: binding.group,
-                binding: binding.binding,
+                id: BindingId(index as u32),
+                name: var.name.clone(),
+                location: binding,
                 kind,
                 access,
                 count,
@@ -167,24 +180,30 @@ impl Shader {
 #[derive(Clone, Debug)]
 pub struct ShaderInstance<'a> {
     shader: &'a Shader,
-    bindings: Vec<ShaderBinding>,
+    bindings: Vec<ShaderInstanceBinding>,
     entry_point: String,
     stage: ShaderStage,
-    binding_map: HashMap<BindingLocation, BindingInfo>,
+    binding_map: HashMap<BindingId, BindingInfo>,
 }
 
 impl<'a> ShaderInstance<'a> {
-    pub fn bindings(&self) -> &[ShaderBinding] {
+    pub fn bindings(&self) -> &[ShaderInstanceBinding] {
         &self.bindings
     }
 
     pub fn to_spirv(&self) -> Vec<u32> {
         let mut options = spv::Options::default();
-        for (location, info) in &self.binding_map {
+        for (id, info) in &self.binding_map {
+            if info.location.is_some() {
+                todo!("changing location for naga modules is not supported");
+            }
+
+            let binding = self.bindings.iter().find(|v| v.id == *id).unwrap();
+
             options.binding_map.insert(
                 naga::ResourceBinding {
-                    group: location.group,
-                    binding: location.binding,
+                    group: binding.location.group,
+                    binding: binding.location.binding,
                 },
                 spv::BindingInfo {
                     binding_array_size: Some(info.count.get()),

@@ -3,13 +3,13 @@ use std::num::NonZeroU32;
 use game_common::components::Color;
 use game_render::api::{
     BindingResource, CommandQueue, DescriptorSetDescriptor, DescriptorSetEntry,
-    DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor,
-    RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
+    DescriptorSetLayout, DescriptorSetLayoutDescriptor, FragmentStage, Pipeline,
+    PipelineDescriptor, PipelineStage, RenderPassColorAttachment, RenderPassDescriptor, Sampler,
+    Texture, TextureViewDescriptor, VertexStage,
 };
 use game_render::backend::{
-    AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, FilterMode, FragmentStage,
-    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp,
-    TextureFormat, VertexStage,
+    AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, FilterMode, FrontFace,
+    LoadOp, PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp, TextureFormat,
 };
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};

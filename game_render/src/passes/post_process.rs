@@ -4,14 +4,14 @@ use game_common::components::Color;
 use game_tracing::trace_span;
 
 use crate::api::{
-    BindingResource, CommandQueue, DescriptorSetEntry, DescriptorSetLayout, Pipeline,
-    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
-    TextureViewDescriptor,
+    BindingResource, CommandQueue, DescriptorSetEntry, DescriptorSetLayout, FragmentStage,
+    Pipeline, PipelineDescriptor, PipelineStage, RenderPassColorAttachment, RenderPassDescriptor,
+    Sampler, Texture, TextureViewDescriptor, VertexStage,
 };
 use crate::backend::{
     AddressMode, ColorTargetState, DescriptorBinding, DescriptorSetDescriptor, DescriptorType,
-    FilterMode, FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology,
-    SamplerDescriptor, ShaderStages, StoreOp, TextureFormat, VertexStage,
+    FilterMode, FrontFace, LoadOp, PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp,
+    TextureFormat,
 };
 use crate::graph::{Node, RenderContext, SlotLabel};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
