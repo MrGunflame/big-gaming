@@ -13,7 +13,7 @@ use glam::UVec2;
 use hashbrown::HashMap;
 use vulkan::{Buffer, DescriptorSetLayout, Fence, Sampler, Semaphore, Texture, TextureView};
 
-use crate::shader::Shader;
+use crate::shader::ShaderInstance;
 
 #[derive(Clone, Debug)]
 pub struct AdapterProperties {
@@ -329,32 +329,32 @@ impl PipelineStage<'_> {
 
 #[derive(Debug)]
 pub struct VertexStage<'a> {
-    pub shader: &'a Shader,
+    pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
 }
 
 #[derive(Debug)]
 pub struct FragmentStage<'a> {
-    pub shader: &'a Shader,
+    pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
     pub targets: &'a [ColorTargetState],
 }
 
 #[derive(Debug)]
 pub struct TaskStage<'a> {
-    pub shader: &'a Shader,
+    pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
 }
 
 #[derive(Debug)]
 pub struct MeshStage<'a> {
-    pub shader: &'a Shader,
+    pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
 }
 
 #[derive(Debug)]
 pub struct ComputeStage<'a> {
-    pub shader: &'a Shader,
+    pub shader: &'a ShaderInstance<'a>,
     pub entry: &'static str,
 }
 

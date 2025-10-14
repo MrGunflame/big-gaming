@@ -5,7 +5,7 @@ use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 
 use crate::api::{CommandQueue, Pipeline};
 use crate::backend::TextureFormat;
-use crate::shader::{ReloadableShaderSource, Shader, ShaderConfig};
+use crate::shader::{ReloadableShaderSource, Shader, ShaderConfig, ShaderInstance};
 
 /// A cache for pipelines with different [`TextureFormat`].
 #[derive(Debug)]

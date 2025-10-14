@@ -19,12 +19,14 @@ use commands::{
 use crossbeam_queue::SegQueue;
 use executor::TemporaryResources;
 use game_common::cell::UnsafeRefCell;
+use game_common::collections::scratch_buffer::ScratchBuffer;
 use game_common::collections::vec_map::VecMap;
 use game_common::components::Color;
 use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
 use hashbrown::{HashMap, HashSet};
+use naga::back;
 use parking_lot::Mutex;
 use queries::QueryPoolSet;
 use resources::{
@@ -41,13 +43,15 @@ use crate::backend::allocator::{MemoryManager, UsageFlags};
 use crate::backend::descriptors::DescriptorSetAllocator;
 use crate::backend::vulkan::{self, CommandEncoder, Device};
 use crate::backend::{
-    self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, DepthStencilState,
-    DescriptorType, DrawIndexedIndirectCommand, DrawIndirectCommand, Face, Features, FrontFace,
-    ImageDataLayout, IndexFormat, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange,
-    SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
-    TextureUsage,
+    self, AccessFlags, AdapterMemoryProperties, AdapterProperties, BufferUsage, ColorTargetState,
+    DepthStencilState, DescriptorType, DrawIndexedIndirectCommand, DrawIndirectCommand, Face,
+    Features, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor,
+    TextureFormat, TextureUsage,
 };
-use crate::shader::{self, ShaderAccess, ShaderBinding};
+use crate::shader::{
+    self, BindingInfo, Shader, ShaderAccess, ShaderBinding, ShaderInstanceBinding,
+};
 use crate::statistics::Statistics;
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
@@ -1086,7 +1090,9 @@ impl<'a> CommandQueue<'a> {
             .collect();
         let descriptors: Vec<_> = layouts.iter().map(|layout| &layout.inner).collect();
 
-        let validate_shader_binding = |binding: &ShaderBinding, stage: ShaderStage| {
+        let validate_shader_binding = |binding: &ShaderInstanceBinding, stage: ShaderStage| {
+            let location = binding.location;
+
             let get_descriptor_kind = |group: u32, binding: u32| -> Option<DescriptorType> {
                 let descriptor = descriptors.get(group as usize)?;
                 let binding = descriptor.bindings().get(binding as usize)?;
@@ -1108,33 +1114,68 @@ impl<'a> CommandQueue<'a> {
             };
 
             assert!(
-                get_descriptor_kind(binding.group, binding.binding)
+                get_descriptor_kind(location.group, location.binding)
                     .is_some_and(|kind| is_comptaible(kind, binding.kind)),
                 "shader expects {:?} in location {:?}, but {:?} was provided",
                 binding.kind,
-                binding.location(),
-                get_descriptor_kind(binding.group, binding.binding),
+                location,
+                get_descriptor_kind(location.group, location.binding),
             );
 
             assert!(
-                get_descriptor_vis(binding.group, binding.binding)
+                get_descriptor_vis(location.group, location.binding)
                     .is_some_and(|vis| vis.contains(stage.into())),
                 "binding at {:?} must be visible in stage {:?}, but was only visible in stages {:?}",
-                binding.location(),
+                location,
                 stage,
-                get_descriptor_vis(binding.group, binding.binding),
+                get_descriptor_vis(location.group, location.binding),
             );
         };
 
+        let compute_shader_binding_options = |shader: &Shader| {
+            let mut infos = HashMap::new();
+            for binding in shader.bindings() {
+                let location = binding.location.unwrap();
+
+                // Specialize using the count provided in the descriptor set layout.
+                if binding.count.is_none() {
+                    let Some(descriptor) = descriptors[location.group as usize]
+                        .bindings()
+                        .iter()
+                        .find(|v| v.binding == location.binding)
+                    else {
+                        panic!(
+                            "cannot specialize binding count at location {:?}: does not exist",
+                            location
+                        );
+                    };
+
+                    infos.insert(
+                        binding.id,
+                        BindingInfo {
+                            location: None,
+                            count: descriptor.count,
+                        },
+                    );
+                }
+            }
+
+            infos
+        };
+
+        let instances = ScratchBuffer::new(descriptor.stages.len());
+
         let mut bindings = BindingMap::default();
+        let mut raw_stages = Vec::new();
         for stage in descriptor.stages {
-            match stage {
+            let raw_stage = match stage {
                 PipelineStage::Vertex(stage) => {
                     let instance = stage.shader.instantiate(&shader::Options {
-                        bindings: HashMap::new(),
+                        bindings: compute_shader_binding_options(stage.shader),
                         stage: ShaderStage::Vertex,
                         entry_point: &stage.entry,
                     });
+                    let instance = instances.insert(instance);
 
                     for binding in instance.bindings() {
                         validate_shader_binding(binding, ShaderStage::Vertex);
@@ -1149,19 +1190,25 @@ impl<'a> CommandQueue<'a> {
 
                         if !access.is_empty() {
                             bindings.insert(
-                                binding.location().group,
-                                binding.location().binding,
+                                binding.location.group,
+                                binding.location.binding,
                                 access,
                             );
                         }
                     }
+
+                    backend::PipelineStage::Vertex(backend::VertexStage {
+                        shader: &*instance,
+                        entry: stage.entry,
+                    })
                 }
                 PipelineStage::Fragment(stage) => {
                     let instance = stage.shader.instantiate(&shader::Options {
-                        bindings: HashMap::new(),
+                        bindings: compute_shader_binding_options(stage.shader),
                         stage: ShaderStage::Fragment,
                         entry_point: &stage.entry,
                     });
+                    let instance = instances.insert(instance);
 
                     for binding in instance.bindings() {
                         validate_shader_binding(binding, ShaderStage::Fragment);
@@ -1176,19 +1223,26 @@ impl<'a> CommandQueue<'a> {
 
                         if !access.is_empty() {
                             bindings.insert(
-                                binding.location().group,
-                                binding.location().binding,
+                                binding.location.group,
+                                binding.location.binding,
                                 access,
                             );
                         }
                     }
+
+                    backend::PipelineStage::Fragment(backend::FragmentStage {
+                        shader: &*instance,
+                        entry: stage.entry,
+                        targets: stage.targets,
+                    })
                 }
                 PipelineStage::Task(stage) => {
                     let instance = stage.shader.instantiate(&shader::Options {
-                        bindings: HashMap::new(),
+                        bindings: compute_shader_binding_options(stage.shader),
                         stage: ShaderStage::Task,
                         entry_point: &stage.entry,
                     });
+                    let instance = instances.insert(instance);
 
                     for binding in instance.bindings() {
                         validate_shader_binding(binding, ShaderStage::Task);
@@ -1203,19 +1257,25 @@ impl<'a> CommandQueue<'a> {
 
                         if !access.is_empty() {
                             bindings.insert(
-                                binding.location().group,
-                                binding.location().binding,
+                                binding.location.group,
+                                binding.location.binding,
                                 access,
                             );
                         }
                     }
+
+                    backend::PipelineStage::Task(backend::TaskStage {
+                        shader: &*instance,
+                        entry: stage.entry,
+                    })
                 }
                 PipelineStage::Mesh(stage) => {
                     let instance = stage.shader.instantiate(&shader::Options {
-                        bindings: HashMap::new(),
+                        bindings: compute_shader_binding_options(stage.shader),
                         stage: ShaderStage::Mesh,
                         entry_point: &stage.entry,
                     });
+                    let instance = instances.insert(instance);
 
                     for binding in instance.bindings() {
                         validate_shader_binding(binding, ShaderStage::Mesh);
@@ -1230,19 +1290,25 @@ impl<'a> CommandQueue<'a> {
 
                         if !access.is_empty() {
                             bindings.insert(
-                                binding.location().group,
-                                binding.location().binding,
+                                binding.location.group,
+                                binding.location.binding,
                                 access,
                             );
                         }
                     }
+
+                    backend::PipelineStage::Mesh(backend::MeshStage {
+                        shader: &*instance,
+                        entry: stage.entry,
+                    })
                 }
                 PipelineStage::Compute(stage) => {
                     let instance = stage.shader.instantiate(&shader::Options {
-                        bindings: HashMap::new(),
+                        bindings: compute_shader_binding_options(stage.shader),
                         stage: ShaderStage::Compute,
                         entry_point: &stage.entry,
                     });
+                    let instance = instances.insert(instance);
 
                     for binding in instance.bindings() {
                         validate_shader_binding(binding, ShaderStage::Compute);
@@ -1257,14 +1323,21 @@ impl<'a> CommandQueue<'a> {
 
                         if !access.is_empty() {
                             bindings.insert(
-                                binding.location().group,
-                                binding.location().binding,
+                                binding.location.group,
+                                binding.location.binding,
                                 access,
                             );
                         }
                     }
+
+                    backend::PipelineStage::Compute(backend::ComputeStage {
+                        shader: &*instance,
+                        entry: stage.entry,
+                    })
                 }
-            }
+            };
+
+            raw_stages.push(raw_stage);
         }
 
         let inner = self
@@ -1276,7 +1349,7 @@ impl<'a> CommandQueue<'a> {
                 front_face: descriptor.front_face,
                 descriptors: &descriptors,
                 depth_stencil_state: descriptor.depth_stencil_state,
-                stages: descriptor.stages,
+                stages: &raw_stages,
                 push_constant_ranges: descriptor.push_constant_ranges,
             })
             .unwrap();
@@ -1480,6 +1553,46 @@ pub struct PipelineDescriptor<'a> {
     pub descriptors: &'a [&'a DescriptorSetLayout],
     pub push_constant_ranges: &'a [PushConstantRange],
     pub depth_stencil_state: Option<DepthStencilState>,
+}
+
+#[derive(Debug)]
+pub enum PipelineStage<'a> {
+    Vertex(VertexStage<'a>),
+    Fragment(FragmentStage<'a>),
+    Task(TaskStage<'a>),
+    Mesh(MeshStage<'a>),
+    Compute(ComputeStage<'a>),
+}
+
+#[derive(Debug)]
+pub struct VertexStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
+}
+
+#[derive(Debug)]
+pub struct FragmentStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
+    pub targets: &'a [ColorTargetState],
+}
+
+#[derive(Debug)]
+pub struct TaskStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
+}
+
+#[derive(Debug)]
+pub struct MeshStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
+}
+
+#[derive(Debug)]
+pub struct ComputeStage<'a> {
+    pub shader: &'a Shader,
+    pub entry: &'static str,
 }
 
 #[derive(Debug)]

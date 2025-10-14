@@ -5,13 +5,13 @@ use game_tracing::trace_span;
 
 use crate::api::{
     BindingResource, CommandQueue, DescriptorSetDescriptor, DescriptorSetEntry,
-    DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor,
-    RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
+    DescriptorSetLayout, DescriptorSetLayoutDescriptor, FragmentStage, Pipeline,
+    PipelineDescriptor, PipelineStage, RenderPassColorAttachment, RenderPassDescriptor, Sampler,
+    Texture, TextureViewDescriptor, VertexStage,
 };
 use crate::backend::{
-    AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, Face, FilterMode,
-    FragmentStage, FrontFace, LoadOp, PipelineStage, PrimitiveTopology, SamplerDescriptor,
-    ShaderStages, StoreOp, TextureFormat, VertexStage,
+    AddressMode, ColorTargetState, DescriptorBinding, DescriptorType, Face, FilterMode, FrontFace,
+    LoadOp, PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp, TextureFormat,
 };
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};
 use crate::shader::{Shader, ShaderConfig, ShaderLanguage, ShaderSource};

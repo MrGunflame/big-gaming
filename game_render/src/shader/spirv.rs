@@ -12,7 +12,6 @@ use std::collections::BTreeMap;
 use std::fmt::{self, Display, Formatter};
 use std::num::NonZeroU32;
 
-use bitflags::Flags;
 use hashbrown::{HashMap, HashSet};
 use ops::{
     Decoration, Id, Instruction, OpCapability, OpConstant, OpConstantComposite, OpConstantFalse,
@@ -28,7 +27,7 @@ use thiserror::Error;
 
 use crate::backend::{DescriptorType, ShaderStage};
 use crate::shader::spirv::ops::{OpExtInst, OpUndef};
-use crate::shader::ShaderAccess;
+use crate::shader::{BindingId, ShaderAccess, ShaderInstanceBinding};
 
 use super::{BindingLocation, Options, ShaderBinding};
 
@@ -64,7 +63,7 @@ enum ErrorImpl {
     #[error("unknown entry point {name} with stage {stage:?}")]
     UnknownEntryPoint { name: String, stage: ShaderStage },
     #[error("no binding at {0:?}")]
-    NoBinding(BindingLocation),
+    NoBinding(BindingId),
     #[error("invalid type to specialize: {0}")]
     InvalidTypeToSpecialize(OpTypeKind),
     #[error("unexpected instruction: {0:?}")]
@@ -73,6 +72,10 @@ enum ErrorImpl {
     UnkownStorageClass(StorageClass),
     #[error("unknown decoration: {0:?}")]
     UnknownDecoration(spirv::Decoration),
+    #[error("binding {0:?} has no location assigned")]
+    NoLocation(BindingId),
+    #[error("array binding {0:?} requires count, but none was given")]
+    NoArrayCount(BindingId),
 }
 
 #[derive(Copy, Clone, Debug, Error)]
@@ -112,7 +115,8 @@ impl Module {
         let module = SpirvModule::read(bytes)?;
 
         let mut bindings = HashMap::new();
-        for global in module.globals.values() {
+
+        for (index, global) in module.globals.values().enumerate() {
             let Some(ty) = module.types.get(&global.result_type) else {
                 return Err(ErrorImpl::UnknownId(global.result_type).into());
             };
@@ -199,8 +203,12 @@ impl Module {
             bindings.insert(
                 global.result,
                 ShaderBinding {
-                    group: 0,
-                    binding: 0,
+                    id: BindingId(index as u32),
+                    name: None,
+                    location: Some(BindingLocation {
+                        group: 0,
+                        binding: 0,
+                    }),
                     kind,
                     access: ShaderAccess::empty(),
                     count,
@@ -209,20 +217,38 @@ impl Module {
         }
 
         for (target, decorations) in &module.decorations {
+            let mut group = None;
+            let mut binding = None;
+
             for decoration in decorations {
                 match decoration {
                     Decoration::Binding(id) => {
-                        if let Some(binding) = bindings.get_mut(target) {
-                            binding.binding = *id;
-                        }
+                        binding = Some(*id);
                     }
                     Decoration::DescriptorSet(id) => {
-                        if let Some(binding) = bindings.get_mut(target) {
-                            binding.group = *id;
-                        }
+                        group = Some(*id);
                     }
                     _ => (),
                 }
+            }
+
+            let (Some(group), Some(binding)) = (group, binding) else {
+                continue;
+            };
+
+            if let Some(b) = bindings.get_mut(target) {
+                b.location = Some(BindingLocation { group, binding });
+            }
+        }
+
+        // OpName defines the name for bindings.
+        for ins in &module.debug {
+            let Instruction::Name(ins) = ins else {
+                continue;
+            };
+
+            if let Some(binding) = bindings.get_mut(&ins.target) {
+                binding.name = Some(ins.name.clone());
             }
         }
 
@@ -239,7 +265,7 @@ impl Module {
     }
 
     pub fn bindings(&self) -> Vec<ShaderBinding> {
-        self.bindings.values().copied().collect()
+        self.bindings.values().cloned().collect()
     }
 
     pub fn instantiate(&self, options: &Options<'_>) -> Result<Instance, Error> {
@@ -268,14 +294,40 @@ impl Module {
 
         let mut module = self.module.clone();
 
-        let mut bindings = self.bindings.clone();
         let variables = module.compute_global_accesses(entry_point.entry_point);
-        for (id, binding) in &mut bindings {
-            binding.access.clear();
-            if let Some(access) = variables.get(id) {
-                binding.access = *access;
-            }
-        }
+        let bindings = self
+            .bindings
+            .iter()
+            .map(|(id, binding)| -> Result<_, Error> {
+                let access = variables.get(id).copied().unwrap_or_default();
+
+                let Some(location) = options
+                    .bindings
+                    .get(&binding.id)
+                    .and_then(|info| info.location)
+                    .or(binding.location)
+                else {
+                    return Err(ErrorImpl::NoLocation(binding.id).into());
+                };
+
+                let Some(count) = options
+                    .bindings
+                    .get(&binding.id)
+                    .map(|info| info.count)
+                    .or(binding.count)
+                else {
+                    return Err(ErrorImpl::NoArrayCount(binding.id).into());
+                };
+
+                Ok(ShaderInstanceBinding {
+                    id: binding.id,
+                    location,
+                    kind: binding.kind,
+                    access,
+                    count,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         let len_type_id = module.create_type(OpType::Int(OpTypeInt {
             result: Id::DUMMY,
@@ -283,12 +335,16 @@ impl Module {
             is_signed: false,
         }));
 
-        for (location, info) in &options.bindings {
-            let Some((var_id, binding)) = bindings.iter_mut().find(|(_, binding)| {
-                binding.binding == location.binding && binding.group == location.group
-            }) else {
-                return Err(ErrorImpl::NoBinding(*location).into());
+        for (id, info) in &options.bindings {
+            let Some((var_id, binding)) =
+                self.bindings.iter().find(|(_, binding)| binding.id == *id)
+            else {
+                return Err(ErrorImpl::NoBinding(*id).into());
             };
+
+            if binding.location.is_none() && info.location.is_none() {
+                return Err(ErrorImpl::NoLocation(*id).into());
+            }
 
             let variable = module.globals.get(var_id).unwrap();
 
@@ -329,12 +385,21 @@ impl Module {
             let variable = module.globals.get_mut(var_id).unwrap();
             variable.result_type = new_ptr_type_id;
 
-            binding.count = Some(info.count);
+            // Update the OpDecorate Binding and OpDecorate DescriptorSet decorations.
+            // This is not necessary if no new location is given.
+            if let Some(location) = info.location {
+                let decorations = module.decorations.entry(*var_id).or_default();
+                decorations.retain(|dec| {
+                    !matches!(dec, Decoration::DescriptorSet(_) | Decoration::Binding(_))
+                });
+                decorations.push(Decoration::DescriptorSet(location.group));
+                decorations.push(Decoration::Binding(location.binding));
+            }
         }
 
         Ok(Instance {
             data: module,
-            bindings: bindings.into_values().collect(),
+            bindings,
         })
     }
 }
@@ -1281,11 +1346,11 @@ impl Endianess {
 #[derive(Clone, Debug)]
 pub struct Instance {
     data: SpirvModule,
-    bindings: Vec<ShaderBinding>,
+    bindings: Vec<ShaderInstanceBinding>,
 }
 
 impl Instance {
-    pub fn bindings(&self) -> &[ShaderBinding] {
+    pub fn bindings(&self) -> &[ShaderInstanceBinding] {
         &self.bindings
     }
 
@@ -1428,7 +1493,7 @@ mod tests {
 
     use crate::backend::ShaderStage;
     use crate::shader::spirv::ops::Id;
-    use crate::shader::{BindingInfo, BindingLocation, Options, ShaderAccess};
+    use crate::shader::{BindingId, BindingInfo, Options, ShaderAccess};
 
     use super::{Constant, Module, OpType, SpirvModule};
 
@@ -1595,12 +1660,10 @@ mod tests {
                 stage: ShaderStage::Vertex,
                 entry_point: "main",
                 bindings: [(
-                    BindingLocation {
-                        group: 0,
-                        binding: 0,
-                    },
+                    BindingId(0),
                     BindingInfo {
                         count: NonZeroU32::new(420).unwrap(),
+                        location: None,
                     },
                 )]
                 .into_iter()

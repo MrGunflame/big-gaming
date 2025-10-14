@@ -24,7 +24,7 @@ use thiserror::Error;
 use crate::backend::{
     mip_level_size_2d, DedicatedAllocation, DescriptorType, SurfaceFormat, TextureLayout,
 };
-use crate::shader::{self, BindingInfo, Shader};
+use crate::shader::ShaderInstance;
 
 use super::{
     AccessFlags, AdapterKind, AdapterMemoryProperties, AdapterProperties, AddressMode, BlendFactor,
@@ -1632,17 +1632,23 @@ impl Device {
         })
     }
 
-    unsafe fn create_shader(&self, code: &[u32]) -> ShaderModule {
+    /// Creates a [`ShaderModule`] from SPIR-V bytecode.
+    ///
+    /// # Safety
+    ///
+    /// The SPIR-V bytecode must be well formed according to both the SPIR-V and Vulkan
+    /// specifications.
+    unsafe fn create_shader_module_spirv(&self, code: &[u32]) -> Result<ShaderModule, Error> {
         // Code size must be greater than 0.
         debug_assert!(code.len() != 0);
 
         let info = vk::ShaderModuleCreateInfo::default().code(code);
 
-        let shader = unsafe { self.device.create_shader_module(&info, ALLOC).unwrap() };
-        ShaderModule {
+        let shader = unsafe { self.device.create_shader_module(&info, ALLOC)? };
+        Ok(ShaderModule {
             device: self.device.clone(),
             shader,
-        }
+        })
     }
 
     /// Creates a new [`DescriptorSetLayout`].
@@ -1799,17 +1805,12 @@ impl Device {
         for stage in descriptor.stages {
             let vk_stage = match stage {
                 PipelineStage::Vertex(stage) => {
-                    let spirv = create_pipeline_shader_module(
+                    let module = shader_modules.insert(create_pipeline_shader_module(
+                        self,
                         &stage.shader,
-                        stage.entry,
-                        ShaderStage::Vertex,
                         descriptor.descriptors,
-                    );
-
-                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    )?);
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
-
-                    validate_shader_bindings(stage.shader, descriptor.descriptors);
 
                     vk::PipelineShaderStageCreateInfo::default()
                         .stage(vk::ShaderStageFlags::VERTEX)
@@ -1829,17 +1830,12 @@ impl Device {
                         }
                     }
 
-                    let spirv = create_pipeline_shader_module(
+                    let module = shader_modules.insert(create_pipeline_shader_module(
+                        self,
                         &stage.shader,
-                        stage.entry,
-                        ShaderStage::Fragment,
                         descriptor.descriptors,
-                    );
-
-                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    )?);
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
-
-                    validate_shader_bindings(stage.shader, descriptor.descriptors);
 
                     vk::PipelineShaderStageCreateInfo::default()
                         .stage(vk::ShaderStageFlags::FRAGMENT)
@@ -1852,17 +1848,12 @@ impl Device {
                         "Cannot use Task shader when EXT_MESH_SHADER is not enabled"
                     );
 
-                    let spirv = create_pipeline_shader_module(
+                    let module = shader_modules.insert(create_pipeline_shader_module(
+                        self,
                         &stage.shader,
-                        stage.entry,
-                        ShaderStage::Task,
                         descriptor.descriptors,
-                    );
-
-                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    )?);
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
-
-                    validate_shader_bindings(stage.shader, descriptor.descriptors);
 
                     vk::PipelineShaderStageCreateInfo::default()
                         .stage(vk::ShaderStageFlags::TASK_EXT)
@@ -1875,17 +1866,12 @@ impl Device {
                         "Cannot use Mesh shader when EXT_MESH_SHADER is not enabled"
                     );
 
-                    let spirv = create_pipeline_shader_module(
+                    let module = shader_modules.insert(create_pipeline_shader_module(
+                        self,
                         &stage.shader,
-                        stage.entry,
-                        ShaderStage::Mesh,
                         descriptor.descriptors,
-                    );
-
-                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    )?);
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
-
-                    validate_shader_bindings(stage.shader, descriptor.descriptors);
 
                     vk::PipelineShaderStageCreateInfo::default()
                         .stage(vk::ShaderStageFlags::MESH_EXT)
@@ -1893,17 +1879,12 @@ impl Device {
                         .name(&*name)
                 }
                 PipelineStage::Compute(stage) => {
-                    let spirv = create_pipeline_shader_module(
+                    let module = shader_modules.insert(create_pipeline_shader_module(
+                        self,
                         &stage.shader,
-                        stage.entry,
-                        ShaderStage::Compute,
                         descriptor.descriptors,
-                    );
-
-                    let module = shader_modules.insert(unsafe { self.create_shader(&spirv) });
+                    )?);
                     let name = stage_entry_pointers.insert(CString::new(stage.entry).unwrap());
-
-                    validate_shader_bindings(stage.shader, descriptor.descriptors);
 
                     vk::PipelineShaderStageCreateInfo::default()
                         .stage(vk::ShaderStageFlags::COMPUTE)
@@ -5850,26 +5831,30 @@ fn access_flags_to_stage_mask(
     transfer | compute | graphics
 }
 
-fn validate_shader_bindings(shader: &Shader, descriptors: &[&DescriptorSetLayout]) {
-    for shader_binding in &shader.bindings() {
-        if shader_binding.group >= descriptors.len() as u32 {
+fn validate_shader_bindings(shader: &ShaderInstance<'_>, descriptors: &[&DescriptorSetLayout]) {
+    for shader_binding in shader.bindings() {
+        let location = shader_binding.location;
+
+        if location.group >= descriptors.len() as u32 {
             panic!(
                 "shader requires descriptor set bound to group {} (only {} descriptor sets were bound)",
-                shader_binding.group,
+                location.group,
                 descriptors.len(),
             );
         }
 
-        let Some(binding) = descriptors[shader_binding.group as usize]
+        let Some(binding) = descriptors[location.group as usize]
             .bindings
             .iter()
-            .find(|descriptor_binding| descriptor_binding.binding == shader_binding.binding)
+            .find(|descriptor_binding| descriptor_binding.binding == location.binding)
         else {
             panic!(
                 "shader requires descriptor set with binding {} in group {}",
-                shader_binding.group, shader_binding.binding,
+                location.binding, location.group,
             );
         };
+
+        assert_eq!(shader_binding.count, binding.count);
 
         let is_compatible = if shader_binding.kind == DescriptorType::Texture
             && binding.kind == DescriptorType::StorageTexture
@@ -5888,49 +5873,15 @@ fn validate_shader_bindings(shader: &Shader, descriptors: &[&DescriptorSetLayout
 }
 
 fn create_pipeline_shader_module(
-    shader: &Shader,
-    entry_point: &str,
-    stage: ShaderStage,
+    device: &Device,
+    shader: &ShaderInstance<'_>,
     layouts: &[&DescriptorSetLayout],
-) -> Vec<u32> {
-    // FIXME: Doubles with validate_shader_bindings.
-    let mut binding_map = HashMap::new();
-    for binding in shader.bindings() {
-        let Some(layout) = layouts.get(binding.group as usize) else {
-            panic!("shader binding {:?} is not bound", binding);
-        };
-
-        let Some(binding_layout) = layout
-            .bindings
-            .iter()
-            .find(|b| b.binding == binding.binding)
-        else {
-            panic!("shader binding {:?} is not bound", binding);
-        };
-
-        if let Some(count) = binding.count {
-            assert_eq!(
-                binding_layout.count, count,
-                "shader expects {} descriptors, layout provides {}",
-                count, binding_layout.count,
-            );
-        } else {
-            binding_map.insert(
-                binding.location(),
-                BindingInfo {
-                    count: binding_layout.count,
-                },
-            );
-        }
+) -> Result<ShaderModule, Error> {
+    if cfg!(debug_assertions) {
+        validate_shader_bindings(shader, layouts);
     }
 
-    let instance = shader.instantiate(&shader::Options {
-        entry_point,
-        stage,
-        bindings: binding_map,
-    });
-
-    instance.to_spirv()
+    unsafe { device.create_shader_module_spirv(&shader.to_spirv()) }
 }
 
 const ALLOC: Option<&vk::AllocationCallbacks<'static>> = Some(&vk::AllocationCallbacks {
@@ -6066,7 +6017,6 @@ mod tests {
     use std::ptr::null_mut;
 
     use ash::vk::SystemAllocationScope;
-    use tracing::Instrument;
 
     use super::{vk_alloc, vk_dealloc, vk_realloc};
 

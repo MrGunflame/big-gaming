@@ -30,6 +30,7 @@ impl Shader {
         spirv::Module::new(b).map(Self::Spirv)
     }
 
+    #[track_caller]
     pub fn instantiate(&self, options: &Options<'_>) -> ShaderInstance<'_> {
         match self {
             Self::Wgsl(s) => ShaderInstance::Wgsl(s.instantiate(options)),
@@ -49,8 +50,11 @@ impl Shader {
 pub struct Options<'a> {
     pub entry_point: &'a str,
     pub stage: ShaderStage,
-    pub bindings: HashMap<BindingLocation, BindingInfo>,
+    pub bindings: HashMap<BindingId, BindingInfo>,
 }
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct BindingId(u32);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BindingLocation {
@@ -58,10 +62,11 @@ pub struct BindingLocation {
     pub binding: u32,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct ShaderBinding {
-    pub group: u32,
-    pub binding: u32,
+    pub id: BindingId,
+    pub name: Option<String>,
+    pub location: Option<BindingLocation>,
     pub kind: DescriptorType,
     pub access: ShaderAccess,
     /// If the binding point is an binding array this will be greater than 1.
@@ -73,20 +78,13 @@ pub struct ShaderBinding {
     pub count: Option<NonZeroU32>,
 }
 
-impl ShaderBinding {
-    pub fn location(&self) -> BindingLocation {
-        BindingLocation {
-            group: self.group,
-            binding: self.binding,
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct BindingInfo {
+    pub location: Option<BindingLocation>,
     pub count: NonZeroU32,
 }
 
+/// A shader module ready to be passed to the backend API.
 #[derive(Clone, Debug)]
 pub enum ShaderInstance<'a> {
     Wgsl(wgsl::ShaderInstance<'a>),
@@ -94,7 +92,7 @@ pub enum ShaderInstance<'a> {
 }
 
 impl<'a> ShaderInstance<'a> {
-    pub fn bindings(&self) -> &[ShaderBinding] {
+    pub fn bindings(&self) -> &[ShaderInstanceBinding] {
         match self {
             Self::Wgsl(s) => s.bindings(),
             Self::Spirv(s) => s.bindings(),
@@ -107,6 +105,15 @@ impl<'a> ShaderInstance<'a> {
             Self::Spirv(s) => s.to_spirv(),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct ShaderInstanceBinding {
+    pub id: BindingId,
+    pub location: BindingLocation,
+    pub kind: DescriptorType,
+    pub access: ShaderAccess,
+    pub count: NonZeroU32,
 }
 
 bitflags! {

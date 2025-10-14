@@ -5,15 +5,14 @@ use std::sync::Arc;
 use game_common::components::Color;
 use game_render::api::{
     BindingResource, CommandQueue, DepthStencilAttachment, DescriptorSetDescriptor,
-    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
-    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
-    TextureViewDescriptor,
+    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, FragmentStage,
+    MeshStage, Pipeline, PipelineDescriptor, PipelineStage, RenderPassColorAttachment,
+    RenderPassDescriptor, Sampler, TaskStage, Texture, TextureViewDescriptor,
 };
 use game_render::backend::{
     AddressMode, BlendState, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
-    DescriptorType, FilterMode, FragmentStage, FrontFace, LoadOp, MeshStage, PipelineStage,
-    PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TaskStage,
-    TextureDescriptor, TextureFormat, TextureUsage,
+    DescriptorType, FilterMode, FrontFace, LoadOp, PrimitiveTopology, PushConstantRange,
+    SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};

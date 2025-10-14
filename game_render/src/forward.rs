@@ -3,12 +3,14 @@ use std::sync::Arc;
 
 use game_common::cell::UnsafeRefCell;
 
-use crate::api::{CommandQueue, DescriptorSetLayout, Pipeline, PipelineDescriptor, Sampler};
+use crate::api::{
+    CommandQueue, DescriptorSetLayout, FragmentStage, Pipeline, PipelineDescriptor, PipelineStage,
+    Sampler, VertexStage,
+};
 use crate::backend::{
     AddressMode, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
-    DescriptorSetDescriptor, DescriptorType, Face, FilterMode, FragmentStage, FrontFace,
-    PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor, ShaderStages,
-    TextureFormat, VertexStage,
+    DescriptorSetDescriptor, DescriptorType, FilterMode, FrontFace, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderStages, TextureFormat,
 };
 use crate::entities::{Event, Resources};
 use crate::pipeline_cache::{PipelineBuilder, PipelineCache};

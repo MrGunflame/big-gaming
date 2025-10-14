@@ -5,16 +5,15 @@ use std::sync::Arc;
 use bytemuck::{Pod, Zeroable};
 use game_render::api::{
     BindingResource, Buffer, BufferInitDescriptor, CommandQueue, DescriptorSetDescriptor,
-    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, Pipeline,
-    PipelineDescriptor, RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture,
-    TextureRegion, TextureView, TextureViewDescriptor,
+    DescriptorSetEntry, DescriptorSetLayout, DescriptorSetLayoutDescriptor, FragmentStage,
+    Pipeline, PipelineDescriptor, PipelineStage, RenderPassColorAttachment, RenderPassDescriptor,
+    Sampler, Texture, TextureRegion, TextureView, TextureViewDescriptor, VertexStage,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
     AddressMode, BufferUsage, ColorTargetState, DescriptorBinding, DescriptorType, Face,
-    FilterMode, FragmentStage, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PipelineStage,
-    PrimitiveTopology, SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
-    TextureUsage, VertexStage,
+    FilterMode, FrontFace, ImageDataLayout, IndexFormat, LoadOp, PrimitiveTopology,
+    SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};

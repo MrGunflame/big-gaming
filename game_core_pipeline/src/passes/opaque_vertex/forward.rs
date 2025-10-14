@@ -3,17 +3,18 @@ use std::sync::Arc;
 
 use game_common::components::Color;
 use game_render::api::{
-    BindingResource, Buffer, BufferDescriptor, CommandQueue, ComputePassDescriptor,
+    BindingResource, Buffer, BufferDescriptor, CommandQueue, ComputePassDescriptor, ComputeStage,
     DepthStencilAttachment, DescriptorSetDescriptor, DescriptorSetEntry, DescriptorSetLayout,
-    DescriptorSetLayoutDescriptor, Pipeline, PipelineDescriptor, RenderPassColorAttachment,
-    RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
+    DescriptorSetLayoutDescriptor, FragmentStage, Pipeline, PipelineDescriptor, PipelineStage,
+    RenderPassColorAttachment, RenderPassDescriptor, Sampler, Texture, TextureViewDescriptor,
+    VertexStage,
 };
 use game_render::backend::allocator::UsageFlags;
 use game_render::backend::{
-    AddressMode, BufferUsage, ColorTargetState, CompareOp, ComputeStage, DepthStencilState,
-    DescriptorBinding, DescriptorType, DrawIndirectCommand, Face, FilterMode, FragmentStage,
-    FrontFace, LoadOp, PipelineStage, PrimitiveTopology, PushConstantRange, SamplerDescriptor,
-    ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage, VertexStage,
+    AddressMode, BufferUsage, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
+    DescriptorType, DrawIndirectCommand, Face, FilterMode, FrontFace, LoadOp, PrimitiveTopology,
+    PushConstantRange, SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat,
+    TextureUsage,
 };
 use game_render::graph::{Node, RenderContext, SlotLabel};
 use game_render::pipeline_cache::{PipelineBuilder, PipelineCache};
