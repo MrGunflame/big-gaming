@@ -26,7 +26,6 @@ use game_common::utils::exclusive::Exclusive;
 use game_tracing::trace_span;
 use glam::UVec2;
 use hashbrown::{HashMap, HashSet};
-use naga::back;
 use parking_lot::Mutex;
 use queries::QueryPoolSet;
 use resources::{
@@ -1200,6 +1199,7 @@ impl<'a> CommandQueue<'a> {
                     backend::PipelineStage::Vertex(backend::VertexStage {
                         shader: &*instance,
                         entry: stage.entry,
+                        topology: stage.topology,
                     })
                 }
                 PipelineStage::Fragment(stage) => {
@@ -1234,6 +1234,9 @@ impl<'a> CommandQueue<'a> {
                         shader: &*instance,
                         entry: stage.entry,
                         targets: stage.targets,
+                        front_face: stage.front_face,
+                        cull_mode: stage.cull_mode,
+                        depth_stencil_state: stage.depth_stencil_state,
                     })
                 }
                 PipelineStage::Task(stage) => {
@@ -1344,11 +1347,7 @@ impl<'a> CommandQueue<'a> {
             .executor
             .device
             .create_pipeline(&backend::PipelineDescriptor {
-                topology: descriptor.topology,
-                cull_mode: descriptor.cull_mode,
-                front_face: descriptor.front_face,
                 descriptors: &descriptors,
-                depth_stencil_state: descriptor.depth_stencil_state,
                 stages: &raw_stages,
                 push_constant_ranges: descriptor.push_constant_ranges,
             })
@@ -1546,13 +1545,9 @@ impl Drop for Sampler {
 
 #[derive(Clone, Debug)]
 pub struct PipelineDescriptor<'a> {
-    pub topology: PrimitiveTopology,
-    pub front_face: FrontFace,
-    pub cull_mode: Option<Face>,
     pub stages: &'a [PipelineStage<'a>],
     pub descriptors: &'a [&'a DescriptorSetLayout],
     pub push_constant_ranges: &'a [PushConstantRange],
-    pub depth_stencil_state: Option<DepthStencilState>,
 }
 
 #[derive(Debug)]
@@ -1568,6 +1563,7 @@ pub enum PipelineStage<'a> {
 pub struct VertexStage<'a> {
     pub shader: &'a Shader,
     pub entry: &'static str,
+    pub topology: PrimitiveTopology,
 }
 
 #[derive(Debug)]
@@ -1575,6 +1571,9 @@ pub struct FragmentStage<'a> {
     pub shader: &'a Shader,
     pub entry: &'static str,
     pub targets: &'a [ColorTargetState],
+    pub front_face: FrontFace,
+    pub cull_mode: Option<Face>,
+    pub depth_stencil_state: Option<DepthStencilState>,
 }
 
 #[derive(Debug)]

@@ -11,8 +11,8 @@ use game_render::api::{
 };
 use game_render::backend::{
     AddressMode, BlendState, ColorTargetState, CompareOp, DepthStencilState, DescriptorBinding,
-    DescriptorType, FilterMode, FrontFace, LoadOp, PrimitiveTopology, PushConstantRange,
-    SamplerDescriptor, ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage,
+    DescriptorType, FilterMode, FrontFace, LoadOp, PushConstantRange, SamplerDescriptor,
+    ShaderStages, StoreOp, TextureDescriptor, TextureFormat, TextureUsage,
 };
 use game_render::camera::RenderTarget;
 use game_render::graph::{Node, RenderContext, SlotLabel};
@@ -361,9 +361,6 @@ impl PipelineBuilder for BuildForwardPipeline {
         format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            cull_mode: None,
-            front_face: FrontFace::Ccw,
             descriptors: &[&self.mesh_descriptor, &self.lights_and_sampler_descriptor],
             stages: &[
                 PipelineStage::Task(TaskStage {
@@ -381,13 +378,15 @@ impl PipelineBuilder for BuildForwardPipeline {
                         format,
                         blend: Some(BlendState::PREMULTIPLIED_ALPHA),
                     }],
+                    cull_mode: None,
+                    front_face: FrontFace::Ccw,
+                    depth_stencil_state: Some(DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare_op: CompareOp::Greater,
+                    }),
                 }),
             ],
-            depth_stencil_state: Some(DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare_op: CompareOp::Greater,
-            }),
             push_constant_ranges: &[PushConstantRange {
                 range: 0..128,
                 stages: ShaderStages::MESH | ShaderStages::FRAGMENT,

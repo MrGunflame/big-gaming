@@ -1931,36 +1931,54 @@ impl Device {
     ) -> Result<vk::Pipeline, Error> {
         let mut color_attachment_formats = Vec::<vk::Format>::new();
         let mut color_blend_attachments = Vec::new();
+
+        // Fill with some standard values. If the pipeline does not
+        // include the stages with this data their values are ignored
+        // by the driver.
+        let mut primitive_topology = PrimitiveTopology::TriangleList;
+        let mut raster_front_face = FrontFace::Ccw;
+        let mut raster_cull_mode = None;
+        let mut raster_depth_stencil_state = None;
+
         for stage in descriptor.stages {
-            let PipelineStage::Fragment(stage) = stage else {
-                continue;
-            };
-
-            for target in stage.targets {
-                let mut color_blend_state = vk::PipelineColorBlendAttachmentState::default()
-                    .color_write_mask(vk::ColorComponentFlags::RGBA)
-                    .blend_enable(false);
-
-                if let Some(state) = target.blend {
-                    color_blend_state = color_blend_state
-                        .blend_enable(true)
-                        .src_color_blend_factor(state.color_src_factor.into())
-                        .dst_color_blend_factor(state.color_dst_factor.into())
-                        .color_blend_op(state.color_op.into())
-                        .src_alpha_blend_factor(state.alpha_src_factor.into())
-                        .dst_alpha_blend_factor(state.alpha_dst_factor.into())
-                        .alpha_blend_op(state.alpha_op.into());
+            match stage {
+                PipelineStage::Vertex(stage) => {
+                    primitive_topology = stage.topology;
                 }
+                PipelineStage::Fragment(stage) => {
+                    raster_front_face = stage.front_face;
+                    raster_cull_mode = stage.cull_mode;
+                    raster_depth_stencil_state = stage.depth_stencil_state;
 
-                color_attachment_formats.push(target.format.into());
-                color_blend_attachments.push(color_blend_state);
+                    for target in stage.targets {
+                        let mut color_blend_state =
+                            vk::PipelineColorBlendAttachmentState::default()
+                                .color_write_mask(vk::ColorComponentFlags::RGBA)
+                                .blend_enable(false);
+
+                        if let Some(state) = target.blend {
+                            color_blend_state = color_blend_state
+                                .blend_enable(true)
+                                .src_color_blend_factor(state.color_src_factor.into())
+                                .dst_color_blend_factor(state.color_dst_factor.into())
+                                .color_blend_op(state.color_op.into())
+                                .src_alpha_blend_factor(state.alpha_src_factor.into())
+                                .dst_alpha_blend_factor(state.alpha_dst_factor.into())
+                                .alpha_blend_op(state.alpha_op.into());
+                        }
+
+                        color_attachment_formats.push(target.format.into());
+                        color_blend_attachments.push(color_blend_state);
+                    }
+                }
+                _ => {}
             }
         }
 
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo::default();
 
         let input_assembly_state = vk::PipelineInputAssemblyStateCreateInfo::default()
-            .topology(descriptor.topology.into())
+            .topology(primitive_topology.into())
             .primitive_restart_enable(false);
 
         // We use dynamic viewport and scissors, so the actual viewport and scissors
@@ -1976,7 +1994,7 @@ impl Device {
             // - `scissorCount` must be greater than 0. (If `VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT` not set.)
             .scissor_count(1);
 
-        let cull_mode = match descriptor.cull_mode {
+        let cull_mode = match raster_cull_mode {
             Some(Face::Front) => vk::CullModeFlags::FRONT,
             Some(Face::Back) => vk::CullModeFlags::BACK,
             None => vk::CullModeFlags::NONE,
@@ -1988,7 +2006,7 @@ impl Device {
             .polygon_mode(vk::PolygonMode::FILL)
             .line_width(1.0)
             .cull_mode(cull_mode)
-            .front_face(descriptor.front_face.into());
+            .front_face(raster_front_face.into());
 
         let multisample_state = vk::PipelineMultisampleStateCreateInfo::default()
             .sample_shading_enable(false)
@@ -2003,7 +2021,7 @@ impl Device {
         let dynamic_state = vk::PipelineDynamicStateCreateInfo::default()
             .dynamic_states(&[vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
 
-        let depth_stencil_state = descriptor.depth_stencil_state.as_ref().map(|state| {
+        let depth_stencil_state = raster_depth_stencil_state.as_ref().map(|state| {
             vk::PipelineDepthStencilStateCreateInfo::default()
                 .flags(vk::PipelineDepthStencilStateCreateFlags::empty())
                 .depth_test_enable(true)
@@ -2022,7 +2040,7 @@ impl Device {
         let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
             .color_attachment_formats(&color_attachment_formats);
 
-        if let Some(state) = &descriptor.depth_stencil_state {
+        if let Some(state) = &raster_depth_stencil_state {
             rendering_info = rendering_info.depth_attachment_format(state.format.into());
         }
 

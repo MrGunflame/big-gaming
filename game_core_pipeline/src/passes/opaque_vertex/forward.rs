@@ -824,13 +824,11 @@ impl PipelineBuilder for ForwardPipelineBuilder {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "main",
+                    topology: PrimitiveTopology::TriangleList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
@@ -839,6 +837,13 @@ impl PipelineBuilder for ForwardPipelineBuilder {
                         format: TextureFormat::Rg32Uint,
                         blend: None,
                     }],
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    depth_stencil_state: Some(DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare_op: CompareOp::Greater,
+                    }),
                 }),
             ],
             descriptors: &[&self.mesh_descriptor],
@@ -846,11 +851,6 @@ impl PipelineBuilder for ForwardPipelineBuilder {
                 range: 0..128,
                 stages: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
             }],
-            depth_stencil_state: Some(DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare_op: CompareOp::Greater,
-            }),
         })
     }
 }
@@ -870,9 +870,6 @@ impl PipelineBuilder for ShadingPipelineBuilder {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: None,
             stages: &[PipelineStage::Compute(ComputeStage {
                 shader: &shaders[0],
                 entry: "main",
@@ -886,7 +883,6 @@ impl PipelineBuilder for ShadingPipelineBuilder {
                 range: 0..128,
                 stages: ShaderStages::COMPUTE,
             }],
-            depth_stencil_state: None,
         })
     }
 }
@@ -904,13 +900,11 @@ impl PipelineBuilder for AlphaMaskPipelineBuilder {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            front_face: FrontFace::Ccw,
-            cull_mode: Some(Face::Back),
             stages: &[
                 PipelineStage::Vertex(VertexStage {
                     shader: &shaders[0],
                     entry: "main",
+                    topology: PrimitiveTopology::TriangleList,
                 }),
                 PipelineStage::Fragment(FragmentStage {
                     shader: &shaders[1],
@@ -919,6 +913,13 @@ impl PipelineBuilder for AlphaMaskPipelineBuilder {
                         format: TextureFormat::Rg32Uint,
                         blend: None,
                     }],
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    depth_stencil_state: Some(DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: true,
+                        depth_compare_op: CompareOp::Greater,
+                    }),
                 }),
             ],
             descriptors: &[&self.descriptor],
@@ -926,11 +927,6 @@ impl PipelineBuilder for AlphaMaskPipelineBuilder {
                 range: 0..128,
                 stages: ShaderStages::VERTEX,
             }],
-            depth_stencil_state: Some(DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: true,
-                depth_compare_op: CompareOp::Greater,
-            }),
         })
     }
 }
@@ -948,15 +944,11 @@ impl PipelineBuilder for BuildDrawcallGenPipeline {
         _format: TextureFormat,
     ) -> Pipeline {
         queue.create_pipeline(&PipelineDescriptor {
-            topology: PrimitiveTopology::TriangleList,
-            cull_mode: None,
-            front_face: FrontFace::Ccw,
             descriptors: &[&self.descriptor],
             stages: &[PipelineStage::Compute(ComputeStage {
                 shader: &shaders[0],
                 entry: "main",
             })],
-            depth_stencil_state: None,
             push_constant_ranges: &[PushConstantRange {
                 range: 0..4,
                 stages: ShaderStages::COMPUTE,
