@@ -87,6 +87,9 @@ pub enum Instruction {
     ImageFetch(OpImageFetch),
     ImageRead(OpImageRead),
     ImageWrite(OpImageWrite),
+    Image(OpImage),
+    ImageQueryFormat(OpImageQueryFormat),
+    ImageQueryOrder(OpImageQueryOrder),
     ConvertFToU(OpConvertFToU),
     ConvertFToS(OpConvertFToS),
     ConvertSToF(OpConvertSToF),
@@ -243,7 +246,13 @@ impl Instruction {
                 match spirv::Op::from_u32(opcode) {
                     $(
                         Some(spirv::Op::$opcode) => {
-                            Parse::parse(&mut reader).map(Self::$variant)
+                            let value = Parse::parse(&mut reader)?;
+
+                            if !reader.is_empty() {
+                                return Err(Error(ErrorImpl::TrailingWords(reader.op_name, reader.len)));
+                            }
+
+                            Ok(Self::$variant(value))
                         }
                     )*
                     _ => Err(Error(ErrorImpl::UnknownOpcode(opcode))),
@@ -330,6 +339,9 @@ impl Instruction {
             ImageFetch => ImageFetch,
             ImageRead => ImageRead,
             ImageWrite => ImageWrite,
+            Image => Image,
+            ImageQueryFormat => ImageQueryFormat,
+            ImageQueryOrder => ImageQueryOrder,
             ConvertFToU => ConvertFToU,
             ConvertFToS => ConvertFToS,
             ConvertSToF => ConvertSToF,
@@ -567,6 +579,9 @@ impl Instruction {
             ImageFetch => ImageFetch,
             ImageRead => ImageRead,
             ImageWrite => ImageWrite,
+            Image => Image,
+            ImageQueryFormat => ImageQueryFormat,
+            ImageQueryOrder => ImageQueryOrder,
             ConvertFToU => ConvertFToU,
             ConvertFToS => ConvertFToS,
             ConvertSToF => ConvertSToF,
@@ -1709,6 +1724,7 @@ spirv_op! {
         pub result_type: Id,
         pub result: Id,
         pub storage_class: StorageClass,
+        pub initializer: Option<Id>,
     }
 }
 
@@ -1839,12 +1855,13 @@ spirv_op! {
 }
 
 spirv_op! {
-    #[derive(Copy, Clone, Debug)]
+    #[derive(Clone, Debug)]
     pub struct OpImageSampleImplicitLod {
         pub result_type: Id,
         pub result: Id,
         pub sampled_image: Id,
         pub coordinate: Id,
+        pub operands: Vec<u32>,
     }
 }
 
@@ -1958,6 +1975,33 @@ spirv_op! {
         pub coordinate: Id,
         pub texel: Id,
         pub operands: Vec<u32>,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImage {
+        pub result_type: Id,
+        pub result: Id,
+        pub sampled_image: Id,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageQueryFormat {
+        pub result_type: Id,
+        pub result: Id,
+        pub image: Id,
+    }
+}
+
+spirv_op! {
+    #[derive(Clone, Debug)]
+    pub struct OpImageQueryOrder {
+        pub result_type: Id,
+        pub result: Id,
+        pub image: Id,
     }
 }
 

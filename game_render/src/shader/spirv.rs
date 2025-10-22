@@ -45,6 +45,8 @@ enum ErrorImpl {
     BadMagic(u32),
     #[error("invalid instruction: {0}")]
     InvalidArgumentCount(InvalidArgumentCount),
+    #[error("invalid instruction: {0} has {1} trailing words")]
+    TrailingWords(&'static str, u16),
     #[error("unknown type: {0:?}")]
     UnknownId(Id),
     #[error("invalid type value: {found:?}, expected: {expected:?}")]
@@ -837,7 +839,7 @@ impl SpirvModule {
             .map(|id| (*id, ShaderAccess::empty()))
             .collect();
 
-        let mut proxies = HashMap::new();
+        let mut children: HashMap<Id, Vec<Id>> = HashMap::new();
 
         let mut queue = vec![func_id];
 
@@ -854,16 +856,19 @@ impl SpirvModule {
                             self.types[&ins.result_type],
                             OpType::Image(_) | OpType::SampledImage(_)
                         ) {
-                            let proxy_id =
-                                proxies.get(&ins.pointer).copied().unwrap_or(ins.pointer);
                             variables.insert(ins.result, ShaderAccess::empty());
-                            proxies.insert(ins.result, proxy_id);
+                            children.entry(ins.pointer).or_default().push(ins.result);
                         } else {
                             // Otherwise we have a regular load from the variable.
                             if let Some(access) = variables.get_mut(&ins.pointer) {
                                 *access |= ShaderAccess::READ;
                             }
                         }
+                    }
+                    Instruction::SampledImage(ins) => {
+                        variables.insert(ins.result, ShaderAccess::empty());
+                        children.entry(ins.image).or_default().push(ins.result);
+                        children.entry(ins.sampler).or_default().push(ins.result);
                     }
                     Instruction::Store(ins) => {
                         if let Some(access) = variables.get_mut(&ins.pointer) {
@@ -969,6 +974,46 @@ impl SpirvModule {
                             *access |= ShaderAccess::WRITE;
                         }
                     }
+                    Instruction::ImageSampleImplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleExplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleDrefImplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleDrefExplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleProjImplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleProjExplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleProjDrefImplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
+                    Instruction::ImageSampleProjDrefExplicitLod(ins) => {
+                        if let Some(access) = variables.get_mut(&ins.sampled_image) {
+                            *access |= ShaderAccess::READ;
+                        }
+                    }
                     Instruction::ImageFetch(ins) => {
                         if let Some(access) = variables.get_mut(&ins.image) {
                             *access |= ShaderAccess::READ;
@@ -989,14 +1034,12 @@ impl SpirvModule {
                         // with the given `indices`.
                         // `OpAccessChain` does not directly access the `base` element
                         // but we must now track the returned result for operations.
-                        let proxy_id = proxies.get(&ins.base).copied().unwrap_or(ins.base);
                         variables.insert(ins.result, ShaderAccess::empty());
-                        proxies.insert(ins.result, proxy_id);
+                        children.entry(ins.base).or_default().push(ins.result);
                     }
                     Instruction::InBoundsAccessChain(ins) => {
-                        let proxy_id = proxies.get(&ins.base).copied().unwrap_or(ins.base);
                         variables.insert(ins.result, ShaderAccess::empty());
-                        proxies.insert(ins.result, proxy_id);
+                        children.entry(ins.base).or_default().push(ins.result);
                     }
                     Instruction::FunctionCall(ins) => {
                         queue.push(ins.function);
@@ -1006,18 +1049,27 @@ impl SpirvModule {
             }
         }
 
-        for (proxy_id, global_id) in proxies {
-            let proxy_access = variables[&proxy_id];
+        let mut global_vars = HashMap::with_capacity(self.globals.len());
 
-            if let Some(accesses) = variables.get_mut(&global_id) {
-                *accesses |= proxy_access
+        for var_id in variables.keys() {
+            if !self.globals.contains_key(var_id) {
+                continue;
             }
+
+            let mut access = ShaderAccess::empty();
+            let mut queue = vec![*var_id];
+            while let Some(id) = queue.pop() {
+                access |= variables.get(&id).copied().unwrap_or_default();
+
+                if let Some(ids) = children.get(&id) {
+                    queue.extend_from_slice(&ids);
+                }
+            }
+
+            global_vars.insert(*var_id, access);
         }
 
-        // Remove all locally tracked variables.
-        variables.retain(|id, _| self.globals.contains_key(id));
-
-        variables
+        global_vars
     }
 
     fn create_type(&mut self, mut ty: OpType) -> Id {
@@ -1594,6 +1646,54 @@ mod tests {
             [(Id(0), ShaderAccess::READ), (Id(1), ShaderAccess::WRITE)]
                 .into_iter()
                 .collect()
+        );
+    }
+
+    #[test]
+    fn compute_global_access_sampled_image() {
+        let text = r#"
+        OpMemoryModel Logical GLSL450
+
+        %ty_void     = OpTypeVoid
+        %ty_fn       = OpTypeFunction %ty_void
+        %ty_f32      = OpTypeFloat 32
+        %ty_img      = OpTypeImage %ty_f32 2D 2 0 0 2 R32ui
+        %ty_img_ptr  = OpTypePointer UniformConstant %ty_img
+        %ty_samp     = OpTypeSampler
+        %ty_samp_ptr = OpTypePointer UniformConstant %ty_samp
+        %ty_samp_img = OpTypeSampledImage %ty_img
+        %ty_f32_3    = OpTypeArray %ty_f32 %const_u32_0
+        %ty_u32      = OpTypeInt 32 0
+        
+        %const_u32_3 = OpConstant %ty_u32 3
+
+        %0 = OpVariable %ty_img_ptr UniformConstant
+        %1 = OpVariable %ty_samp_ptr UniformConstant
+        %2 = OpVariable %ty_f32_3 UniformConstant
+
+        %3 = OpFunction %void None %ty_fn
+        %4 = OpLabel
+        %5 = OpLoad %ty_img %0
+        %6 = OpLoad %ty_samp %1
+        %7 = OpSampledImage %ty_samp_img %5 %6
+        %8 = OpLoad %ty_f32_3 %2
+        %9 = OpImageSampleImplicitLod %ty_f32 %7 %8
+        OpReturn
+        OpFunctionEnd
+        "#;
+
+        let bytes = assemble(text);
+        let module = SpirvModule::read(&bytes).unwrap();
+        let access = module.compute_global_accesses(Id(3));
+        assert_eq!(
+            access,
+            [
+                (Id(0), ShaderAccess::READ),
+                (Id(1), ShaderAccess::READ),
+                (Id(2), ShaderAccess::READ)
+            ]
+            .into_iter()
+            .collect()
         );
     }
 

@@ -48,9 +48,7 @@ use crate::backend::{
     PushConstantRange, SamplerDescriptor, ShaderStage, ShaderStages, StoreOp, TextureDescriptor,
     TextureFormat, TextureUsage,
 };
-use crate::shader::{
-    self, BindingInfo, Shader, ShaderAccess, ShaderBinding, ShaderInstanceBinding,
-};
+use crate::shader::{self, BindingInfo, Shader, ShaderAccess, ShaderInstanceBinding};
 use crate::statistics::Statistics;
 
 pub use backend::DescriptorSetDescriptor as DescriptorSetLayoutDescriptor;
@@ -1090,6 +1088,10 @@ impl<'a> CommandQueue<'a> {
         let descriptors: Vec<_> = layouts.iter().map(|layout| &layout.inner).collect();
 
         let validate_shader_binding = |binding: &ShaderInstanceBinding, stage: ShaderStage| {
+            if binding.access.is_empty() {
+                return;
+            }
+
             let location = binding.location;
 
             let get_descriptor_kind = |group: u32, binding: u32| -> Option<DescriptorType> {

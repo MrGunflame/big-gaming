@@ -3,6 +3,7 @@ mod wgsl;
 
 use std::borrow::Cow;
 use std::io;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -16,33 +17,22 @@ use thiserror::Error;
 use crate::backend::{DescriptorType, ShaderStage};
 
 #[derive(Clone, Debug)]
-pub enum Shader {
-    Wgsl(wgsl::Shader),
-    Spirv(spirv::Module),
+pub struct Shader {
+    module: spirv::Module,
 }
 
 impl Shader {
-    pub fn from_wgsl(s: &str) -> Result<Self, wgsl::Error> {
-        wgsl::Shader::from_wgsl(s).map(Self::Wgsl)
-    }
-
-    pub fn from_spirv(b: &[u8]) -> Result<Self, spirv::Error> {
-        spirv::Module::new(b).map(Self::Spirv)
-    }
-
     #[track_caller]
     pub fn instantiate(&self, options: &Options<'_>) -> ShaderInstance<'_> {
-        match self {
-            Self::Wgsl(s) => ShaderInstance::Wgsl(s.instantiate(options)),
-            Self::Spirv(s) => ShaderInstance::Spirv(s.instantiate(options).unwrap()),
+        let instance = self.module.instantiate(options).unwrap();
+        ShaderInstance {
+            instance,
+            _marker: PhantomData,
         }
     }
 
     pub fn bindings(&self) -> Vec<ShaderBinding> {
-        match self {
-            Self::Wgsl(s) => s.bindings(),
-            Self::Spirv(s) => s.bindings(),
-        }
+        self.module.bindings()
     }
 }
 
@@ -86,24 +76,18 @@ pub struct BindingInfo {
 
 /// A shader module ready to be passed to the backend API.
 #[derive(Clone, Debug)]
-pub enum ShaderInstance<'a> {
-    Wgsl(wgsl::ShaderInstance<'a>),
-    Spirv(spirv::Instance),
+pub struct ShaderInstance<'a> {
+    instance: spirv::Instance,
+    _marker: PhantomData<&'a Shader>,
 }
 
 impl<'a> ShaderInstance<'a> {
     pub fn bindings(&self) -> &[ShaderInstanceBinding] {
-        match self {
-            Self::Wgsl(s) => s.bindings(),
-            Self::Spirv(s) => s.bindings(),
-        }
+        self.instance.bindings()
     }
 
     pub fn to_spirv(&self) -> Vec<u32> {
-        match self {
-            Self::Wgsl(s) => s.to_spirv(),
-            Self::Spirv(s) => s.to_spirv(),
-        }
+        self.instance.to_spirv()
     }
 }
 
@@ -136,15 +120,6 @@ pub struct ShaderConfig {
 pub enum ShaderSource {
     String(&'static str),
     File(PathBuf),
-}
-
-impl ShaderSource {
-    fn load(&self) -> io::Result<Cow<'static, str>> {
-        match self {
-            Self::String(s) => Ok(Cow::Borrowed(&s)),
-            Self::File(path) => std::fs::read_to_string(path).map(Cow::Owned),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -197,33 +172,20 @@ impl ReloadableShaderSource {
 
         let shader = match self.config.language {
             ShaderLanguage::Wgsl => {
-                let sources = wgsl::load_files(self.config.source.clone()).map_err(Error::Io)?;
+                let s = match &self.config.source {
+                    ShaderSource::File(path) => {
+                        FileWatcher::register(path.clone(), self.cell.clone());
 
-                let mut combined = String::new();
-                for data in sources.data {
-                    for line in data.lines() {
-                        // Preprocessor macros start with #
-                        if line.starts_with("#") {
-                            continue;
-                        }
-
-                        combined.push_str(line);
-                        combined.push('\n');
+                        let s = std::fs::read_to_string(path).map_err(Error::Io)?;
+                        Cow::Owned(s)
                     }
-                }
+                    ShaderSource::String(s) => Cow::Borrowed(*s),
+                };
 
-                let shader = Shader::from_wgsl(&combined).map_err(Error::Wgsl)?;
+                let bytes = wgsl::compile(&s).map_err(Error::Wgsl)?;
+                let module = spirv::Module::new(&bytes).map_err(Error::Spirv)?;
 
-                for source in sources.sources {
-                    match source {
-                        ShaderSource::File(path) => {
-                            FileWatcher::register(path, self.cell.clone());
-                        }
-                        _ => (),
-                    }
-                }
-
-                shader
+                Shader { module }
             }
             ShaderLanguage::Slang => {
                 let path = match &self.config.source {
@@ -239,7 +201,7 @@ impl ReloadableShaderSource {
                     FileWatcher::register(source, self.cell.clone());
                 }
 
-                Shader::Spirv(module)
+                Shader { module }
             }
         };
 
@@ -251,11 +213,6 @@ enum WatchEvent {
     Register(PathBuf, Arc<AtomicBool>),
     Unregister(PathBuf, Arc<AtomicBool>),
     Changed(PathBuf),
-}
-
-struct ShaderSources {
-    sources: Vec<ShaderSource>,
-    data: Vec<Cow<'static, str>>,
 }
 
 struct FileWatcher;
