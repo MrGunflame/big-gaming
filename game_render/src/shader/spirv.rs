@@ -854,7 +854,7 @@ impl SpirvModule {
                         // with type `%img_type`.
                         if matches!(
                             self.types[&ins.result_type],
-                            OpType::Image(_) | OpType::SampledImage(_)
+                            OpType::Image(_) | OpType::SampledImage(_) | OpType::Sampler
                         ) {
                             variables.insert(ins.result, ShaderAccess::empty());
                             children.entry(ins.pointer).or_default().push(ins.result);
@@ -1452,7 +1452,7 @@ impl OpType {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 enum OpTypeKind {
     Void,
     Bool,
@@ -1542,6 +1542,7 @@ mod tests {
     use std::num::NonZeroU32;
 
     use spirv_tools::assembler::{Assembler, AssemblerOptions};
+    use spirv_tools::val::Validator;
 
     use crate::backend::ShaderStage;
     use crate::shader::spirv::ops::Id;
@@ -1555,14 +1556,35 @@ mod tests {
             preserve_numeric_ids: true,
         };
 
-        let binary = assembler.assemble(text, options).unwrap();
+        let binary = match assembler.assemble(text, options) {
+            Ok(b) => b,
+            Err(err) => panic!("assembler error:\n{}", err),
+        };
+
+        let validator = spirv_tools::val::create(None);
+        if let Err(err) = validator.validate(&binary, None) {
+            panic!("validation error:\n{}", err);
+        }
+
         binary.as_bytes().to_vec()
     }
 
     #[test]
     fn spirv_minimal() {
         let text = r#"
+        OpCapability Shader
+
         OpMemoryModel Logical GLSL450
+
+        OpEntryPoint GLCompute %1 "main"
+
+        %ty_void = OpTypeVoid
+        %ty_fn = OpTypeFunction %ty_void
+
+        %1 = OpFunction %ty_void None %ty_fn
+        %2 = OpLabel
+        OpReturn
+        OpFunctionEnd
         "#;
 
         let bytes = assemble(text);
@@ -1572,37 +1594,42 @@ mod tests {
     #[test]
     fn compute_global_access_simple() {
         let text = r#"
+        OpCapability Shader
+
         OpMemoryModel Logical GLSL450
+
+        OpEntryPoint GLCompute %4 "main" %1 %2 %3
 
         %ty_void    = OpTypeVoid
         %ty_f32     = OpTypeFloat 32
-        %ty_ptr_f32 = OpTypePointer UniformConstant %ty_f32
+        %ty_ptr_f32_uf_const = OpTypePointer UniformConstant %ty_f32
+        %ty_ptr_f32_uf = OpTypePointer Uniform %ty_f32
         %ty_fn      = OpTypeFunction %ty_void
 
-        %0 = OpVariable %ty_ptr_f32 UniformConstant
-        %1 = OpVariable %ty_ptr_f32 UniformConstant
-        %2 = OpVariable %ty_ptr_f32 UniformConstant
+        %1 = OpVariable %ty_ptr_f32_uf_const UniformConstant
+        %2 = OpVariable %ty_ptr_f32_uf Uniform
+        %3 = OpVariable %ty_ptr_f32_uf Uniform
 
-        %3 = OpFunction %ty_void None %ty_fn
-        %4 = OpLabel
-        %5 = OpLoad %ty_f32 %0
+        %4 = OpFunction %ty_void None %ty_fn
+        %5 = OpLabel
         %6 = OpLoad %ty_f32 %1
-        %7 = OpIAdd %ty_f32 %5 %6
-        OpStore %1 %7
-        OpStore %2 %7
+        %7 = OpLoad %ty_f32 %2
+        %8 = OpFAdd %ty_f32 %6 %7
+        OpStore %2 %8
+        OpStore %3 %8
         OpReturn
         OpFunctionEnd
         "#;
 
         let bytes = assemble(text);
         let module = SpirvModule::read(&bytes).unwrap();
-        let access = module.compute_global_accesses(Id(3));
+        let access = module.compute_global_accesses(Id(4));
         assert_eq!(
             access,
             [
-                (Id(0), ShaderAccess::READ),
-                (Id(1), ShaderAccess::READ | ShaderAccess::WRITE),
-                (Id(2), ShaderAccess::WRITE),
+                (Id(1), ShaderAccess::READ),
+                (Id(2), ShaderAccess::READ | ShaderAccess::WRITE),
+                (Id(3), ShaderAccess::WRITE),
             ]
             .into_iter()
             .collect()
@@ -1612,72 +1639,33 @@ mod tests {
     #[test]
     fn compute_global_access_composite() {
         let text = r#"
+        OpCapability Shader
+
         OpMemoryModel Logical GLSL450
 
-        %ty_void      = OpTypeVoid
-        %ty_u32       = OpTypeInt 32 0
-        %ty_f32       = OpTypeFloat 32
-        %ty_f32_ptr   = OpTypePointer UniformConstant %ty_f32
-        %ty_fn        = OpTypeFunction %ty_void
-        %ty_f32_3     = OpTypeArray %ty_f32 %const_3
-        %ty_f32_3_ptr = OpTypePointer UniformConstant %ty_f32_3
+        OpEntryPoint GLCompute %3 "main" %1 %2
 
-        %const_1 = OpConstant %ty_u32 1
-        %const_3 = OpConstant %ty_u32 3
+        %ty_void               = OpTypeVoid
+        %ty_u32                = OpTypeInt 32 0
+        %ty_f32                = OpTypeFloat 32
+        %ty_fn                 = OpTypeFunction %ty_void
+        %const_1               = OpConstant %ty_u32 1
+        %const_3               = OpConstant %ty_u32 3
+        %ty_f32_3              = OpTypeArray %ty_f32 %const_3
+        %ty_f32_3_ptr_uf_const = OpTypePointer UniformConstant %ty_f32_3
+        %ty_f32_3_ptr_uf       = OpTypePointer Uniform %ty_f32_3
+        %ty_f32_ptr_uf_const   = OpTypePointer UniformConstant %ty_f32
+        %ty_f32_ptr_uf         = OpTypePointer Uniform %ty_f32
 
-        %0 = OpVariable %ty_f32_3 UniformConstant
-        %1 = OpVariable %ty_f32_3 UniformConstant
+        %1 = OpVariable %ty_f32_3_ptr_uf_const UniformConstant
+        %2 = OpVariable %ty_f32_3_ptr_uf Uniform
 
-        %2 = OpFunction %ty_void None %ty_fn
-        %3 = OpLabel
-        %4 = OpAccessChain %ty_f32_ptr %0 %const_1
-        %5 = OpLoad %ty_f32 %4
-        %6 = OpAccessChain %ty_f32_ptr %1 %const_1
-        OpStore %6 %5
-        OpReturn
-        OpFunctionEnd
-        "#;
-
-        let bytes = assemble(text);
-        let module = SpirvModule::read(&bytes).unwrap();
-        let access = module.compute_global_accesses(Id(2));
-        assert_eq!(
-            access,
-            [(Id(0), ShaderAccess::READ), (Id(1), ShaderAccess::WRITE)]
-                .into_iter()
-                .collect()
-        );
-    }
-
-    #[test]
-    fn compute_global_access_sampled_image() {
-        let text = r#"
-        OpMemoryModel Logical GLSL450
-
-        %ty_void     = OpTypeVoid
-        %ty_fn       = OpTypeFunction %ty_void
-        %ty_f32      = OpTypeFloat 32
-        %ty_img      = OpTypeImage %ty_f32 2D 2 0 0 2 R32ui
-        %ty_img_ptr  = OpTypePointer UniformConstant %ty_img
-        %ty_samp     = OpTypeSampler
-        %ty_samp_ptr = OpTypePointer UniformConstant %ty_samp
-        %ty_samp_img = OpTypeSampledImage %ty_img
-        %ty_f32_3    = OpTypeArray %ty_f32 %const_u32_0
-        %ty_u32      = OpTypeInt 32 0
-        
-        %const_u32_3 = OpConstant %ty_u32 3
-
-        %0 = OpVariable %ty_img_ptr UniformConstant
-        %1 = OpVariable %ty_samp_ptr UniformConstant
-        %2 = OpVariable %ty_f32_3 UniformConstant
-
-        %3 = OpFunction %void None %ty_fn
+        %3 = OpFunction %ty_void None %ty_fn
         %4 = OpLabel
-        %5 = OpLoad %ty_img %0
-        %6 = OpLoad %ty_samp %1
-        %7 = OpSampledImage %ty_samp_img %5 %6
-        %8 = OpLoad %ty_f32_3 %2
-        %9 = OpImageSampleImplicitLod %ty_f32 %7 %8
+        %5 = OpAccessChain %ty_f32_ptr_uf_const %1 %const_1
+        %6 = OpLoad %ty_f32 %5
+        %7 = OpAccessChain %ty_f32_ptr_uf %2 %const_1
+        OpStore %7 %6
         OpReturn
         OpFunctionEnd
         "#;
@@ -1687,56 +1675,108 @@ mod tests {
         let access = module.compute_global_accesses(Id(3));
         assert_eq!(
             access,
-            [
-                (Id(0), ShaderAccess::READ),
-                (Id(1), ShaderAccess::READ),
-                (Id(2), ShaderAccess::READ)
-            ]
-            .into_iter()
-            .collect()
+            [(Id(1), ShaderAccess::READ), (Id(2), ShaderAccess::WRITE)]
+                .into_iter()
+                .collect()
         );
     }
 
     #[test]
-    fn compute_global_access_storage_image_write() {
+    fn compute_global_access_sampled_image() {
         let text = r#"
+        OpCapability Shader
+
         OpMemoryModel Logical GLSL450
 
-        %ty_void     = OpTypeVoid
-        %ty_fn       = OpTypeFunction %ty_void
-        %ty_f32      = OpTypeFloat 32
-        %ty_img      = OpTypeImage %ty_f32 2D 2 0 0 2 R32ui
-        %ty_ptr      = OpTypePointer UniformConstant %ty_img
-        %ty_u32      = OpTypeInt 32 0
-        %ty_vec2_u32 = OpTypeVector %ty_u32 2
+        OpEntryPoint Fragment %4 "main" %1 %2
+        OpExecutionMode %4 OriginLowerLeft
 
-        %const_0_u32 = OpConstant %ty_u32 0
+        %ty_void      = OpTypeVoid
+        %ty_fn        = OpTypeFunction %ty_void
+        %ty_f32       = OpTypeFloat 32
+        %ty_img       = OpTypeImage %ty_f32 2D 2 0 0 1 Rgba32f
+        %ty_img_ptr   = OpTypePointer UniformConstant %ty_img
+        %ty_samp      = OpTypeSampler
+        %ty_samp_ptr  = OpTypePointer UniformConstant %ty_samp
+        %ty_samp_img  = OpTypeSampledImage %ty_img
+        %ty_u32       = OpTypeInt 32 0
+        %const_u32_3  = OpConstant %ty_u32 3
+        %ty_f32_3     = OpTypeArray %ty_f32 %const_u32_3
+        %ty_f32_3_ptr = OpTypePointer UniformConstant %ty_f32_3 
+        %ty_vec4_f32  = OpTypeVector %ty_f32 4
+        %ty_vec2_f32  = OpTypeVector %ty_f32 2
+        %const_f32_0  = OpConstant %ty_f32 0
 
-        %0 = OpVariable %ty_ptr UniformConstant
+        %1 = OpVariable %ty_img_ptr UniformConstant
+        %2 = OpVariable %ty_samp_ptr UniformConstant
 
-        %1 = OpFunction %void None %ty_fn
-        %2 = OpLabel
-        %3 = OpLoad %ty_img %0
-        %4 = OpCompositeConstruct %ty_vec2_u32 %const_0_u32 %const_0_u32
-        OpImageWrite %3 %4 %const_0_u32
+        %4  = OpFunction %ty_void None %ty_fn
+        %5  = OpLabel
+        %6  = OpLoad %ty_img %1
+        %7  = OpLoad %ty_samp %2
+        %8  = OpSampledImage %ty_samp_img %6 %7
+        %9  = OpCompositeConstruct %ty_vec2_f32 %const_f32_0 %const_f32_0
+        %10 = OpImageSampleImplicitLod %ty_vec4_f32 %8 %9
         OpReturn
         OpFunctionEnd
         "#;
 
         let bytes = assemble(text);
         let module = SpirvModule::read(&bytes).unwrap();
-        let access = module.compute_global_accesses(Id(1));
-        assert_eq!(access, [(Id(0), ShaderAccess::WRITE)].into_iter().collect());
+        let access = module.compute_global_accesses(Id(4));
+        assert_eq!(
+            access,
+            [(Id(1), ShaderAccess::READ), (Id(2), ShaderAccess::READ),]
+                .into_iter()
+                .collect()
+        );
+    }
+
+    #[test]
+    fn compute_global_access_storage_image_write() {
+        let text = r#"
+        OpCapability Shader
+
+        OpMemoryModel Logical GLSL450
+
+        OpEntryPoint GLCompute %2 "main" %1
+
+        %ty_void     = OpTypeVoid
+        %ty_fn       = OpTypeFunction %ty_void
+        %ty_u32      = OpTypeInt 32 0
+        %ty_img      = OpTypeImage %ty_u32 2D 2 0 0 2 R32ui
+        %ty_ptr      = OpTypePointer UniformConstant %ty_img
+        %ty_vec2_u32 = OpTypeVector %ty_u32 2
+
+        %const_0_u32 = OpConstant %ty_u32 0
+
+        %1 = OpVariable %ty_ptr UniformConstant
+
+        %2 = OpFunction %ty_void None %ty_fn
+        %3 = OpLabel
+        %4 = OpLoad %ty_img %1
+        %5 = OpCompositeConstruct %ty_vec2_u32 %const_0_u32 %const_0_u32
+        OpImageWrite %4 %5 %const_0_u32
+        OpReturn
+        OpFunctionEnd
+        "#;
+
+        let bytes = assemble(text);
+        let module = SpirvModule::read(&bytes).unwrap();
+        let access = module.compute_global_accesses(Id(2));
+        assert_eq!(access, [(Id(1), ShaderAccess::WRITE)].into_iter().collect());
     }
 
     #[test]
     fn instantiate_specialize_runtime_array_length() {
         let text = r#"
+        OpCapability Shader
+
         OpMemoryModel Logical GLSL450
 
-        OpEntryPoint Vertex %1 "main"
+        OpEntryPoint Vertex %2 "main"
 
-        OpDecorate %0 DescriptorSet 0
+        OpDecorate %1 DescriptorSet 0
         OpDecorate %1 Binding 0
 
         %ty_void = OpTypeVoid
@@ -1745,10 +1785,10 @@ mod tests {
         %ty_runtime_array_f32 = OpTypeRuntimeArray %ty_f32
         %ty_runtime_array_f32_ptr = OpTypePointer UniformConstant %ty_runtime_array_f32
 
-        %0 = OpVariable %ty_runtime_array_f32_ptr UniformConstant
+        %1 = OpVariable %ty_runtime_array_f32_ptr UniformConstant
 
-        %1 = OpFunction %ty_void None %ty_fn
-        %2 = OpLabel
+        %2 = OpFunction %ty_void None %ty_fn
+        %3 = OpLabel
         OpReturn
         OpFunctionEnd
         "#;
@@ -1771,7 +1811,7 @@ mod tests {
             })
             .unwrap();
 
-        let variable = instance.data.globals.get(&Id(0)).unwrap();
+        let variable = instance.data.globals.get(&Id(1)).unwrap();
         let ptr_type = match instance.data.types.get(&variable.result_type).unwrap() {
             OpType::Pointer(v) => v,
             _ => unreachable!(),
