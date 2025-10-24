@@ -24,6 +24,5 @@ pub fn compile(input: &str) -> Result<Vec<u8>, Error> {
 
     let spv =
         spv::write_vec(&module, &info, &spv::Options::default(), None).map_err(Error::Codegen)?;
-    std::fs::write("/tmp/x.spv", bytemuck::cast_slice(&spv)).unwrap();
     Ok(spv.into_iter().flat_map(|v| v.to_ne_bytes()).collect())
 }
