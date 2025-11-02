@@ -682,10 +682,12 @@ fn insert_barriers(
     }
 
     debug_assert!(!buffer_barriers.is_empty() || !texture_barriers.is_empty());
-    encoder.insert_pipeline_barriers(&PipelineBarriers {
-        buffer: &buffer_barriers,
-        texture: &texture_barriers,
-    });
+    unsafe {
+        encoder.insert_pipeline_barriers(&PipelineBarriers {
+            buffer: &buffer_barriers,
+            texture: &texture_barriers,
+        });
+    }
 }
 
 #[derive(Debug, Default)]

@@ -1,3 +1,5 @@
+mod alloc;
+
 use std::alloc::Layout;
 use std::backtrace::Backtrace;
 use std::borrow::Cow;
@@ -12,15 +14,18 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
+use allocator_api2::vec::Vec as VecWithAlloc;
 use ash::vk::Handle;
 use ash::{vk, Entry};
 use game_common::collections::scratch_buffer::ScratchBuffer;
+use game_common::utils::vec_ext::VecExt;
 use glam::UVec2;
 use hashbrown::HashMap;
 use parking_lot::Mutex;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use thiserror::Error;
 
+use crate::backend::vulkan::alloc::BumpAllocator;
 use crate::backend::{
     mip_level_size_2d, DedicatedAllocation, DescriptorType, SurfaceFormat, TextureLayout,
 };
@@ -3129,6 +3134,7 @@ impl CommandPool {
             queue_family: self.queue_family,
             queue_caps: self.queue_caps,
             _pool: PhantomData,
+            allocator: BumpAllocator::new(),
         })
     }
 
@@ -3195,6 +3201,7 @@ pub struct CommandEncoder<'a> {
     queue_family: QueueFamilyId,
     queue_caps: QueueCapabilities,
     _pool: PhantomData<&'a CommandPool>,
+    allocator: BumpAllocator,
 }
 
 impl<'a> CommandEncoder<'a> {
@@ -3625,15 +3632,26 @@ impl<'a> CommandEncoder<'a> {
     }
 
     /// Inserts a batch of memory/execution barriers.
-    pub fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
-        // FIXME: This function should probably require the caller to
-        // guarantee that the resource referenced by the barrier is
-        // in the "correct" AccessFlags state (esp. for textures).
+    ///
+    /// # Safety
+    ///
+    /// For each [`BufferBarrier`] passed into this function all must be true:
+    /// - The buffer must currently be in the `src_access` state.
+    /// - The buffer range `offset+size` must be in bounds of the buffer.
+    /// - No buffer ranges are passed in more than once.
+    /// - The buffer range must not be empty.
+    ///
+    /// For each [`TextureBarrier`] passed into this function all must be true:
+    /// - The texture must currently be in the `src_access` state.
+    /// - The `base_mip_level+mip_levels` must be in bounds.
+    /// - No mip level chain was passed in more than once.
+    pub unsafe fn insert_pipeline_barriers(&mut self, barriers: &PipelineBarriers<'_>) {
+        let alloc = self.allocator.span();
 
-        let mut buffer_barriers = Vec::new();
+        let mut buffer_barriers = VecWithAlloc::with_capacity_in(barriers.buffer.len(), alloc);
         for barrier in barriers.buffer {
-            assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
-            assert!(barrier.dst_access.is_allowed_for_queue(&self.queue_caps));
+            debug_assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
+            debug_assert!(barrier.dst_access.is_allowed_for_queue(&self.queue_caps));
 
             let src_access_flags = convert_access_flags(barrier.src_access);
             let dst_access_flags = convert_access_flags(barrier.dst_access);
@@ -3642,12 +3660,13 @@ impl<'a> CommandEncoder<'a> {
             let dst_stage_mask =
                 access_flags_to_stage_mask(barrier.dst_access, BarrierAccessScope::Destination);
 
+            // Guaranteed by caller.
             // - `offset` must be less than the size of `buffer`.
             // - `size` must not be 0.
             // - `size` must be less than or equal to the size of `buffer` minus `offset`.
-            assert_ne!(barrier.size, 0);
-            assert!(barrier.offset < barrier.buffer.size);
-            assert!(barrier.size <= barrier.buffer.size - barrier.offset);
+            debug_assert_ne!(barrier.size, 0);
+            debug_assert!(barrier.offset < barrier.buffer.size);
+            debug_assert!(barrier.size <= barrier.buffer.size - barrier.offset);
 
             let barrier = vk::BufferMemoryBarrier2::default()
                 .buffer(barrier.buffer.buffer)
@@ -3660,20 +3679,18 @@ impl<'a> CommandEncoder<'a> {
                 // Do not transfer between queues.
                 .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED);
-            buffer_barriers.push(barrier);
 
-            tracing::trace!(
-                "Buffer Barrier ({:p}) {:?} -> {:?}",
-                barrier.buffer,
-                src_access_flags,
-                dst_access_flags,
-            );
+            // SAFETY: We have preallocated the exact number of entries.
+            unsafe {
+                buffer_barriers.push_unchecked(barrier);
+            }
         }
 
-        let mut image_barriers = Vec::new();
+        let mut image_barriers = VecWithAlloc::with_capacity_in(barriers.texture.len(), alloc);
         for barrier in barriers.texture {
-            assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
-            assert!(barrier.dst_access.is_allowed_for_queue(&self.queue_caps));
+            // Guaranteed by caller.
+            debug_assert!(barrier.src_access.is_allowed_for_queue(&self.queue_caps));
+            debug_assert!(barrier.dst_access.is_allowed_for_queue(&self.queue_caps));
 
             let src_access_flags = convert_access_flags(barrier.src_access);
             let dst_access_flags = convert_access_flags(barrier.dst_access);
@@ -3698,8 +3715,11 @@ impl<'a> CommandEncoder<'a> {
                 );
             }
 
-            assert!(barrier.base_mip_level < barrier.texture.mip_levels);
-            assert!(barrier.base_mip_level + barrier.mip_levels <= barrier.texture.mip_levels);
+            // Guaranteed by caller.
+            debug_assert!(barrier.base_mip_level < barrier.texture.mip_levels);
+            debug_assert!(
+                barrier.base_mip_level + barrier.mip_levels <= barrier.texture.mip_levels
+            );
 
             let subresource_range = vk::ImageSubresourceRange::default()
                 .aspect_mask(aspect_mask)
@@ -3720,14 +3740,11 @@ impl<'a> CommandEncoder<'a> {
                 .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
                 .image(barrier.texture.image)
                 .subresource_range(subresource_range);
-            image_barriers.push(barrier);
 
-            tracing::trace!(
-                "Image Barrier ({:p}) {:?} -> {:?}",
-                barrier.image,
-                src_access_flags,
-                dst_access_flags,
-            );
+            // SAFETY: We have preallocated the exact number of entries.
+            unsafe {
+                image_barriers.push_unchecked(barrier);
+            }
         }
 
         let info = vk::DependencyInfo::default()
