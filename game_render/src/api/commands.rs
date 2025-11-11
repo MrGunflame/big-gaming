@@ -18,11 +18,13 @@ use super::{
 
 #[derive(Debug)]
 pub struct CommandStream {
-    cmds: Vec<Command>,
+    cmds: Vec<RecordedCommand>,
+    /// Stores the access information for each [`Command`].
+    ///
+    /// This exists as a separate `Vec` to prevent constant allocations when inserting commands
+    /// with a variable number of resource accesses.
     accesses: Vec<Resource<ResourceId>>,
-    cmd_accesses: Vec<AcccessIndex>,
     allocator: Exclusive<Bump>,
-    priority_cmds: Vec<Command>,
 }
 
 impl CommandStream {
@@ -30,55 +32,32 @@ impl CommandStream {
         Self {
             cmds: Vec::new(),
             accesses: Vec::new(),
-            cmd_accesses: Vec::new(),
             allocator: Exclusive::new(Bump::new()),
-            priority_cmds: Vec::new(),
         }
     }
 
+    /// Pushes a new [`Command`] to the end of this `CommandStream`.
     pub fn push(&mut self, resources: &Resources, cmd: Command) {
-        if matches!(
-            cmd,
-            Command::CreateBuffer(_)
-                | Command::CreateTexture(_)
-                | Command::CreateDescriptorSet(_)
-                | Command::DestoryBuffer(_)
-                | Command::DestroyTexture(_)
-                | Command::DestroyDescriptorSet(_)
-        ) {
-            self.priority_cmds.push(cmd);
-            return;
-        }
-
         let allocator = self.allocator.get_mut();
         let offset = self.accesses.len();
         cmd.write_accesses(resources, &mut self.accesses, &allocator);
         let count = self.accesses.len() - offset;
         allocator.reset();
 
-        self.cmds.push(cmd);
-        self.cmd_accesses.push(AcccessIndex { offset, count });
+        self.cmds.push(RecordedCommand {
+            cmd,
+            index: AcccessIndex { offset, count },
+        });
     }
 
-    pub fn priority_cmds(&self) -> Vec<CommandRef<'_>> {
-        self.priority_cmds
+    /// Returns all commands recorded in this `CommandStream`.
+    pub fn commands(&self) -> Vec<CommandRef<'_>> {
+        self.cmds
             .iter()
             .map(|cmd| CommandRef {
                 stream: self,
-                index: usize::MAX,
-                cmd,
-            })
-            .collect()
-    }
-
-    pub fn cmd_refs(&self) -> Vec<CommandRef<'_>> {
-        self.cmds
-            .iter()
-            .enumerate()
-            .map(|(index, cmd)| CommandRef {
-                stream: self,
-                index,
-                cmd,
+                cmd: &cmd.cmd,
+                index: cmd.index,
             })
             .collect()
     }
@@ -86,9 +65,13 @@ impl CommandStream {
     pub fn clear(&mut self) {
         self.cmds.clear();
         self.accesses.clear();
-        self.cmd_accesses.clear();
-        self.priority_cmds.clear();
     }
+}
+
+#[derive(Debug)]
+struct RecordedCommand {
+    cmd: Command,
+    index: AcccessIndex,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -97,19 +80,25 @@ struct AcccessIndex {
     count: usize,
 }
 
+/// Reference to a [`Command`] stored in a [`CommandStream`] with access to the computed resource
+/// accesses.
 #[derive(Copy, Clone)]
 pub struct CommandRef<'a> {
     stream: &'a CommandStream,
-    index: usize,
     cmd: &'a Command,
+    index: AcccessIndex,
 }
 
 impl<'a> Node for CommandRef<'a> {
     type ResourceId = ResourceId;
 
     fn resources(&self) -> &[Resource<ResourceId>] {
-        let region = self.stream.cmd_accesses[self.index];
-        &self.stream.accesses[region.offset..region.offset + region.count]
+        let offset = self.index.offset;
+        let count = self.index.count;
+
+        // SAFETY:
+        // - The `offset` and `count` are valid as written by `CommandStream::push`.
+        unsafe { self.stream.accesses.get_unchecked(offset..offset + count) }
     }
 }
 
@@ -428,11 +417,38 @@ impl Command {
                     accesses.push(Resource { id, access });
                 }
             }
-            Self::CreateBuffer(_) => (),
-            Self::CreateTexture(_) => (),
-            Self::CreateDescriptorSet(_) => (),
+            // We only need to "touch" the resource once to ensure
+            // that this command gets placed before any uses.
+            Self::CreateBuffer(cmd) => {
+                accesses.push(Resource {
+                    id: ResourceId::Buffer(cmd.id),
+                    access: AccessFlags::empty(),
+                });
+            }
+            // Destruction can happen anywhere in the graph since an destruction
+            // command means the resource was not used this frame and will not
+            // be used in future frames.
             Self::DestoryBuffer(_) => (),
+            // We only need to "touch" the resource once to ensure
+            // that this command gets placed before any uses.
+            Self::CreateTexture(cmd) => {
+                for mip_level in 0..cmd.descriptor.mip_levels {
+                    accesses.push(Resource {
+                        id: ResourceId::Texture(TextureMip {
+                            id: cmd.id,
+                            mip_level,
+                        }),
+                        access: AccessFlags::empty(),
+                    });
+                }
+            }
+            // Destruction can happen anywhere in the graph since an destruction
+            // command means the resource was not used this frame and will not
+            // be used in future frames.
             Self::DestroyTexture(_) => (),
+            // Descriptor Sets are immediate and written from the CPU, i.e. they
+            // have no requirements on dependencies.
+            Self::CreateDescriptorSet(_) => (),
             Self::DestroyDescriptorSet(_) => (),
         }
     }
