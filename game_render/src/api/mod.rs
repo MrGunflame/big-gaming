@@ -118,17 +118,12 @@ impl CommandExecutor {
 
         let cmd_stream = self.cmds.get_mut();
 
-        let cmds = cmd_stream.cmd_refs();
+        let cmds = cmd_stream.commands();
 
-        let mut steps = self
+        let steps = self
             .scheduler
             .schedule(&*self.resources, &*allocator, &cmds);
         allocator.reset();
-
-        let prio_cmds = cmd_stream.priority_cmds();
-        for (index, cmd) in prio_cmds.iter().enumerate() {
-            steps.insert(index, scheduler::Step::Node(cmd));
-        }
 
         let tmp = self
             .executor
